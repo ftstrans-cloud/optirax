@@ -1,0 +1,2409 @@
+<!doctype html>
+<html lang="pl" data-theme="dark">
+<head>
+<script>
+(function(){
+  const token = localStorage.getItem('optirax_token');
+  if(!token){ window.location.href='/login'; return; }
+
+  const _orig = window.fetch;
+  window.fetch = function(url, opts){
+    opts = opts || {};
+    if(typeof url === 'string' && url.startsWith('/api/')){
+      opts.headers = opts.headers || {};
+      opts.headers['Authorization'] = 'Bearer ' + (localStorage.getItem('optirax_token')||'');
+    }
+    return _orig(url, opts).then(async r => {
+      if(r.status === 401){
+        const refresh = localStorage.getItem('optirax_refresh');
+        if(refresh){
+          const rr = await _orig('/api/auth/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refresh_token:refresh})});
+          if(rr.ok){
+            const d = await rr.json();
+            localStorage.setItem('optirax_token', d.token);
+            localStorage.setItem('optirax_refresh', d.refresh_token);
+            opts.headers['Authorization'] = 'Bearer ' + d.token;
+            return _orig(url, opts);
+          }
+        }
+        localStorage.clear(); window.location.href='/login';
+      }
+      if(r.status === 403){
+        r.clone().json().then(d=>{
+          if(d.code==='TRIAL_EXPIRED') showTrialBanner();
+        }).catch(()=>{});
+      }
+      return r;
+    });
+  };
+
+  function showTrialBanner(){
+    if(document.getElementById('trialBanner')) return;
+    const b = document.createElement('div');
+    b.id='trialBanner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#7c3aed;color:#fff;text-align:center;padding:10px;font-size:13px;';
+    b.innerHTML='Trial wygasl. Kontakt: <b>kalkulator.transportowy@gmail.com</b>';
+    document.body.prepend(b);
+  }
+
+  window.addEventListener('DOMContentLoaded', ()=>{
+    const profile = JSON.parse(localStorage.getItem('optirax_profile')||'{}');
+    const user    = JSON.parse(localStorage.getItem('optirax_user')||'{}');
+    const email   = profile.email || user.email || '';
+
+    const btn = document.createElement('button');
+    btn.textContent = email ? ('Konto: ' + email.split('@')[0]) : 'Konto';
+    btn.title = 'Wyloguj';
+    btn.style.cssText = 'position:fixed;top:8px;right:8px;z-index:9998;padding:4px 10px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#94a3b8;cursor:pointer;font-size:11px;';
+    btn.onclick = function(){ localStorage.clear(); window.location.href='/login'; };
+    document.body.appendChild(btn);
+
+    if(profile.plan==='trial' && profile.trial_ends_at){
+      const days = Math.max(0, Math.ceil((new Date(profile.trial_ends_at)-new Date())/86400000));
+      if(days<=3 && days>0){
+        const w=document.createElement('div');
+        w.style.cssText='position:fixed;bottom:80px;right:16px;z-index:9997;background:#1e1b4b;border:1px solid #6366f1;border-radius:10px;padding:10px 14px;font-size:12px;color:#c4b5fd;max-width:220px;';
+        w.innerHTML='Trial wygasa za <b>'+days+' '+(days===1?'dzien':'dni')+'</b>.<br><a href="mailto:kalkulator.transportowy@gmail.com" style="color:#818cf8;">Skontaktuj sie</a>';
+        document.body.appendChild(w);
+      }
+    }
+  });
+})();
+</script>
+  <meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OPTIRAX - Kalkulator kosztów trasy</title>
+<style>
+
+html, body{
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+:root{
+  --bg:#1f2937;          
+  --panel:#253049;       
+  --panel2:#2b3658;
+  --text:#f8fafc;        
+  --muted:#d1d9ff;       
+  --border:rgba(255,255,255,.22);
+  --accent:#7aa2ff;
+  --page-pad: 24px;         /* masz w body padding:24px */
+--actionbar-h: 92px; /* jak masz większy pasek, podbij */
+  --pad: 24px;
+  --gap: 16px;
+}
+
+*{ box-sizing:border-box; }
+
+body{
+  font-size: 15px;
+  line-height: 1.45;
+  margin:0;
+  padding:24px;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: var(--text);
+  background:
+  radial-gradient(1200px 600px at 15% -10%, rgba(122,162,255,.45), transparent 60%),
+  radial-gradient(900px 500px at 85% 0%, rgba(99,102,241,.40), transparent 55%),
+  linear-gradient(180deg, #1e293b, #1f2937);
+  padding-bottom: calc(var(--actionbar-h) + 24px);
+}
+
+body{ padding-bottom: 110px; }  /* miejsce na actionBar */
+
+.col.left, .col.right {
+  padding-bottom: 90px; /* wysokość actionBar + margines */
+}
+
+.app{
+  width: 100%;
+  max-width: none;   /* było 1600px /
+  margin: 0;         / było 0 auto */
+}
+
+.layout{
+  height: calc(100vh - (2 * var(--pad)) - var(--actionbar-h) - 12px); 
+  /* 12px to bottom paska (bo dałeś bottom:12px) */
+  display:grid;
+  grid-template-columns: 380px minmax(560px, 1fr) 420px;
+  gap:16px;
+  align-items:start;
+}
+
+.col{ min-width:0; }
+
+
+
+/* lewa i prawa kolumna przewijane */
+.col.left{
+  height: 100%;
+  overflow: auto;
+  position: sticky;
+  top: 24px; /* jak chcesz, może zostać */
+}
+
+.col.right{
+  height: 100%;
+  overflow: auto;
+  position: sticky;
+  top: 24px; /* jak chcesz, może zostać */
+}
+
+.col.center{
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.col.center .card{
+  flex: 1;
+  min-height: 0;
+}
+
+/* duża mapa */
+.mapBig{
+  height: 100% !important;
+  min-height: 520px !important;
+  border: none;
+  border-radius: 14px;
+}
+
+.card{
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.12),
+    rgba(255,255,255,.06)
+  );
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow:
+    0 8px 22px rgba(0,0,0,.25),
+    inset 0 1px 0 rgba(255,255,255,.25);
+}
+
+
+h1{ font-size: 22px; margin:0 0 12px; }
+h2{ font-size: 15px; margin:0 0 10px; }
+
+.form label{
+  display:block;
+  margin:10px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.form input{
+  width:100%;
+  padding:11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.12);
+  color: var(--text);
+}
+
+.form input:focus{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(122,162,255,.30);
+}
+
+.row2{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:10px;
+}
+
+.btn{
+  width:100%;
+  padding:10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(110,168,255,.18);
+  color: var(--text);
+  cursor:pointer;
+  font-weight:700;
+}
+
+.btn:hover{ background: rgba(110,168,255,.28); }
+.btn.secondary{ background: rgba(255,255,255,.06); }
+.btn.secondary:hover{ background: rgba(255,255,255,.10); }
+
+.stack{ display:flex; flex-direction:column; gap:12px; }
+
+.kpis{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:10px;
+}
+
+.kpi{
+  padding:16px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.18),
+    rgba(255,255,255,.08)
+  );
+  border-radius: 12px;
+  border:1px solid var(--border);
+}
+
+.kpi .label{
+  font-size:13px;
+  letter-spacing:.3px;
+  color: var(--muted);
+}
+
+.kpi .value{
+  font-size:24px;
+  font-weight:800;
+  color:#ffffff;
+}
+
+table{
+  width:100%;
+  border-collapse: collapse;
+  overflow:hidden;
+  border-radius: 12px;
+  border:1px solid var(--border);
+}
+
+th, td{
+  padding:12px 12px;
+  font-size: 14px;
+  border-bottom:1px solid var(--border);
+}
+
+th{
+  text-align:left;
+  color: var(--muted);
+  font-weight:700;
+  background: rgba(255,255,255,.02);
+}
+
+tbody tr:hover{ background: rgba(255,255,255,.04); }
+tr:last-child td{ border-bottom: none; }
+
+pre{
+  margin:0;
+  padding:12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.30);
+  border:1px solid var(--border);
+  color: var(--text);
+  white-space: pre-wrap;
+  font-size:14px;
+  line-height:1.55;
+}
+
+.small{ font-size:12px; color: var(--muted); }
+
+@media (max-width: 980px){
+  .app{ grid-template-columns: 1fr; height: auto; }
+  .sidebar{ position: static; height: auto; overflow: visible; }
+  .main{ height: auto; overflow: visible; }
+}
+
+#aiReport{ min-height: 120px; }
+#routeInfo{ min-height: 70px; }
+
+.iconBtn{
+  height: 42px;
+  width: 44px;
+  border-radius: 10px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  cursor:pointer;
+  font-weight:900;
+}
+
+.iconBtn:hover{
+  background: rgba(255,255,255,.14);
+}
+
+.actionBar{
+  position: fixed;
+  left: 24px;
+  right: 24px;
+  bottom: 12px;
+  z-index: 9999;
+
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:10px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background: rgba(20, 26, 44, .65);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 28px rgba(0,0,0,.25);
+}
+
+.stopRow{
+  display:grid;
+  grid-template-columns: 1fr 40px 40px 44px;
+  gap:8px;
+  align-items:center;
+}
+
+.iconBtn.small{
+  height: 42px;
+  width: 40px;
+  font-weight:900;
+}
+
+.stopsActions{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:10px;
+  margin-top:10px;
+}
+
+.actionBar{ bottom: 0; }
+
+.autoBox{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:10px;
+  padding:10px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.06);
+}
+
+.chk{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:0;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  font-weight:700;
+  font-size:13px;
+}
+
+.chk input{
+  width:auto;
+  transform: scale(1.05);
+}
+
+.routeList{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin: 8px 0 10px;
+}
+
+/* Autocomplete */
+.ac-item:last-child { border-bottom: none !important; }
+
+/* Google Maps paste box */
+.gmapsPasteBox {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.gmapsPasteBox input {
+  width: 100%;
+  margin-bottom: 6px;
+}
+
+/* Alternatywne trasy */
+.altRouteCard {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 2px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  cursor: pointer;
+  margin-bottom: 6px;
+  transition: border-color .15s, background .15s;
+}
+.altRouteCard:hover { background: rgba(255,255,255,.09); }
+.altRouteCard.selected { border-color: var(--accent); background: rgba(122,162,255,.12); }
+.altRouteCard .altTitle { font-weight: 700; margin-bottom: 4px; }
+.altRouteCard .altMeta { font-size: 12px; opacity: .75; }
+
+.routeRow{
+  display:grid;
+  grid-template-columns: 1fr 40px 40px 44px;
+  gap:8px;
+  align-items:center;
+}
+
+.routeTag{
+  font-size:12px;
+  color: var(--muted);
+  margin: 6px 0 2px;
+}
+
+#map { height: 420px; width: 100%; }
+.leaflet-container { background: rgba(0,0,0,.2); border-radius: 14px; }
+
+.route-flag-icon {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.modeBox { margin: 12px 0 6px; padding: 12px; border-radius: 14px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+}
+.modeLabel { font-weight: 700; margin-bottom: 10px; opacity: .95; }
+.modeSwitch { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.modeBtn { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.18); color: inherit; cursor: pointer; text-align: left;
+}
+.modeBtn .modeSub { display:block; font-size:12px; opacity:.8; margin-top:3px; font-weight: 500; }
+.modeBtn.active { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.18); }
+
+.modeOfferRow { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; }
+.modeInlineLabel { font-size: 12px; opacity: .85; }
+
+.historyBox{ margin-top:14px; padding:12px; border-radius:14px;
+  border:1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.04);
+}
+.historyHeader{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.historyTitle{ font-weight:800; }
+.historySub{ font-size:12px; opacity:.75; margin-top:2px; }
+.historyActions{ display:flex; gap:8px; flex-wrap:wrap; }
+
+.historyList{ margin-top:10px; display:flex; flex-direction:column; gap:8px; max-height:360px; overflow:auto; padding-right:6px; }
+.historyItem{ padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.16);
+}
+.historyTop{ display:flex; justify-content:space-between; gap:10px; align-items:center; }
+.historyName{ font-weight:700; }
+.historyMeta{ font-size:12px; opacity:.75; }
+.historyLine{ margin-top:6px; font-size:13px; opacity:.95; }
+.historyBadges{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+.badge{ font-size:12px; padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.10); opacity:.9; }
+
+.historyBtns{ margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+.historyBtns .btn{ padding:8px 10px; }
+
+.historyModal{ position:fixed; inset:0; background: rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:9999; }
+.historyModalCard{ width:min(520px, 92vw); border-radius:16px; padding:14px;
+  background: rgba(20,20,20,.98); border:1px solid rgba(255,255,255,.12);
+}
+.historyModalTitle{ font-weight:800; margin-bottom:10px; }
+.historyForm{ display:flex; flex-direction:column; gap:6px; }
+.historyForm label{ font-size:12px; opacity:.75; margin-top:6px; }
+.historyModalBtns{ margin-top:12px; display:flex; justify-content:flex-end; gap:10px; }
+
+.historyPanelHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  cursor:pointer;
+  gap:12px;
+}
+
+.historyPanelActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin: 10px 0 12px;
+}
+
+.historyList .historyItem{
+  margin-bottom:10px;
+}
+
+.historyList{
+  max-height: 280px;
+  overflow:auto;
+  padding-right: 4px;
+}
+
+/* przyciski w historii trochę mniejsze, żeby nie „puchły” */
+.historyList .btn{
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+#historyChevron{
+  opacity:.8;
+}
+
+.historyPanel{
+  margin-top: 16px;
+}
+
+/* === SPÓJNY WYGLĄD KONTROLEK (input/select/textarea/button) === */
+input, select, textarea, button{
+  font: inherit;
+  color: var(--text);
+}
+
+input, select, textarea{
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.12);
+  color: var(--text);
+  outline: none;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+/* focus jak w panelach */
+input:focus, select:focus, textarea:focus{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(122,162,255,.30);
+}
+
+/* placeholder */
+input::placeholder, textarea::placeholder{
+  color: rgba(209,217,255,.65);
+}
+
+/* number — żeby nie wracało do “stockowego” */
+input[type="number"]{
+  appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* select — też ma stockowy “look”, więc go ujednolicamy */
+select{
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(248,250,252,.75) 50%),
+    linear-gradient(135deg, rgba(248,250,252,.75) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+/* disabled */
+input:disabled, select:disabled, textarea:disabled{
+  opacity: .65;
+  cursor: not-allowed;
+}
+
+/* przyciski już masz .btn — ale dopnij spójny reset */
+button{
+  border: 0;
+  background: transparent;
+}
+
+/* CENTRALNA KOLUMNA ma wypełniać wysokość okna jak sidebar */
+.col.center{
+  height: calc(100vh - 48px);
+}
+
+/* karta mapy ma rosnąć i oddać całą przestrzeń mapie */
+.mapCard{
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* nagłówek mapy nie rośnie */
+.mapHead{
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.mapStyleBtn {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--line, #c7d2fe);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.mapStyleBtn:hover { background: rgba(109,124,255,.15); border-color: var(--accent,#6d7cff); }
+.mapStyleBtn.active { background: var(--accent,#6d7cff); color: #fff; border-color: var(--accent,#6d7cff); font-weight: 700; }
+
+/* mapa rośnie i wypełnia resztę */
+#map.mapFill{
+  flex: 1 1 auto;
+  min-height: 420px;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* ważne: Leaflet lubi mieć tło, żeby nie wyglądało na “dziurę” */
+.leaflet-container{
+  background: rgba(0,0,0,.2);
+}
+
+/* =========================
+   THEME SWITCH (UI)
+========================= */
+.themeSwitch{
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 10000;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  background: rgba(20, 26, 44, .45);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 28px rgba(0,0,0,.18);
+}
+
+.themeSwitch .tLabel{
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  opacity: .95;
+}
+
+.themeSwitch .tBtn{
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+.themeSwitch .tBtn:hover{ background: rgba(255,255,255,.14); }
+
+
+/* =========================
+   LIGHT THEME VARIABLES
+   (ramki granatowe jak w PDF)
+========================= */
+:root[data-theme="light"]{
+  --bg: #f6f8fb;
+  --panel: #ffffff;
+  --panel2: #ffffff;
+
+  --text: #0b1220;
+  --muted: #516173;
+
+  /* granatowe ramki (bardziej widoczne) */
+  --border: rgba(37, 99, 235, .28);
+  --accent: #2563eb;
+}
+
+/* tło strony w jasnym trybie */
+:root[data-theme="light"] body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(37,99,235,.16), transparent 60%),
+    radial-gradient(900px 500px at 85% 0%, rgba(99,102,241,.12), transparent 55%),
+    linear-gradient(180deg, #f6f8fb, #eef2f7);
+  color: var(--text);
+}
+
+/* karty w jasnym trybie */
+:root[data-theme="light"] .card{
+  background: linear-gradient(180deg, rgba(255,255,255,1), rgba(255,255,255,.96));
+  border: 2px solid var(--border);
+  box-shadow:
+    0 8px 22px rgba(2,6,23,.06),
+    inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+/* KPI w jasnym trybie */
+:root[data-theme="light"] .kpi{
+  background: linear-gradient(180deg, rgba(246,248,251,1), rgba(238,242,247,1));
+  border: 2px solid var(--border);
+}
+:root[data-theme="light"] .kpi .value{
+  color: #0b1220;
+}
+
+/* inputy/select/textarea w jasnym trybie */
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea{
+  background: #ffffff;
+  color: var(--text);
+  border: 2px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(2,6,23,.04);
+}
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder{
+  color: rgba(81,97,115,.65);
+}
+:root[data-theme="light"] input:focus,
+:root[data-theme="light"] select:focus,
+:root[data-theme="light"] textarea:focus{
+  border-color: rgba(37,99,235,.55);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.18);
+}
+
+/* tabele w jasnym trybie */
+:root[data-theme="light"] table{
+  border: 2px solid var(--border);
+}
+:root[data-theme="light"] th{
+  background: rgba(37,99,235,.06);
+  color: var(--muted);
+}
+:root[data-theme="light"] tbody tr:hover{
+  background: rgba(37,99,235,.05);
+}
+
+/* PRE w jasnym trybie */
+:root[data-theme="light"] pre{
+  background: rgba(37,99,235,.06);
+  border: 2px solid var(--border);
+  color: var(--text);
+}
+
+/* przyciski w jasnym trybie */
+:root[data-theme="light"] .btn{
+  border: 2px solid var(--border);
+  background: rgba(37,99,235,.10);
+  color: var(--text);
+}
+:root[data-theme="light"] .btn:hover{ background: rgba(37,99,235,.16); }
+:root[data-theme="light"] .btn.secondary{
+  background: rgba(255,255,255,.88);
+}
+:root[data-theme="light"] .btn.secondary:hover{
+  background: rgba(37,99,235,.06);
+}
+
+/* actionBar w jasnym trybie */
+:root[data-theme="light"] .actionBar{
+  background: rgba(255,255,255,.75);
+  border: 2px solid var(--border);
+  box-shadow: 0 10px 28px rgba(2,6,23,.10);
+}
+
+/* przełącznik w jasnym trybie – czytelny */
+:root[data-theme="light"] .themeSwitch{
+  background: rgba(255,255,255,.75);
+}
+
+/* =========================
+   ENTERPRISE LIGHT FINAL
+========================= */
+
+:root[data-theme="light"]{
+  --bg: #f4f7fc;
+  --panel: #ffffff;
+  --panel2: #ffffff;
+
+  --text: #0f172a;
+  --muted: #475569;
+
+  /* mocny, elegancki granat */
+  --accent: #1e40af;
+  --accent-soft: rgba(30,64,175,.12);
+
+  /* wyraźne ramki */
+  --border: rgba(30,64,175,.38);
+  --border-soft: rgba(30,64,175,.22);
+
+  --shadow-soft: 0 10px 24px rgba(2,6,23,.08);
+}
+
+/* ===== TŁO ===== */
+:root[data-theme="light"] body{
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(30,64,175,.16), transparent 60%),
+    radial-gradient(900px 500px at 90% 0%, rgba(37,99,235,.12), transparent 55%),
+    linear-gradient(180deg, #f4f7fc, #eef2f7);
+  color: var(--text);
+}
+
+/* ===== KARTY ===== */
+:root[data-theme="light"] .card{
+  background: #ffffff;
+  border: 2.2px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+/* ===== NAGŁÓWKI ===== */
+:root[data-theme="light"] h1,
+:root[data-theme="light"] h2{
+  color: #0f172a;
+  font-weight: 800;
+}
+
+/* ===== KPI ===== */
+:root[data-theme="light"] .kpi{
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+}
+
+:root[data-theme="light"] .kpi .label{
+  color: var(--muted);
+  font-weight: 700;
+}
+
+:root[data-theme="light"] .kpi .value{
+  color: #0f172a;
+}
+
+/* ===== INPUTY ===== */
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea{
+  background: #ffffff;
+  border: 2px solid var(--border-soft);
+  border-radius: 12px;
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(2,6,23,.04);
+}
+
+:root[data-theme="light"] input:focus,
+:root[data-theme="light"] select:focus,
+:root[data-theme="light"] textarea:focus{
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(30,64,175,.18);
+}
+
+/* ===== BUTTONY ===== */
+:root[data-theme="light"] .btn{
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: #0f172a;
+  font-weight: 800;
+}
+
+:root[data-theme="light"] .btn:hover{
+  background: rgba(30,64,175,.20);
+}
+
+:root[data-theme="light"] .btn.secondary{
+  background: #ffffff;
+  border: 2px solid var(--border-soft);
+}
+
+/* ===== TABELA ===== */
+:root[data-theme="light"] table{
+  border: 2px solid var(--border);
+  border-radius: 14px;
+}
+
+:root[data-theme="light"] th{
+  background: rgba(30,64,175,.08);
+  color: #334155;
+  font-weight: 800;
+}
+
+:root[data-theme="light"] td{
+  border-bottom: 1px solid var(--border-soft);
+}
+
+:root[data-theme="light"] tbody tr:hover{
+  background: rgba(30,64,175,.06);
+}
+
+/* ===== PRE / DEBUG ===== */
+:root[data-theme="light"] pre{
+  background: rgba(30,64,175,.06);
+  border: 2px solid var(--border);
+}
+
+/* ===== ACTION BAR ===== */
+:root[data-theme="light"] .actionBar{
+  background: rgba(255,255,255,.88);
+  border: 2px solid var(--border);
+  box-shadow: 0 14px 30px rgba(2,6,23,.10);
+}
+
+/* ===== AUTO BOX ===== */
+:root[data-theme="light"] .autoBox{
+  background: rgba(30,64,175,.05);
+  border: 2px solid var(--border-soft);
+}
+
+/* ===== MODE SWITCH ===== */
+:root[data-theme="light"] .modeBox{
+  background: rgba(30,64,175,.05);
+  border: 2px solid var(--border-soft);
+}
+
+:root[data-theme="light"] .modeBtn{
+  background: #ffffff;
+  border: 2px solid var(--border-soft);
+}
+
+:root[data-theme="light"] .modeBtn.active{
+  background: rgba(30,64,175,.12);
+  border-color: var(--border);
+}
+
+/* ===== Leaflet ===== */
+:root[data-theme="light"] .leaflet-container{
+  background: #e2e8f0;
+}
+
+.leaflet-container{
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+}
+
+/* ===== MAPA: usuń "ramkę" (to padding+tło karty) ===== */
+.card.mapCard{
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* nagłówek mapy może zostać normalny */
+.card.mapCard h2,
+.card.mapCard .small{
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.card.mapCard h2{ padding-top: 16px; }
+.card.mapCard .small{ padding-bottom: 10px; }
+
+/* mapa ma wypełnić kartę i nie mieć własnych ramek */
+#map.mapFill{
+  width: 100%;
+  border: 0 !important;
+  border-radius: 0 0 14px 14px;  /* dół karty */
+  overflow: hidden;
+}
+
+/* Leaflet często ma własne tło/border – kasujemy */
+#map.mapFill .leaflet-container{
+  border: 0 !important;
+  border-radius: 0 0 14px 14px !important;
+  outline: none !important;
+}
+#map.mapFill .leaflet-control-container{
+  border: 0 !important;
+}
+
+@media (max-width: 980px){
+
+  body{
+    padding:16px;
+    padding-bottom:40px;
+  }
+
+  .layout{
+    display:block;
+    height:auto;
+  }
+
+  .col{
+    position: static !important;
+    height:auto !important;
+    overflow:visible !important;
+    margin-bottom:20px;
+  }
+
+  #map{
+    height:380px;
+  }
+
+  .actionBar{
+    position: static !important;
+    margin-top:20px;
+  }
+
+  .kpis{
+    grid-template-columns:1fr;
+  }
+
+  .row2{
+    grid-template-columns:1fr;
+  }
+
+}
+
+.route-evaluation{
+  margin-top:20px;
+  padding:12px;
+  border-radius:8px;
+  background: var(--eval-bg, #f4f6f8);
+  border: 1px solid var(--eval-border, transparent);
+  font-size:16px;
+}
+
+.eval-line{
+  margin:4px 0;
+}
+
+#routeScore{
+  font-weight:700;
+  font-size:18px;
+}
+
+/* ciemny tryb – route-evaluation przez data-theme */
+:root[data-theme="dark"] .route-evaluation{
+  --eval-bg: #1e293b;
+  --eval-border: #334155;
+}
+:root[data-theme="dark"] .eval-line{ color:#cbd5e1; }
+
+/* jasny tryb */
+:root[data-theme="light"] .route-evaluation{
+  --eval-bg: #f4f6f8;
+  --eval-border: #e2e8f0;
+}
+
+/* stare selektory body.dark – zachowaj kompatybilność */
+body.dark .route-evaluation{ background:#1e1e1e; border:1px solid #333; }
+body.dark .eval-line{ color:#ddd; }
+
+</style>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+
+<body autocomplete="off">
+
+<div class="themeSwitch" id="themeSwitch">
+  <div class="tLabel">Tryb</div>
+  <button type="button" class="tBtn" id="themeBtn">🌙 Ciemny</button>
+</div>
+
+  <div class="app">
+    <div class="layout">
+
+      <!-- LEWA KOLUMNA -->
+      <aside class="col left sidebar">
+	  <div class="card">
+        <h1>OPTIRAX - Kalkulator kosztów trasy</h1>
+
+        <div class="modeBox">
+          <div class="modeLabel">Tryb pracy</div>
+
+          <div class="modeSwitch" id="modeSwitch">
+            <button type="button" class="modeBtn active" data-mode="suggest">
+              Wycena trasy
+              <span class="modeSub">liczę cenę sugerowaną</span>
+            </button>
+
+            <button type="button" class="modeBtn" data-mode="offer">
+              Marża ze zlecenia
+              <span class="modeSub">mam cenę → liczę marżę</span>
+            </button>
+          </div>
+
+          <div class="modeOfferRow" id="modeOfferRow" style="display:none;">
+            <label class="modeInlineLabel">Cena zlecenia (EUR)</label>
+            <input id="offer_price_eur" type="number" step="0.01" placeholder="np. 4500" />
+          </div>
+        </div>
+
+        <input id="calc_mode" type="hidden" value="suggest" />
+
+        <h2>Dane trasy</h2>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px;">
+          <button type="button" class="btn secondary" onclick="toggleGmapsPaste()">📌 Link Google Maps</button>
+          <button type="button" class="btn secondary" onclick="toggleNlpPaste()">📋 Wklej tekst</button>
+        </div>
+
+        <div id="gmapsPasteBox" class="gmapsPasteBox" style="display:none;">
+          <div style="font-size:12px;opacity:.8;margin-bottom:6px;">Wklej link z Google Maps (maps.google.com/maps/dir/...)</div>
+          <input id="gmapsInput" type="text" placeholder="https://www.google.com/maps/dir/Warszawa/Berlin/Hamburg" />
+          <button type="button" class="btn" style="width:100%;" onclick="pasteGoogleMaps()">✅ Wczytaj trasę</button>
+        </div>
+
+        <div id="nlpPasteBox" style="display:none; margin-bottom:8px; padding:10px; border:1px solid var(--line,#c7d2fe); border-radius:10px;">
+          <div style="font-size:12px;opacity:.8;margin-bottom:6px;">
+            Wklej tekst z adresami — AI wyciągnie punkty trasy automatycznie.
+          </div>
+          <textarea id="nlpInput" rows="5" style="width:100%;resize:vertical;font-size:12px;"
+            placeholder="Wklej adresy w kolejności, np:&#10;59114 Steenvoorde, France&#10;8520 Kuurne, Belgium&#10;21-400 Łuków, PL"></textarea>
+          <div id="nlpStatus" style="font-size:11px;margin-top:4px;opacity:.7;"></div>
+          <button type="button" class="btn" style="width:100%;margin-top:6px;" onclick="parseNlpStops()">🤖 Wyciągnij trasę (AI)</button>
+        </div>
+
+        <div id="routeList" class="routeList"></div>
+
+        <div class="stopsActions">
+          <button type="button" class="btn secondary" onclick="addRoutePoint()">+ Dodaj punkt</button>
+          <button type="button" class="btn secondary" onclick="clearRouteMiddle()">Wyczyść punkty</button>
+        </div>
+
+        <div class="row2" style="margin-top:10px;">
+          <button type="button" class="btn secondary" onclick="getRoute()">🗺 Pobierz km</button>
+        </div>
+
+        <pre id="routeInfo" style="margin-top:10px;"></pre>
+
+        <div id="altRoutesPanel" style="display:none;margin-top:8px;">
+          <div style="font-weight:700;margin-bottom:6px;">Wybierz trasę:</div>
+          <div id="altRoutesList"></div>
+        </div>
+
+        <div class="small" style="margin-top:6px;">
+          Dodaj np. załadunki/rozładunki po drodze. Kolejność ma znaczenie.
+        </div>
+        <div class="small" style="margin-top:6px;">Np. “Berlin” ↵ “Hannover” ↵ “Hamburg”</div>
+
+        <h2 style="margin-top:14px;">Parametry</h2>
+
+        <!-- TRUCK PROFILE – HERE API -->
+        <details id="truckProfileSection" style="margin-bottom:12px; border:1px solid var(--line,#c7d2fe); border-radius:12px; padding:10px 14px;">
+          <summary style="cursor:pointer; font-weight:700; font-size:13px; list-style:none; display:flex; align-items:center; gap:8px;">
+            🚛 Profil pojazdu
+            <span style="font-weight:400; font-size:11px; opacity:.7; margin-left:auto;">kliknij aby rozwinąć</span>
+          </summary>
+          <div style="margin-top:10px;">
+            <label style="font-size:12px; font-weight:700;">Wybierz pojazd</label>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;" id="vehiclePresets">
+              <button type="button" class="btn secondary vehicleBtn active" data-preset="tir40"
+                style="font-size:12px; padding:6px 4px;">🚛 TIR 40t</button>
+              <button type="button" class="btn secondary vehicleBtn" data-preset="tir24"
+                style="font-size:12px; padding:6px 4px;">🚚 TIR 24t</button>
+              <button type="button" class="btn secondary vehicleBtn" data-preset="bus"
+                style="font-size:12px; padding:6px 4px;">🚌 Bus</button>
+              <button type="button" class="btn secondary vehicleBtn" data-preset="van"
+                style="font-size:12px; padding:6px 4px;">🚐 Van/Dostawczy</button>
+              <button type="button" class="btn secondary vehicleBtn" data-preset="solo"
+                style="font-size:12px; padding:6px 4px;">🚜 Ciągnik solo</button>
+              <button type="button" class="btn secondary vehicleBtn" data-preset="custom"
+                style="font-size:12px; padding:6px 4px;">⚙️ Własne</button>
+            </div>
+          </div>
+          <div id="truckCustomFields" style="margin-top:10px; display:none; grid-template-columns:1fr 1fr; gap:8px;">
+            <div>
+              <label style="font-size:12px;">Masa całkowita (kg)</label>
+              <input id="truck_grossWeight" type="number" value="40000" min="1000" max="60000" />
+            </div>
+            <div>
+              <label style="font-size:12px;">Nacisk na oś (kg)</label>
+              <input id="truck_axleWeight" type="number" value="11500" min="1000" max="15000" />
+            </div>
+            <div>
+              <label style="font-size:12px;">Wysokość (cm)</label>
+              <input id="truck_height" type="number" value="400" min="100" max="500" />
+            </div>
+            <div>
+              <label style="font-size:12px;">Szerokość (cm)</label>
+              <input id="truck_width" type="number" value="255" min="100" max="300" />
+            </div>
+            <div>
+              <label style="font-size:12px;">Długość (cm)</label>
+              <input id="truck_length" type="number" value="1360" min="100" max="2500" />
+            </div>
+            <div>
+              <label style="font-size:12px;">Liczba osi</label>
+              <input id="truck_axleCount" type="number" value="5" min="2" max="9" />
+            </div>
+          </div>
+          <div id="vehiclePresetInfo" style="margin-top:8px; font-size:11px; opacity:.65;">
+            TIR 40t: 40 000 kg, 5 osi, 400×255×1360 cm
+          </div>
+          <div class="ft-divider" style="margin:10px 0;"></div>
+          <div style="font-size:12px;font-weight:700;margin:10px 0 4px;">Omijaj kraje (poza UE)</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;">
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="CH"> 🇨🇭 Szwajcaria</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="RS"> 🇷🇸 Serbia</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="MK"> 🇲🇰 Macedonia</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="BA"> 🇧🇦 Bośnia</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="ME"> 🇲🇪 Czarnogóra</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="AL"> 🇦🇱 Albania</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="MD"> 🇲🇩 Mołdawia</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="BY"> 🇧🇾 Białoruś</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="UA"> 🇺🇦 Ukraina</label>
+            <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:2px 0;font-size:11px;width:auto;"><input type="checkbox" class="avoidCountryChk" value="TR"> 🇹🇷 Turcja</label>
+          </div>
+          <div style="font-size:10px;opacity:.5;margin-top:6px;">HERE wyliczy trasę omijając zaznaczone kraje</div>
+        </details>
+
+        <label>Dystans trasy (km) – z mapy</label>
+        <input id="base_distance_km" type="number" value="0" readonly />
+
+        <label>Pusty dolot (km)</label>
+        <input id="empty_km" type="number" value="0" />
+
+        <label>Dystans do kalkulacji (km)</label>
+        <input id="distance_km" type="number" value="0" readonly />
+
+        <div class="small" style="margin-top:6px;">
+          Dystans do kalkulacji = trasa z mapy + pusty dolot
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Spalanie (l/100 km)</label>
+            <input id="fuel_l_per_100km" type="number" value="28"/>
+          </div>
+          <div>
+            <label>Cena paliwa (PLN/l)</label>
+            <input id="fuel_price_pln_per_l" type="number" value="5.60" step="0.01"/>
+          </div>
+        </div>
+
+<div class="row2">
+  <div>
+    <label>Kurs EUR/PLN</label>
+    <input id="eur_pln" type="number" value="4.50" step="0.01"/>
+  </div>
+  <div>
+    <label>Kurs GBP/EUR</label>
+    <input id="gbp_eur" type="number" value="1.17" step="0.01"/>
+  </div>
+</div>
+        <div class="row2">
+          <div>
+            <label>Myto (EUR) <span style="font-size:10px;opacity:.5;">← HERE auto</span></label>
+            <input id="tolls_eur" type="number" value="0" title="Wypełniane automatycznie przez HERE. Możesz skorygować ręcznie."/>
+            </div>
+          <div>
+            <label>Promy/Tunel (EUR) <span style="font-size:10px;opacity:.5;">↳ ręcznie</span></label>
+            <input id="ferries_eur" type="number" value="0" title="Wpisz koszt promu lub tunelu Channel Tunnel ręcznie."/>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <div class="small">Termin płatności</div>
+            <input id="payment_terms" type="text" value="14 dni" />
+          </div>
+        </div>
+
+        <h2 style="margin-top:14px;">Automaty</h2>
+
+        <div class="autoBox">
+          <label class="chk">
+            <input id="auto_driver_days" type="checkbox" checked>
+            AUTO dni kierowcy
+          </label>
+
+          <div>
+            <label>km/dzień</label>
+            <input id="km_per_day" type="number" value="600" min="1">
+          </div>
+
+          <label class="chk">
+            <input id="auto_other_costs" type="checkbox" checked>
+            AUTO inne koszty
+          </label>
+
+          <div>
+            <label>€/dzień (inne)</label>
+            <input id="daily_extra_eur" type="number" value="150" step="1" min="0">
+          </div>
+        </div>
+
+        <div class="small" id="autoNote" style="margin-top:6px;"></div>
+
+        <div class="row2">
+          <div>
+            <label>Dni kierowcy</label>
+            <input id="driver_days" type="number" value="0"/>
+          </div>
+          <div>
+            <label>Stawka (EUR/dzień)</label>
+            <input id="driver_eur_per_day" type="number" value="120"/>
+          </div>
+        </div>
+
+        <label>Inne koszty (EUR)</label>
+        <input id="other_costs_eur" type="number" value="0"/>
+
+        <label>Marża docelowa (%)</label>
+        <input id="target_margin_pct" type="number" value="12"/>
+		</div>
+      </aside>
+
+ <main class="col center">
+  <div class="card mapCard">
+    <div class="mapHead">
+      <div>
+        <h2>Mapa trasy</h2>
+        <div class="small">Podgląd trasy</div>
+      </div>
+      <div id="mapStyleBtns" style="display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin-left:auto; padding-right:8px;">
+        <button type="button" class="mapStyleBtn active" data-style="here-road-day"     title="HERE drogowa jasna">🗺 Drogowa</button>
+        <button type="button" class="mapStyleBtn"        data-style="here-road-night"   title="HERE drogowa ciemna">🌙 Noc</button>
+        <button type="button" class="mapStyleBtn"        data-style="here-satellite"    title="HERE satelita">🛰 Satelita</button>
+        <button type="button" class="mapStyleBtn"        data-style="here-sat-night"    title="HERE satelita ciemna">🌑 Sat+Noc</button>
+        <button type="button" class="mapStyleBtn"        data-style="osm"               title="OpenStreetMap">🌐 OSM</button>
+      </div>
+    </div>
+
+    <div id="map" class="mapBig mapFill"></div>
+  </div>
+</main>
+
+      <!-- PRAWA KOLUMNA -->
+      <aside class="col right main">
+
+        <div class="card">
+          <h2>Wyniki</h2>
+
+          <div class="kpis">
+            <div class="kpi">
+              <div class="label">Koszt całkowity</div>
+              <div class="value" id="kpi_total">—</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Proponowana cena</div>
+              <div class="value" id="kpi_price">—</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Marża</div>
+              <div class="value" id="kpi_margin">—</div>
+            </div>
+          </div>
+		  
+		  <div class="route-evaluation" style="
+  margin-top:12px;
+  padding:12px;
+  border:2px solid #333;
+  border-radius:12px;
+">
+  <div style="font-size:12px; opacity:.7;">Ocena trasy</div>
+  <div id="routeScore" style="font-size:20px; font-weight:800;">—</div>
+  <div style="font-size:12px;">
+    Score: <span id="scoreValue">—</span> |
+    €/km: <span id="eurKmValue">—</span>
+  </div>
+</div>
+
+          <div style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr><th>Pozycja</th><th style="text-align:right;">Wartość</th></tr>
+              </thead>
+              <tbody id="costTable"></tbody>
+            </table>
+            <div class="small" style="margin-top:8px;" id="perKm"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <div class="row2" style="align-items:center;">
+            <div>
+              <h2 style="margin:0;">Myto – kraj</h2>
+              <div class="small" id="tollsSource">ródło: HERE Routing API</div>
+              <div class="small" id="vignetteTotal" style="margin-top:8px;"></div>
+            </div>
+            <div class="small" id="vignetteTotal"></div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kraj</th>
+                  <th style="text-align:right;">km</th>
+                  <th style="text-align:right;">stawka €/km</th>
+                  <th style="text-align:right;">koszt €</th>
+                </tr>
+              </thead>
+              <tbody id="tollsTable"></tbody>
+            </table>
+          </div>
+        </div>
+		<div class="card historyPanel" id="historyPanel" style="margin-top:12px;">
+          <div class="historyPanelHead" onclick="toggleHistoryPanel()">
+            <div>
+              <h2 style="margin:0;">Historia wycen</h2>
+              <div class="small">Wczytaj / odśwież / duplikuj / usuń</div>
+            </div>
+            <button type="button" class="iconBtn" id="historyChevron" aria-label="toggle">▾</button>
+          </div>
+
+          <div class="historyPanelBody" id="historyPanelBody" style="display:none;">
+            <div class="historyPanelActions">
+              <button type="button" class="btn secondary" onclick="openSaveHistoryModal()">+ Zapisz</button>
+              <button type="button" class="btn secondary" onclick="openPdfReport()">PDF</button>
+              <button type="button" class="btn secondary" onclick="clearHistoryConfirm()">Wyczyść</button>
+            </div>
+
+            <div id="historyList" class="historyList"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <div class="row2" style="align-items:center;">
+            <div>
+              <h2>Raport AI</h2>
+              <div class="small">Opis + ryzyka + rekomendacja</div>
+            </div>
+            <button class="btn" type="button" id="btnReportAI">Wygeneruj raport AI</button>
+          </div>
+          <pre id="aiReport" style="margin-top:10px;"></pre>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h2>Opis</h2>
+          <pre id="summary"></pre>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+          <h2>Debug</h2>
+          <div class="small">Jeśli chcesz podejrzeć surowe dane</div>
+          <pre id="out" style="margin-top:10px;"></pre>
+        </div>
+
+      </aside>
+
+    </div>
+  </div>
+
+  <!-- actionBar bez zmian -->
+  <div class="actionBar" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
+    <button type="button" class="btn" onclick="run()">Policz</button>
+    <button type="button" class="btn secondary" onclick="toggleHistoryPanel(true)">📚 Historia</button>
+    <button type="button" class="btn secondary" onclick="openPdfReport()">PDF oferta</button>
+    <button type="button" class="btn secondary" onclick="openFuelTracker()">⛽ Paliwo</button>
+    <button type="button" class="btn secondary" onclick="openFleetManager()">🚛 Flota</button>
+  </div>
+  
+  <!-- MINI MODAL zapisu historii (wymagane przez app.js) -->
+<div id="historyModal" class="historyModal" style="display:none;">
+  <div class="historyModalCard">
+    <div class="historyModalTitle">Zapisz wycenę</div>
+
+    <div class="historyForm">
+      <label>Nazwa (np. Klient / relacja)</label>
+      <input id="h_name" type="text" placeholder="np. Optirax | Warszawa → Piacenza" />
+
+      <label>Klient / zleceniodawca</label>
+      <input id="h_client" type="text" placeholder="np. ACME Sp. z o.o." />
+
+      <label>Notatka</label>
+      <input id="h_note" type="text" placeholder="np. termin 2 dni, płatność 14 dni" />
+    </div>
+
+    <div class="historyModalBtns">
+      <button type="button" class="btn secondary" onclick="closeSaveHistoryModal()">Anuluj</button>
+      <button type="button" class="btn" onclick="saveCurrentToHistory()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+	<script src="route.js"></script>
+	<script src="calculator.js"></script>
+	<script src="ai.js"></script>
+	<script src="app.js"></script>
+	<script src="autocomplete.js"></script>
+  
+<script>
+(function () {
+
+  const root = document.documentElement;
+  const btn = document.getElementById("themeBtn");
+
+  if (!btn) return;
+
+  function updateMapTheme(theme) {
+    // Użyj nowego systemu stylów jeśli dostępny
+    if (typeof window.switchMapStyle === "function") {
+      // Mapuj motyw aplikacji na styl mapy HERE
+      // Tylko jeśli użytkownik nie wybrał ręcznie stylu satelity
+      const savedMapStyle = (() => { try { return localStorage.getItem("mapStyle"); } catch { return null; } })();
+      const isSatellite = savedMapStyle && savedMapStyle.includes("satellite");
+      if (!isSatellite) {
+        // Przełącz między drogową jasną/ciemną
+        window.switchMapStyle(theme === "light" ? "here-road-day" : "here-road-night");
+      }
+      return;
+    }
+    // Fallback – stary system lightTiles/darkTiles
+    if (!window.map || !window.lightTiles || !window.darkTiles) return;
+    if (theme === "light") {
+      window.map.removeLayer(window.darkTiles);
+      window.map.addLayer(window.lightTiles);
+    } else {
+      window.map.removeLayer(window.lightTiles);
+      window.map.addLayer(window.darkTiles);
+    }
+  }
+
+  function setTheme(t) {
+    root.setAttribute("data-theme", t);
+    localStorage.setItem("theme", t);
+    btn.textContent = (t === "light") ? "☀️ Jasny" : "🌙 Ciemny";
+    updateMapTheme(t);
+  }
+
+  const saved = localStorage.getItem("theme") || "dark";
+  setTheme(saved);
+
+  btn.addEventListener("click", () => {
+    const cur = root.getAttribute("data-theme") || "dark";
+    setTheme(cur === "dark" ? "light" : "dark");
+  });
+
+})();
+</script>
+
+<!-- ===== FUEL TRACKER MODAL ===== -->
+<style>
+#fuelModal{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center}
+#fuelModal.open{display:flex}
+#fuelPanel{background:var(--bg,#0f172a);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:16px 16px 100px}
+:root[data-theme="light"] #fuelPanel{background:#f8fafc}
+.ft-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
+.ft-tabs{display:flex;gap:6px;margin:12px 0}
+.ft-tab{flex:1;padding:8px;font-size:13px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.ft-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:500}
+.ft-sec{display:none}.ft-sec.active{display:block}
+.ft-card{border:1px solid var(--line,#334155);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--color-background-primary)}
+.ft-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.ft-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.ft-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
+.ft-hint{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+.ft-metric{background:var(--color-background-secondary);border-radius:8px;padding:10px}
+.ft-metric .v{font-size:20px;font-weight:500}
+.ft-metric .l{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.ft-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.ft-result{border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px;display:none}
+.ft-trip{border:1px solid var(--line,#334155);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.ft-trip-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.ft-badge{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.ft-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.ft-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.ft-bad{background:var(--color-background-danger);color:var(--color-text-danger)}
+.ft-del{background:none;border:none;color:var(--color-text-tertiary);cursor:pointer;font-size:13px}
+.ft-del:hover{color:var(--color-text-danger)}
+.ft-empty{text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:2rem 0}
+.ft-divider{height:1px;background:var(--line,#334155);margin:10px 0}
+.ft-formula{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+</style>
+
+<div id="fuelModal">
+  <div id="fuelPanel">
+    <button class="ft-close" onclick="closeFuelTracker()">✕</button>
+    <div style="font-size:16px;font-weight:500;color:var(--color-text-primary);">⛽ Tracker spalania</div>
+
+    <div class="ft-tabs">
+      <button class="ft-tab active" onclick="ftTab('new')">Nowy przejazd</button>
+      <button class="ft-tab" onclick="ftTab('history')">Historia</button>
+      <button class="ft-tab" onclick="ftTab('stats')">Statystyki</button>
+    </div>
+
+    <!-- NOWY PRZEJAZD -->
+    <div id="ft-new" class="ft-sec active">
+      <div class="ft-card">
+        <div style="font-size:13px;font-weight:500;margin-bottom:10px;">Dane przejazdu</div>
+        <div class="ft-row">
+          <div>
+            <div class="ft-label">Pojazd</div>
+            <select id="ftVehicleSelect" style="width:100%" onchange="ftFillFromVehicle(this.value)">
+              <option value="">— wybierz lub wpisz poniżej —</option>
+            </select>
+          </div>
+          <div>
+            <div class="ft-label">Naczepa</div>
+            <select id="ftTrailerSelect" style="width:100%">
+              <option value="">— wybierz naczepę —</option>
+            </select>
+          </div>
+        </div>
+        <div class="ft-row">
+          <div><div class="ft-label">Nr rejestracyjny / auto</div><input type="text" id="ftReg" placeholder="np. WA 12345" style="width:100%"/></div>
+          <div><div class="ft-label">Kierowca</div><input type="text" id="ftDriver" placeholder="Imię nazwisko" style="width:100%"/></div>
+        </div>
+        <div class="ft-row">
+          <div><div class="ft-label">Data wyjazdu</div><input type="text" id="ftDateOut" placeholder="np. 28.04.2026" style="width:100%"/></div>
+          <div><div class="ft-label">Data powrotu</div><input type="text" id="ftDateIn" placeholder="np. 30.04.2026" style="width:100%"/></div>
+        </div>
+        <div class="ft-row">
+          <div><div class="ft-label">Drogomierz wyjazd (km)</div><input type="number" id="ftKmOut" placeholder="np. 124500" style="width:100%"/></div>
+          <div><div class="ft-label">Drogomierz powrót (km)</div><input type="number" id="ftKmIn" placeholder="np. 126460" style="width:100%"/></div>
+        </div>
+      </div>
+
+      <div class="ft-card">
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px;">Paliwo</div>
+        <div class="ft-formula">Razem = baza wyjazd + karty w trasie + baza powrót</div>
+        <div class="ft-row">
+          <div>
+            <div class="ft-label">Baza — tankowanie WYJAZD (l)</div>
+            <input type="number" id="ftBase1" placeholder="np. 250" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Do pełna przed wyjazdem</div>
+          </div>
+          <div>
+            <div class="ft-label">Baza — tankowanie POWRÓT (l)</div>
+            <input type="number" id="ftBase2" placeholder="np. 180" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Do pełna po powrocie</div>
+          </div>
+        </div>
+        <div class="ft-row">
+          <div>
+            <div class="ft-label">Karty paliwowe w trasie (l)</div>
+            <input type="number" id="ftCards" placeholder="np. 320" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Suma z kart paliwowych</div>
+          </div>
+          <div>
+            <div class="ft-label">Komputer pokładowy (l/100)</div>
+            <input type="number" id="ftComputer" placeholder="np. 28.5" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Odczyt po powrocie</div>
+          </div>
+        </div>
+        <div class="ft-divider"></div>
+        <button class="btn" style="width:100%;" onclick="ftCalculate()">Oblicz i zapisz</button>
+        <div id="ftResult" class="ft-result"></div>
+      </div>
+    </div>
+
+    <!-- HISTORIA -->
+    <div id="ft-history" class="ft-sec">
+      <div id="ftList"><div class="ft-empty">Brak zapisanych przejazdów</div></div>
+    </div>
+
+    <!-- STATYSTYKI -->
+    <div id="ft-stats" class="ft-sec">
+      <div class="ft-metrics">
+        <div class="ft-metric"><div class="v" id="ftSTripCount">0</div><div class="l">Przejazdów</div></div>
+        <div class="ft-metric"><div class="v" id="ftSTotalKm">0</div><div class="l">Łączne km</div></div>
+        <div class="ft-metric"><div class="v" id="ftSTotalFuel">0</div><div class="l">Paliwo razem (l)</div></div>
+        <div class="ft-metric"><div class="v" id="ftSAvgBurn">—</div><div class="l">Śr. spalanie (l/100)</div></div>
+      </div>
+      <div id="ftStatsDetail"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const KEY = 'optirax_fuel_v1';
+  const DB_USER = 'default';
+  let trips = [];
+
+  async function ftLoad(){
+    try{
+      const r = await fetch('/api/fuel?user_id='+DB_USER);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const rows = await r.json();
+      trips = rows.map(row=>({
+        id: row.id, reg: row.reg, driver: row.driver,
+        dateOut: row.date_out, dateIn: row.date_in,
+        km: row.km, b1: row.fuel_base1, cards: row.fuel_cards, b2: row.fuel_base2,
+        total: row.fuel_total, real: row.burn_real, comp: row.burn_computer,
+        diff: row.diff_l100, diffL: row.diff_liters, badge: row.badge||'ft-ok'
+      }));
+    }catch(e){
+      console.warn('Supabase fuel fallback localStorage:',e.message);
+      try{ trips = JSON.parse(localStorage.getItem(KEY)||'[]'); }catch{ trips=[]; }
+    }
+  }
+
+  async function ftSaveItem(trip){
+    try{
+      await fetch('/api/fuel',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...trip, user_id:DB_USER})});
+    }catch(e){ console.warn('Supabase fuel save failed:',e.message); }
+    try{
+      const local = JSON.parse(localStorage.getItem(KEY)||'[]');
+      local.unshift(trip);
+      localStorage.setItem(KEY, JSON.stringify(local.slice(0,500)));
+    }catch{}
+  }
+
+  async function ftDeleteItem(id){
+    try{
+      await fetch('/api/fuel/'+id+'?user_id='+DB_USER,{method:'DELETE'});
+    }catch(e){ console.warn('Supabase fuel delete:',e.message); }
+    try{
+      const local = JSON.parse(localStorage.getItem(KEY)||'[]');
+      localStorage.setItem(KEY,JSON.stringify(local.filter(t=>t.id!==id)));
+    }catch{}
+  }
+  function fv(id){ return parseFloat(document.getElementById(id).value)||0; }
+  function fs(id){ return (document.getElementById(id).value||'').trim(); }
+
+  window.ftFillFromVehicle = function(id){
+    if(!id) return;
+    const v = (window.fleetData?.vehicles||[]).find(x=>x.id===id);
+    if(!v) return;
+    document.getElementById('ftReg').value = v.reg||'';
+    const driver = (window.fleetData?.drivers||[]).find(d=>d.id===v.driver_id);
+    if(driver) document.getElementById('ftDriver').value = driver.name||'';
+  };
+
+  window.openFuelTracker = async function(){
+    await ftLoad();
+    document.getElementById('fuelModal').classList.add('open');
+    ftRenderStats();
+  };
+  window.closeFuelTracker = function(){
+    document.getElementById('fuelModal').classList.remove('open');
+  };
+  document.getElementById('fuelModal').addEventListener('click', function(e){
+    if(e.target === this) window.closeFuelTracker();
+  });
+
+  window.ftTab = async function(t){
+    document.querySelectorAll('.ft-tab').forEach((b,i)=> b.classList.toggle('active',['new','history','stats'][i]===t));
+    document.querySelectorAll('.ft-sec').forEach(s=> s.classList.remove('active'));
+    document.getElementById('ft-'+t).classList.add('active');
+    if(t==='history'){ await ftLoad(); ftRenderHistory(); }
+    if(t==='stats'){ await ftLoad(); ftRenderStats(); }
+  };
+
+  window.ftCalculate = async function(){
+    const kmOut = fv('ftKmOut'), kmIn = fv('ftKmIn');
+    const b1 = fv('ftBase1'), cards = fv('ftCards'), b2 = fv('ftBase2');
+    const comp = fv('ftComputer');
+    const res = document.getElementById('ftResult');
+
+    if(!kmOut||!kmIn||kmIn<=kmOut){
+      res.className='ft-result ft-bad'; res.style.display='block';
+      res.textContent='Uzupełnij km wyjazdu i powrotu (powrót musi być większy).'; return;
+    }
+    const km = kmIn - kmOut;
+    const total = b1 + cards + b2;
+    if(total<=0){
+      res.className='ft-result ft-bad'; res.style.display='block';
+      res.textContent='Uzupełnij dane paliwa.'; return;
+    }
+
+    const real = (total/km)*100;
+    const diff = comp>0 ? real-comp : null;
+    const MARGIN = 0.5;
+
+    let cls, badge, msg;
+    if(diff===null){
+      cls='ft-ok'; badge='ft-ok';
+      msg=`Spalanie: ${real.toFixed(2)} l/100km — brak odczytu komputera`;
+    } else {
+      const diffL = (diff/100)*km; // różnica w litrach bezwzględnych
+      const diffLStr = `${diffL>0?'+':''}${diffL.toFixed(1)} l (${diff>0?'+':''}${diff.toFixed(2)} l/100)`;
+      if(Math.abs(diff)<=MARGIN){
+        cls='ft-ok'; badge='ft-ok';
+        msg=`OK — rzeczywiste ${real.toFixed(2)} l/100, komputer ${comp.toFixed(1)} l/100<br>Różnica: <strong>${diffLStr}</strong> — w normie ±${MARGIN} l/100`;
+      } else if(Math.abs(diff)<=2){
+        cls='ft-warn'; badge='ft-warn';
+        msg=`Uwaga — rzeczywiste ${real.toFixed(2)} l/100, komputer ${comp.toFixed(1)} l/100<br>Różnica: <strong>${diffLStr}</strong> — przekracza ±${MARGIN} l/100`;
+      } else {
+        cls='ft-bad'; badge='ft-bad';
+        const kto = diffL>0 ? 'kierowca tankował poza kartami lub komputer zaniża' : 'komputer zawyża lub błąd danych';
+        msg=`Duże odchylenie — rzeczywiste ${real.toFixed(2)} l/100, komputer ${comp.toFixed(1)} l/100<br>Różnica: <strong>${diffLStr}</strong> — wymaga wyjaśnienia (${kto})`;
+      }
+    }
+
+    res.className='ft-result '+cls; res.style.display='block';
+    res.innerHTML=`<strong>${real.toFixed(2)} l/100km</strong> (${total.toFixed(0)} l / ${km} km)<br>${msg}`;
+
+    const trip={id:Date.now(),reg:fs('ftReg'),driver:fs('ftDriver'),
+      dateOut:fs('ftDateOut'),dateIn:fs('ftDateIn'),km,b1,cards,b2,total,real,comp,
+      diff, diffL: diff!==null ? (diff/100)*km : null, badge};
+    await ftSaveItem(trip); trips.unshift(trip); ftRenderStats();
+  };
+
+  function ftRenderHistory(){
+    const el=document.getElementById('ftList');
+    if(!trips.length){ el.innerHTML='<div class="ft-empty">Brak zapisanych przejazdów</div>'; return; }
+    el.innerHTML=trips.map(t=>`
+      <div class="ft-trip">
+        <div class="ft-trip-head">
+          <span style="font-weight:500;font-size:13px;">${t.reg||'—'}${t.driver?' · '+t.driver:''}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="ft-badge ${t.badge}">${t.real.toFixed(1)} l/100</span>
+            <button class="ft-del" onclick="ftDelete(${t.id})">✕</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--color-text-secondary);display:flex;gap:12px;flex-wrap:wrap;">
+          ${t.dateOut?`<span>${t.dateOut}${t.dateIn?' → '+t.dateIn:''}</span>`:''}
+          <span>${t.km.toLocaleString()} km</span>
+          <span>${t.total.toFixed(0)} l łącznie</span>
+          ${t.diff!==null?`<span>${t.diffL!=null?(t.diffL>0?'+':'')+t.diffL.toFixed(1)+' l':''} (${t.diff>0?'+':''}${t.diff.toFixed(2)} l/100) vs komputer</span>`:''}
+        </div>
+      </div>`).join('');
+  }
+
+  window.ftDelete = async function(id){
+    await ftDeleteItem(id); trips=trips.filter(t=>t.id!==id); ftRenderHistory(); ftRenderStats();
+  };
+
+  function ftRenderStats(){
+    ftLoad();
+    const n=trips.length;
+    document.getElementById('ftSTripCount').textContent=n;
+    if(!n){
+      document.getElementById('ftSTotalKm').textContent='0';
+      document.getElementById('ftSTotalFuel').textContent='0';
+      document.getElementById('ftSAvgBurn').textContent='—';
+      document.getElementById('ftStatsDetail').innerHTML=''; return;
+    }
+    const totKm=trips.reduce((s,t)=>s+t.km,0);
+    const totFuel=trips.reduce((s,t)=>s+t.total,0);
+    document.getElementById('ftSTotalKm').textContent=totKm.toLocaleString();
+    document.getElementById('ftSTotalFuel').textContent=totFuel.toFixed(0);
+    document.getElementById('ftSAvgBurn').textContent=((totFuel/totKm)*100).toFixed(2);
+
+    const byReg={};
+    trips.forEach(t=>{
+      const k=t.reg||'(bez nr rej.)';
+      if(!byReg[k]) byReg[k]={km:0,fuel:0,n:0,diffs:[]};
+      byReg[k].km+=t.km; byReg[k].fuel+=t.total; byReg[k].n++;
+      if(t.diff!==null) byReg[k].diffs.push(t.diff);
+    });
+    document.getElementById('ftStatsDetail').innerHTML=Object.entries(byReg).map(([reg,d])=>{
+      const burn=(d.fuel/d.km)*100;
+      const avgD=d.diffs.length?d.diffs.reduce((a,b)=>a+b,0)/d.diffs.length:null;
+      return `<div class="ft-card">
+        <div style="font-weight:500;font-size:13px;margin-bottom:8px;">${reg}</div>
+        <div class="ft-row3">
+          <div><div class="ft-label">Przejazdów</div><div style="font-size:16px;font-weight:500;">${d.n}</div></div>
+          <div><div class="ft-label">Łącznie km</div><div style="font-size:16px;font-weight:500;">${d.km.toLocaleString()}</div></div>
+          <div><div class="ft-label">Śr. spalanie</div><div style="font-size:16px;font-weight:500;">${burn.toFixed(2)} l/100</div></div>
+        </div>
+        ${avgD!==null?`<div style="font-size:11px;color:var(--color-text-secondary);">Śr. odchylenie vs komputer: ${avgD>0?'+':''}${avgD.toFixed(2)} l/100</div>`:''}
+      </div>`;
+    }).join('');
+  }
+})();
+</script>
+
+<!-- ===== FLEET MANAGER MODAL ===== -->
+<style>
+#fleetModal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.65);display:none;align-items:flex-end;justify-content:center}
+#fleetModal.open{display:flex}
+#fleetPanel{background:var(--bg,#0f172a);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;padding:16px 16px 100px}
+:root[data-theme="light"] #fleetPanel{background:#f8fafc}
+.fl-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
+.fl-tabs{display:flex;gap:6px;margin:12px 0}
+.fl-tab{flex:1;padding:8px;font-size:12px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fl-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:600}
+.fl-sec{display:none}.fl-sec.active{display:block}
+.fl-card{border:1px solid var(--line,#334155);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--color-background-primary)}
+.fl-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.fl-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.fl-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
+.fl-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--line,#334155);border-radius:8px;margin-bottom:6px;font-size:12px}
+.fl-item-info{display:flex;flex-direction:column;gap:2px}
+.fl-item-reg{font-weight:700;font-size:13px;color:var(--color-text-primary)}
+.fl-item-sub{font-size:11px;color:var(--color-text-secondary)}
+.fl-item-actions{display:flex;gap:6px}
+.fl-btn-sm{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--line,#334155);background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fl-btn-sm:hover{background:var(--color-background-secondary)}
+.fl-btn-sm.danger:hover{color:var(--color-text-danger)}
+.fl-empty{text-align:center;color:var(--color-text-tertiary);font-size:12px;padding:1.5rem 0}
+.fl-type-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-left:6px}
+.fl-select-hint{font-size:10px;color:var(--color-text-tertiary);margin-top:4px}
+</style>
+
+<div id="fleetModal">
+  <div id="fleetPanel">
+    <button class="fl-close" onclick="closeFleetManager()">✕</button>
+    <div style="font-size:16px;font-weight:600;color:var(--color-text-primary);">🚛 Zarządzanie flotą</div>
+
+    <div class="fl-tabs">
+      <button class="fl-tab active" onclick="flTab('vehicles')">Pojazdy</button>
+      <button class="fl-tab" onclick="flTab('trailers')">Naczepy</button>
+      <button class="fl-tab" onclick="flTab('drivers')">Kierowcy</button>
+    </div>
+
+    <!-- POJAZDY -->
+    <div id="fl-vehicles" class="fl-sec active">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;" id="flVehicleFormTitle">Dodaj pojazd</div>
+        <input type="hidden" id="flVehicleId">
+        <div class="fl-row">
+          <div><div class="fl-label">Nr rejestracyjny *</div><input type="text" id="flVReg" placeholder="np. WA 12345" style="width:100%;text-transform:uppercase"/></div>
+          <div><div class="fl-label">Marka</div><input type="text" id="flVBrand" placeholder="np. Volvo" style="width:100%"/></div>
+        </div>
+        <div class="fl-row">
+          <div><div class="fl-label">Model</div><input type="text" id="flVModel" placeholder="np. FH16" style="width:100%"/></div>
+          <div><div class="fl-label">Rok produkcji</div><input type="number" id="flVYear" placeholder="np. 2020" style="width:100%"/></div>
+        </div>
+        <div class="fl-row3">
+          <div><div class="fl-label">Masa całk. (kg)</div><input type="number" id="flVGross" value="18000" style="width:100%"/></div>
+          <div><div class="fl-label">Nacisk/oś (kg)</div><input type="number" id="flVAxleW" value="11500" style="width:100%"/></div>
+          <div><div class="fl-label">Liczba osi</div><input type="number" id="flVAxles" value="3" style="width:100%"/></div>
+        </div>
+        <div class="fl-row3">
+          <div><div class="fl-label">Wysokość (cm)</div><input type="number" id="flVHeight" value="380" style="width:100%"/></div>
+          <div><div class="fl-label">Szerokość (cm)</div><input type="number" id="flVWidth" value="255" style="width:100%"/></div>
+          <div><div class="fl-label">Długość (cm)</div><input type="number" id="flVLength" value="600" style="width:100%"/></div>
+        </div>
+        <div class="fl-row">
+          <div>
+            <div class="fl-label">Klasa EURO</div>
+            <select id="flVEuro" style="width:100%">
+              <option>EURO6</option><option>EURO5</option><option>EURO4</option>
+              <option>EURO3</option><option>EURO2</option>
+            </select>
+          </div>
+          <div>
+            <div class="fl-label">Kierowca (opcjonalnie)</div>
+            <select id="flVDriver" style="width:100%">
+              <option value="">— brak —</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Uwagi</div>
+          <input type="text" id="flVNotes" placeholder="np. ADR, winda, klimatyzacja..." style="width:100%"/>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;" onclick="flSaveVehicle()">Zapisz pojazd</button>
+          <button class="btn secondary" onclick="flClearVehicleForm()">Wyczyść</button>
+        </div>
+      </div>
+      <div id="flVehicleList"><div class="fl-empty">Brak pojazdów. Dodaj pierwszy pojazd powyżej.</div></div>
+    </div>
+
+    <!-- NACZEPY -->
+    <div id="fl-trailers" class="fl-sec">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;" id="flTrailerFormTitle">Dodaj naczepę</div>
+        <input type="hidden" id="flTrailerId">
+        <div class="fl-row">
+          <div><div class="fl-label">Nr rejestracyjny *</div><input type="text" id="flTReg" placeholder="np. WA 9999X" style="width:100%;text-transform:uppercase"/></div>
+          <div>
+            <div class="fl-label">Typ naczepy</div>
+            <select id="flTType" style="width:100%">
+              <option value="plandeka">🟦 Plandeka</option>
+              <option value="firanka">🟩 Firanka</option>
+              <option value="chłodnia">🟦 Chłodnia</option>
+              <option value="cysterna">🟡 Cysterna</option>
+              <option value="kontener">⬛ Kontener</option>
+              <option value="niskopodłogowa">🟫 Niskopodłogowa</option>
+              <option value="wywrotka">🟧 Wywrotka</option>
+              <option value="silos">⬜ Silos</option>
+            </select>
+          </div>
+        </div>
+        <div class="fl-row">
+          <div><div class="fl-label">Marka</div><input type="text" id="flTBrand" placeholder="np. Schmitz" style="width:100%"/></div>
+          <div><div class="fl-label">Rok produkcji</div><input type="number" id="flTYear" placeholder="np. 2019" style="width:100%"/></div>
+        </div>
+        <div class="fl-row3">
+          <div><div class="fl-label">Długość (cm)</div><input type="number" id="flTLength" value="1360" style="width:100%"/></div>
+          <div><div class="fl-label">Ładowność (kg)</div><input type="number" id="flTPayload" value="24000" style="width:100%"/></div>
+          <div><div class="fl-label">Wysokość (cm)</div><input type="number" id="flTHeight" value="300" style="width:100%"/></div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" id="flTAdr"> Certyfikat ADR
+          </label>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Uwagi</div>
+          <input type="text" id="flTNotes" placeholder="np. GPS, chłodnia ATP, Multi-temp..." style="width:100%"/>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;" onclick="flSaveTrailer()">Zapisz naczepę</button>
+          <button class="btn secondary" onclick="flClearTrailerForm()">Wyczyść</button>
+        </div>
+      </div>
+      <div id="flTrailerList"><div class="fl-empty">Brak naczep. Dodaj pierwszą naczepę powyżej.</div></div>
+    </div>
+
+    <!-- KIEROWCY -->
+    <div id="fl-drivers" class="fl-sec">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Dodaj kierowcę</div>
+        <input type="hidden" id="flDriverId">
+        <div class="fl-row">
+          <div><div class="fl-label">Imię i nazwisko *</div><input type="text" id="flDName" placeholder="np. Jan Kowalski" style="width:100%"/></div>
+          <div><div class="fl-label">Telefon</div><input type="text" id="flDPhone" placeholder="np. +48 600 123 456" style="width:100%"/></div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Nr prawa jazdy</div>
+          <input type="text" id="flDLicense" placeholder="np. ABC123456" style="width:100%"/>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;" onclick="flSaveDriver()">Zapisz kierowcę</button>
+          <button class="btn secondary" onclick="flClearDriverForm()">Wyczyść</button>
+        </div>
+      </div>
+      <div id="flDriverList"><div class="fl-empty">Brak kierowców. Dodaj pierwszego kierowcę powyżej.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DB_USER = 'default';
+  let fleetData = { vehicles:[], trailers:[], drivers:[] };
+
+  // ── API helpers ──────────────────────────────────────────
+  async function flGet(entity){
+    try{
+      const url = `/api/fleet/${entity}?user_id=${DB_USER}`;
+      const r = await fetch(url);
+      const text = await r.text();
+      console.log(`flGet ${entity} status:`, r.status, 'body:', text.slice(0,200));
+      const data = JSON.parse(text);
+      return Array.isArray(data) ? data : [];
+    }catch(e){
+      console.warn(`flGet ${entity} error:`, e.message);
+      return [];
+    }
+  }
+  async function flPost(entity, body){
+    try{
+      const r = await fetch(`/api/fleet/${entity}`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({...body, user_id: DB_USER})
+      });
+      return r.ok ? await r.json() : null;
+    }catch(e){ console.warn(e); return null; }
+  }
+  async function flDelete(entity, id){
+    try{ await fetch(`/api/fleet/${entity}/${id}?user_id=${DB_USER}`,{method:'DELETE'}); }
+    catch(e){ console.warn(e); }
+  }
+
+  // ── Open/Close ────────────────────────────────────────────
+  window.openFleetManager = async function(){
+    document.getElementById('fleetModal').classList.add('open');
+    await flLoadAll();
+    flRenderAll();
+  };
+  window.closeFleetManager = function(){
+    document.getElementById('fleetModal').classList.remove('open');
+  };
+  document.getElementById('fleetModal').addEventListener('click', function(e){
+    if(e.target===this) window.closeFleetManager();
+  });
+
+  // ── Tabs ──────────────────────────────────────────────────
+  window.flTab = function(t){
+    document.querySelectorAll('.fl-tab').forEach((b,i)=>
+      b.classList.toggle('active',['vehicles','trailers','drivers'][i]===t));
+    document.querySelectorAll('.fl-sec').forEach(s=>s.classList.remove('active'));
+    document.getElementById('fl-'+t).classList.add('active');
+  };
+
+  // ── Load all ─────────────────────────────────────────────
+  async function flLoadAll(){
+    const [v,t,d] = await Promise.all([
+      flGet('vehicles'), flGet('trailers'), flGet('drivers')
+    ]);
+    fleetData.vehicles = v;
+    fleetData.trailers = t;
+    fleetData.drivers  = d;
+    // Zapisz w window żeby inne moduły miały dostęp
+    window.fleetData = fleetData;
+  }
+
+  function flRenderAll(){
+    flRenderVehicles();
+    flRenderTrailers();
+    flRenderDrivers();
+    flUpdateDriverSelect();
+    flUpdateVehicleSelects();
+  }
+
+  // ── VEHICLES ─────────────────────────────────────────────
+  window.flSaveVehicle = async function(){
+    const reg = document.getElementById('flVReg').value.trim().toUpperCase();
+    if(!reg){ alert('Podaj numer rejestracyjny.'); return; }
+    const body = {
+      id:             document.getElementById('flVehicleId').value || undefined,
+      reg,
+      brand:          document.getElementById('flVBrand').value.trim(),
+      model:          document.getElementById('flVModel').value.trim(),
+      year:           +document.getElementById('flVYear').value || null,
+      gross_weight_kg:+document.getElementById('flVGross').value || 18000,
+      axle_weight_kg: +document.getElementById('flVAxleW').value || 11500,
+      axle_count:     +document.getElementById('flVAxles').value || 3,
+      height_cm:      +document.getElementById('flVHeight').value || 380,
+      width_cm:       +document.getElementById('flVWidth').value  || 255,
+      length_cm:      +document.getElementById('flVLength').value || 600,
+      euro_class:     document.getElementById('flVEuro').value,
+      driver_id:      document.getElementById('flVDriver').value || null,
+      notes:          document.getElementById('flVNotes').value.trim(),
+      active:         true,
+    };
+    await flPost('vehicles', body);
+    flClearVehicleForm();
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flEditVehicle = function(id){
+    const v = fleetData.vehicles.find(x=>x.id===id); if(!v) return;
+    document.getElementById('flVehicleId').value = v.id;
+    document.getElementById('flVehicleFormTitle').textContent = 'Edytuj pojazd';
+    document.getElementById('flVReg').value    = v.reg||'';
+    document.getElementById('flVBrand').value  = v.brand||'';
+    document.getElementById('flVModel').value  = v.model||'';
+    document.getElementById('flVYear').value   = v.year||'';
+    document.getElementById('flVGross').value  = v.gross_weight_kg||18000;
+    document.getElementById('flVAxleW').value  = v.axle_weight_kg||11500;
+    document.getElementById('flVAxles').value  = v.axle_count||3;
+    document.getElementById('flVHeight').value = v.height_cm||380;
+    document.getElementById('flVWidth').value  = v.width_cm||255;
+    document.getElementById('flVLength').value = v.length_cm||600;
+    document.getElementById('flVEuro').value   = v.euro_class||'EURO6';
+    document.getElementById('flVDriver').value = v.driver_id||'';
+    document.getElementById('flVNotes').value  = v.notes||'';
+    document.getElementById('fl-vehicles').scrollTop = 0;
+  };
+
+  window.flDeleteVehicle = async function(id){
+    if(!confirm('Usunąć pojazd?')) return;
+    await flDelete('vehicles', id);
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flClearVehicleForm = function(){
+    document.getElementById('flVehicleId').value = '';
+    document.getElementById('flVehicleFormTitle').textContent = 'Dodaj pojazd';
+    ['flVReg','flVBrand','flVModel','flVYear','flVNotes'].forEach(id=>
+      document.getElementById(id).value='');
+    document.getElementById('flVGross').value=18000;
+    document.getElementById('flVAxleW').value=11500;
+    document.getElementById('flVAxles').value=3;
+    document.getElementById('flVHeight').value=380;
+    document.getElementById('flVWidth').value=255;
+    document.getElementById('flVLength').value=600;
+    document.getElementById('flVDriver').value='';
+  };
+
+  function flRenderVehicles(){
+    const el = document.getElementById('flVehicleList');
+    if(!fleetData.vehicles.length){
+      el.innerHTML='<div class="fl-empty">Brak pojazdów.</div>'; return;
+    }
+    el.innerHTML = fleetData.vehicles.map(v=>{
+      const driver = fleetData.drivers.find(d=>d.id===v.driver_id);
+      return `<div class="fl-item">
+        <div class="fl-item-info">
+          <div class="fl-item-reg">${v.reg||'—'}</div>
+          <div class="fl-item-sub">${[v.brand,v.model,v.year].filter(Boolean).join(' ')}
+            ${v.euro_class?`<span class="fl-type-badge">${v.euro_class}</span>`:''}
+            ${driver?`· 👤 ${driver.name}`:''}
+          </div>
+          <div class="fl-item-sub" style="opacity:.6;">
+            ${v.gross_weight_kg||'?'} kg · ${v.axle_count||'?'} osie
+            · ${v.height_cm||'?'}×${v.width_cm||'?'}×${v.length_cm||'?'} cm
+            ${v.notes?`· ${v.notes}`:''}
+          </div>
+        </div>
+        <div class="fl-item-actions">
+          <button class="fl-btn-sm" onclick="flUseVehicleInCalc('${v.id}')">📋 Użyj</button>
+          <button class="fl-btn-sm" onclick="flEditVehicle('${v.id}')">✏️</button>
+          <button class="fl-btn-sm danger" onclick="flDeleteVehicle('${v.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── TRAILERS ──────────────────────────────────────────────
+  const TRAILER_ICONS = {
+    plandeka:'🟦',firanka:'🟩',chłodnia:'🔵',cysterna:'🟡',
+    kontener:'⬛',niskopodłogowa:'🟫',wywrotka:'🟧',silos:'⬜'
+  };
+
+  window.flSaveTrailer = async function(){
+    const reg = document.getElementById('flTReg').value.trim().toUpperCase();
+    if(!reg){ alert('Podaj numer rejestracyjny naczepy.'); return; }
+    const body = {
+      id:         document.getElementById('flTrailerId').value || undefined,
+      reg,
+      type:       document.getElementById('flTType').value,
+      brand:      document.getElementById('flTBrand').value.trim(),
+      year:       +document.getElementById('flTYear').value || null,
+      length_cm:  +document.getElementById('flTLength').value || 1360,
+      payload_kg: +document.getElementById('flTPayload').value || 24000,
+      height_cm:  +document.getElementById('flTHeight').value || 300,
+      adr:        document.getElementById('flTAdr').checked,
+      notes:      document.getElementById('flTNotes').value.trim(),
+      active:     true,
+    };
+    await flPost('trailers', body);
+    flClearTrailerForm();
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flDeleteTrailer = async function(id){
+    if(!confirm('Usunąć naczepę?')) return;
+    await flDelete('trailers', id);
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flEditTrailer = function(id){
+    const t = fleetData.trailers.find(x=>x.id===id); if(!t) return;
+    document.getElementById('flTrailerId').value = t.id;
+    document.getElementById('flTrailerFormTitle').textContent = 'Edytuj naczepę';
+    document.getElementById('flTReg').value     = t.reg||'';
+    document.getElementById('flTType').value    = t.type||'plandeka';
+    document.getElementById('flTBrand').value   = t.brand||'';
+    document.getElementById('flTYear').value    = t.year||'';
+    document.getElementById('flTLength').value  = t.length_cm||1360;
+    document.getElementById('flTPayload').value = t.payload_kg||24000;
+    document.getElementById('flTHeight').value  = t.height_cm||300;
+    document.getElementById('flTAdr').checked   = !!t.adr;
+    document.getElementById('flTNotes').value   = t.notes||'';
+  };
+
+  window.flClearTrailerForm = function(){
+    document.getElementById('flTrailerId').value='';
+    document.getElementById('flTrailerFormTitle').textContent='Dodaj naczepę';
+    ['flTReg','flTBrand','flTYear','flTNotes'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('flTLength').value=1360;
+    document.getElementById('flTPayload').value=24000;
+    document.getElementById('flTHeight').value=300;
+    document.getElementById('flTAdr').checked=false;
+    document.getElementById('flTType').value='plandeka';
+  };
+
+  function flRenderTrailers(){
+    const el = document.getElementById('flTrailerList');
+    if(!fleetData.trailers.length){
+      el.innerHTML='<div class="fl-empty">Brak naczep.</div>'; return;
+    }
+    el.innerHTML = fleetData.trailers.map(t=>`
+      <div class="fl-item">
+        <div class="fl-item-info">
+          <div class="fl-item-reg">${t.reg||'—'} <span class="fl-type-badge">${TRAILER_ICONS[t.type]||''} ${t.type||'?'}</span></div>
+          <div class="fl-item-sub">${[t.brand,t.year].filter(Boolean).join(' ')}
+            ${t.adr?'· <span class="fl-type-badge">ADR</span>':''}
+          </div>
+          <div class="fl-item-sub" style="opacity:.6;">
+            ${t.payload_kg||'?'} kg · ${t.length_cm||'?'}×${t.height_cm||'?'} cm
+            ${t.notes?`· ${t.notes}`:''}
+          </div>
+        </div>
+        <div class="fl-item-actions">
+          <button class="fl-btn-sm" onclick="flEditTrailer('${t.id}')">✏️</button>
+          <button class="fl-btn-sm danger" onclick="flDeleteTrailer('${t.id}')">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── DRIVERS ───────────────────────────────────────────────
+  window.flSaveDriver = async function(){
+    const name = document.getElementById('flDName').value.trim();
+    if(!name){ alert('Podaj imię i nazwisko.'); return; }
+    const body = {
+      id:         document.getElementById('flDriverId').value || undefined,
+      name,
+      phone:      document.getElementById('flDPhone').value.trim(),
+      license_no: document.getElementById('flDLicense').value.trim(),
+      active:     true,
+    };
+    await flPost('drivers', body);
+    flClearDriverForm();
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flDeleteDriver = async function(id){
+    if(!confirm('Usunąć kierowcę?')) return;
+    await flDelete('drivers', id);
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flClearDriverForm = function(){
+    document.getElementById('flDriverId').value='';
+    ['flDName','flDPhone','flDLicense'].forEach(id=>document.getElementById(id).value='');
+  };
+
+  function flRenderDrivers(){
+    const el = document.getElementById('flDriverList');
+    if(!fleetData.drivers.length){
+      el.innerHTML='<div class="fl-empty">Brak kierowców.</div>'; return;
+    }
+    el.innerHTML = fleetData.drivers.map(d=>`
+      <div class="fl-item">
+        <div class="fl-item-info">
+          <div class="fl-item-reg">👤 ${d.name||'—'}</div>
+          <div class="fl-item-sub">
+            ${d.phone?`📞 ${d.phone}`:''}
+            ${d.license_no?`· 🪪 ${d.license_no}`:''}
+          </div>
+        </div>
+        <div class="fl-item-actions">
+          <button class="fl-btn-sm danger" onclick="flDeleteDriver('${d.id}')">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── Selects synchronizacja ────────────────────────────────
+  function flUpdateDriverSelect(){
+    const sel = document.getElementById('flVDriver');
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— brak —</option>'
+      + fleetData.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+    sel.value = cur;
+  }
+
+  function flUpdateVehicleSelects(){
+    // Aktualizuj selecty pojazdu w trackerze paliwa i w kalkulatorze
+    ['ftVehicleSelect','calcVehicleSelect'].forEach(id=>{
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— wybierz pojazd —</option>'
+        + fleetData.vehicles.map(v=>`<option value="${v.id}">${v.reg}${v.brand?' – '+v.brand:''}</option>`).join('');
+      sel.value = cur;
+    });
+    ['ftTrailerSelect','calcTrailerSelect'].forEach(id=>{
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— wybierz naczepę —</option>'
+        + fleetData.trailers.map(t=>`<option value="${t.id}">${t.reg} (${t.type})</option>`).join('');
+      sel.value = cur;
+    });
+  }
+
+  // ── "Użyj" pojazdu w kalkulatorze ─────────────────────────
+  window.flUseVehicleInCalc = function(id){
+    const v = fleetData.vehicles.find(x=>x.id===id); if(!v) return;
+    // Ustaw pola truck profile
+    const setF = (fid, val) => { const el=document.getElementById(fid); if(el) el.value=val; };
+    setF('truck_grossWeight', v.gross_weight_kg);
+    setF('truck_axleWeight',  v.axle_weight_kg);
+    setF('truck_height',      v.height_cm);
+    setF('truck_width',       v.width_cm);
+    setF('truck_length',      v.length_cm);
+    setF('truck_axleCount',   v.axle_count);
+    // Zaznacz preset "Własne"
+    document.querySelectorAll('.vehicleBtn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.preset==='custom');
+      b.style.fontWeight = b.dataset.preset==='custom' ? '700' : '';
+      b.style.borderColor = b.dataset.preset==='custom' ? 'var(--accent,#6d7cff)' : '';
+    });
+    const fields = document.getElementById('truckCustomFields');
+    if(fields) fields.style.display='grid';
+    const info = document.getElementById('vehiclePresetInfo');
+    if(info) info.textContent = `${v.reg} – ${v.brand||''} ${v.model||''}`.trim();
+    // Zamknij modal
+    window.closeFleetManager();
+    // Przewiń do sekcji parametrów
+    document.getElementById('truckProfileSection')?.scrollIntoView({behavior:'smooth',block:'center'});
+  };
+
+  // Załaduj fleetData przy starcie (dla selectów w trackerze paliwa)
+  window.addEventListener('load', async ()=>{
+    await flLoadAll();
+    flUpdateVehicleSelects();
+  });
+})();
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
+
+

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>OPTIRAX Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0f1e;color:#e2e8f0;font-family:system-ui,sans-serif;padding:20px;}
+h1{font-size:22px;font-weight:700;margin-bottom:4px;}
+h1 span{color:#6366f1;}
+.sub{color:#64748b;font-size:13px;margin-bottom:24px;}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+.stat{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:16px;}
+.stat .val{font-size:28px;font-weight:700;}
+.stat .lbl{font-size:12px;color:#64748b;margin-top:4px;}
+table{width:100%;border-collapse:collapse;background:#111827;border-radius:12px;overflow:hidden;}
+th{background:#0f172a;padding:10px 12px;text-align:left;font-size:12px;color:#64748b;font-weight:600;}
+td{padding:10px 12px;font-size:13px;border-bottom:1px solid #1e293b;}
+tr:last-child td{border-bottom:none;}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.badge-trial{background:#1e1b4b;color:#818cf8;}
+.badge-solo{background:#052e16;color:#4ade80;}
+.badge-pro{background:#0c2a4a;color:#38bdf8;}
+.badge-active{background:#052e16;color:#4ade80;}
+.badge-inactive{background:#450a0a;color:#f87171;}
+.badge-expired{background:#431407;color:#fb923c;}
+.btn-sm{padding:4px 10px;border-radius:6px;border:1px solid #334155;background:transparent;
+        color:#94a3b8;cursor:pointer;font-size:11px;}
+.btn-sm:hover{background:#1e293b;color:#e2e8f0;}
+.btn-sm.primary{background:#6366f1;border-color:#6366f1;color:#fff;}
+.btn-sm.danger{border-color:#991b1b;color:#f87171;}
+.actions{display:flex;gap:6px;}
+input.extend{width:50px;padding:3px 6px;background:#0f172a;border:1px solid #334155;
+             border-radius:4px;color:#e2e8f0;font-size:11px;}
+.refresh{float:right;padding:8px 16px;background:#1e293b;border:1px solid #334155;
+         border-radius:8px;color:#94a3b8;cursor:pointer;font-size:13px;}
+</style>
+</head>
+<body>
+<h1>OPTI<span>RAX</span> Admin</h1>
+<div class="sub">Panel administracyjny</div>
+
+<div class="stats">
+  <div class="stat"><div class="val" id="sTotal">—</div><div class="lbl">Użytkownicy łącznie</div></div>
+  <div class="stat"><div class="val" id="sTrial">—</div><div class="lbl">Aktywne trial</div></div>
+  <div class="stat"><div class="val" id="sPaid">—</div><div class="lbl">Płatne konta</div></div>
+  <div class="stat"><div class="val" id="sExpired">—</div><div class="lbl">Wygasłe trial</div></div>
+</div>
+
+<button class="refresh" onclick="loadUsers()">↻ Odśwież</button>
+<table>
+  <thead>
+    <tr>
+      <th>Email</th>
+      <th>Firma</th>
+      <th>Plan</th>
+      <th>Trial do</th>
+      <th>Status</th>
+      <th>Wyceny</th>
+      <th>Pojazdy</th>
+      <th>Akcje</th>
+    </tr>
+  </thead>
+  <tbody id="usersTable">
+    <tr><td colspan="8" style="text-align:center;color:#475569;padding:20px;">Ładowanie...</td></tr>
+  </tbody>
+</table>
+
+<script>
+const token = localStorage.getItem('optirax_token');
+if(!token){ window.location.href='/login.html'; }
+
+async function api(path, method='GET', body=null){
+  const r = await fetch(path,{
+    method,
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if(r.status===401){ localStorage.clear(); window.location.href='/login.html'; }
+  if(r.status===403){ document.body.innerHTML='<div style="text-align:center;padding:40px;color:#f87171;">Brak uprawnień administratora</div>'; throw new Error('403'); }
+  return r.json();
+}
+
+async function loadUsers(){
+  try{
+    const users = await api('/api/admin/users');
+    const now = new Date();
+
+    // Stats
+    document.getElementById('sTotal').textContent   = users.length;
+    document.getElementById('sTrial').textContent   = users.filter(u=>u.plan==='trial'&&u.trial_active&&u.is_active).length;
+    document.getElementById('sPaid').textContent    = users.filter(u=>u.plan!=='trial'&&u.is_active).length;
+    document.getElementById('sExpired').textContent = users.filter(u=>u.plan==='trial'&&!u.trial_active).length;
+
+    const tbody = document.getElementById('usersTable');
+    if(!users.length){ tbody.innerHTML='<tr><td colspan="8" style="text-align:center;color:#475569;">Brak użytkowników</td></tr>'; return; }
+
+    tbody.innerHTML = users.map(u=>{
+      const trialEnd = u.trial_ends_at ? new Date(u.trial_ends_at).toLocaleDateString('pl-PL') : '—';
+      const trialExpired = u.plan==='trial' && !u.trial_active;
+
+      const statusBadge = !u.is_active
+        ? '<span class="badge badge-inactive">Nieaktywny</span>'
+        : trialExpired
+          ? '<span class="badge badge-expired">Trial wygasł</span>'
+          : '<span class="badge badge-active">Aktywny</span>';
+
+      const planBadge = `<span class="badge badge-${u.plan||'trial'}">${(u.plan||'trial').toUpperCase()}</span>`;
+
+      return `<tr>
+        <td>${u.email||'—'}</td>
+        <td style="color:#64748b">${u.company||'—'}</td>
+        <td>${planBadge}</td>
+        <td style="font-size:12px;color:${trialExpired?'#f87171':'#94a3b8'}">${trialEnd}</td>
+        <td>${statusBadge}</td>
+        <td style="text-align:center">${u.quotes_count||0}</td>
+        <td style="text-align:center">${u.vehicles_count||0}</td>
+        <td>
+          <div class="actions">
+            <input type="number" class="extend" id="days_${u.id}" value="14" min="1" max="365">
+            <button class="btn-sm primary" onclick="extendTrial('${u.id}')">+dni</button>
+            <button class="btn-sm" onclick="setPlan('${u.id}','solo')">Solo</button>
+            <button class="btn-sm" onclick="setPlan('${u.id}','pro')">Pro</button>
+            ${u.is_active
+              ? `<button class="btn-sm danger" onclick="setActive('${u.id}',false)">Blokuj</button>`
+              : `<button class="btn-sm" onclick="setActive('${u.id}',true)">Odblokuj</button>`}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  }catch(e){
+    if(e.message!=='403') console.error(e);
+  }
+}
+
+async function extendTrial(id){
+  const days = parseInt(document.getElementById('days_'+id).value) || 14;
+  await api(`/api/admin/users/${id}/extend-trial`,'POST',{days});
+  loadUsers();
+}
+
+async function setPlan(id, plan){
+  await api(`/api/admin/users/${id}`,'PATCH',{plan, is_active:true});
+  loadUsers();
+}
+
+async function setActive(id, active){
+  await api(`/api/admin/users/${id}`,'PATCH',{is_active:active});
+  loadUsers();
+}
+
+loadUsers();
+</script>
+</body>
+</html>

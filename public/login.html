@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPTIRAX – Logowanie</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#0a0f1e;
+  color:#e2e8f0;
+  font-family:system-ui,-apple-system,sans-serif;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.card{
+  background:#111827;
+  border:1px solid #1e293b;
+  border-radius:16px;
+  padding:36px 32px;
+  width:100%;
+  max-width:400px;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);
+}
+.logo{font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-bottom:4px;}
+.logo span{color:#6366f1;}
+.tagline{font-size:13px;color:#64748b;margin-bottom:28px;}
+.tabs{display:flex;gap:4px;margin-bottom:24px;background:#0f172a;border-radius:10px;padding:4px;}
+.tab{flex:1;padding:8px;border:none;border-radius:8px;background:transparent;
+     color:#64748b;cursor:pointer;font-size:13px;font-weight:500;}
+.tab.active{background:#1e293b;color:#e2e8f0;}
+label{display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;margin-top:14px;}
+input{width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;
+      border-radius:8px;color:#e2e8f0;font-size:14px;}
+input:focus{outline:none;border-color:#6366f1;}
+.btn{width:100%;margin-top:20px;padding:12px;background:#6366f1;border:none;
+     border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;}
+.btn:hover{background:#4f46e5;}
+.btn:disabled{background:#374151;cursor:not-allowed;}
+.msg{margin-top:14px;padding:10px 12px;border-radius:8px;font-size:13px;display:none;}
+.msg.ok{background:#052e16;color:#4ade80;border:1px solid #166534;}
+.msg.err{background:#450a0a;color:#f87171;border:1px solid #991b1b;}
+.trial-info{margin-top:16px;text-align:center;font-size:12px;color:#475569;}
+.trial-info b{color:#818cf8;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">OPTI<span>RAX</span></div>
+  <div class="tagline">Smart Routes. Better Business.</div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('login')">Logowanie</button>
+    <button class="tab" onclick="showTab('register')">Rejestracja</button>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="tab-login">
+    <label>Email</label>
+    <input type="email" id="loginEmail" placeholder="twoj@email.com" autocomplete="email">
+    <label>Hasło</label>
+    <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
+    <button class="btn" onclick="doLogin()">Zaloguj się</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="tab-register" style="display:none;">
+    <label>Imię i nazwisko</label>
+    <input type="text" id="regName" placeholder="Jan Kowalski">
+    <label>Firma (opcjonalnie)</label>
+    <input type="text" id="regCompany" placeholder="Nazwa firmy transportowej">
+    <label>Email</label>
+    <input type="email" id="regEmail" placeholder="twoj@email.com" autocomplete="email">
+    <label>Hasło (min. 8 znaków)</label>
+    <input type="password" id="regPass" placeholder="••••••••" autocomplete="new-password">
+    <button class="btn" onclick="doRegister()">Zarejestruj się</button>
+    <div class="msg" id="registerMsg"></div>
+    <div class="trial-info">✅ <b>14 dni bezpłatnie</b> — bez karty kredytowej</div>
+  </div>
+</div>
+
+<script>
+function showTab(t){
+  document.getElementById('tab-login').style.display    = t==='login'    ? '' : 'none';
+  document.getElementById('tab-register').style.display = t==='register' ? '' : 'none';
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',i===(t==='login'?0:1)));
+}
+
+function showMsg(id, text, type){
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+}
+
+async function doLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPass').value;
+  if(!email||!pass){ showMsg('loginMsg','Uzupełnij email i hasło.','err'); return; }
+
+  const btn = document.querySelector('#tab-login .btn');
+  btn.disabled = true; btn.textContent = 'Logowanie...';
+
+  try{
+    const r = await fetch('/api/auth/login',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,password:pass})
+    });
+    const data = await r.json();
+    if(!r.ok){ showMsg('loginMsg', data.error||'Błąd logowania','err'); return; }
+
+    // Zapisz token
+    localStorage.setItem('optirax_token', data.token);
+    localStorage.setItem('optirax_refresh', data.refresh_token);
+    localStorage.setItem('optirax_user', JSON.stringify(data.user));
+    localStorage.setItem('optirax_profile', JSON.stringify(data.profile));
+
+    // Przekieruj
+    window.location.href = '/';
+  }catch(e){
+    showMsg('loginMsg','Błąd połączenia z serwerem.','err');
+  }finally{
+    btn.disabled=false; btn.textContent='Zaloguj się';
+  }
+}
+
+async function doRegister(){
+  const name    = document.getElementById('regName').value.trim();
+  const company = document.getElementById('regCompany').value.trim();
+  const email   = document.getElementById('regEmail').value.trim();
+  const pass    = document.getElementById('regPass').value;
+
+  if(!email||!pass){ showMsg('registerMsg','Uzupełnij email i hasło.','err'); return; }
+  if(pass.length<8){ showMsg('registerMsg','Hasło musi mieć co najmniej 8 znaków.','err'); return; }
+
+  const btn = document.querySelector('#tab-register .btn');
+  btn.disabled=true; btn.textContent='Rejestracja...';
+
+  try{
+    const r = await fetch('/api/auth/register',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email,password:pass,full_name:name,company})
+    });
+    const data = await r.json();
+    if(!r.ok){ showMsg('registerMsg',data.error||'Błąd rejestracji','err'); return; }
+    showMsg('registerMsg','✅ Sprawdź email aby aktywować konto. Możesz się już zalogować.','ok');
+  }catch(e){
+    showMsg('registerMsg','Błąd połączenia z serwerem.','err');
+  }finally{
+    btn.disabled=false; btn.textContent='Zarejestruj się';
+  }
+}
+
+// Jeśli już zalogowany — przekieruj
+if(localStorage.getItem('optirax_token')){
+  window.location.href='/';
+}
+
+// Enter key
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const loginVisible = document.getElementById('tab-login').style.display !== 'none';
+    if(loginVisible) doLogin(); else doRegister();
+  }
+});
+</script>
+</body>
+</html>
