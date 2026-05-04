@@ -169,7 +169,7 @@ body{
   padding-bottom: calc(var(--actionbar-h) + 24px);
 }
 
-body{ padding-bottom: 110px; }  /* miejsce na actionBar */
+body{ padding-bottom: 110px; padding-top: 48px; }  /* miejsce na actionBar i navbar */
 
 
 .col.left, .col.right {
@@ -1128,6 +1128,41 @@ button{
 body.dark .route-evaluation{ background:#1e1e1e; border:1px solid #333; }
 body.dark .eval-line{ color:#ddd; }
 
+
+/* ===== NAVBAR ===== */
+#appNavbar{
+  position:fixed;top:0;left:0;right:0;z-index:10000;
+  height:48px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;background:var(--bg,#0a0f1e);
+  border-bottom:1px solid var(--line,#1e293b);
+}
+:root[data-theme="light"] #appNavbar{background:#fff;border-bottom-color:#e2e8f0;}
+.nav-logo{height:30px;}
+.nav-logo-light{display:none;}
+:root[data-theme="light"] .nav-logo-dark{display:none;}
+:root[data-theme="light"] .nav-logo-light{display:block;}
+#hamburger{display:flex;flex-direction:column;justify-content:center;gap:5px;
+  width:36px;height:36px;cursor:pointer;padding:6px;
+  border-radius:8px;border:none;background:transparent;}
+#hamburger span{display:block;height:2px;border-radius:2px;
+  background:#94a3b8;transition:all .2s;}
+#hamburger:hover span{background:#e2e8f0;}
+#navDropdown{position:fixed;top:48px;right:0;width:230px;
+  background:#111827;border:1px solid #1e293b;border-top:none;
+  border-radius:0 0 0 12px;padding:8px 0;display:none;
+  z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+:root[data-theme="light"] #navDropdown{background:#fff;border-color:#e2e8f0;}
+#navDropdown.open{display:block;}
+.nav-item{padding:9px 16px;font-size:12px;color:#64748b;display:flex;align-items:center;gap:8px;}
+.nav-item.user{color:#e2e8f0;font-weight:600;border-bottom:1px solid #1e293b;padding-bottom:12px;}
+:root[data-theme="light"] .nav-item.user{color:#1e293b;border-bottom-color:#e2e8f0;}
+.nav-divider{height:1px;background:#1e293b;margin:4px 0;}
+:root[data-theme="light"] .nav-divider{background:#e2e8f0;}
+.nav-btn{width:100%;text-align:left;padding:9px 16px;font-size:12px;
+  background:none;border:none;cursor:pointer;color:#94a3b8;display:flex;align-items:center;gap:8px;}
+.nav-btn:hover{background:#1e293b22;color:#e2e8f0;}
+.nav-btn.logout{color:#f87171;}
+.nav-btn.logout:hover{background:#450a0a22;}
 </style>
 
 <link
