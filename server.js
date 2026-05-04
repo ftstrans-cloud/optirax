@@ -570,22 +570,29 @@ async function requireAuth(req, res, next) {
 // Sprawdź czy trial aktywny
 async function requireActiveSubscription(req, res, next) {
   try {
-    const data = await sbFetch("profiles", "GET", null,
-      `?id=eq.${req.userId}&select=plan,trial_ends_at,is_active`);
-    const profile = data?.[0];
+    // Użyj tokenu usera (nie anon key) żeby ominąć RLS
+    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${req.userId}&select=plan,trial_ends_at,is_active`, {
+      headers: {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": `Bearer ${token}`,
+        "Accept":        "application/json",
+      },
+    });
+    const data = await r.json();
+    const profile = Array.isArray(data) ? data[0] : null;
 
-    if (!profile || !profile.is_active) {
+    if (!profile) return next(); // brak profilu = przepuść (nowy user)
+    if (!profile.is_active) {
       return res.status(403).json({ error: "Konto nieaktywne", code: "INACTIVE" });
     }
-
-    if (profile.plan === "trial" && new Date(profile.trial_ends_at) < new Date()) {
+    if (profile.plan === "trial" && profile.trial_ends_at && new Date(profile.trial_ends_at) < new Date()) {
       return res.status(403).json({ error: "Trial wygasł", code: "TRIAL_EXPIRED" });
     }
-
     req.userPlan = profile.plan;
     next();
   } catch(e) {
-    next(); // nie blokuj przy błędzie sprawdzenia
+    next(); // przy błędzie przepuść
   }
 }
 
