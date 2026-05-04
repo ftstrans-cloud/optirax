@@ -1,5 +1,3 @@
-console.log("🔥 OPTIRAX SERVER – HERE Routing API v8 🔥");
-
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,6 +6,15 @@ import fs from "fs";
 import path from "path";
 
 dotenv.config();
+
+// Klucze API – wczytane raz na starcie
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
+
+console.log("Supabase URL:", SUPABASE_URL ? SUPABASE_URL.slice(0,40)+"..." : "BRAK");
+console.log("Supabase KEY:", SUPABASE_KEY ? SUPABASE_KEY.slice(0,20)+"..." : "BRAK");
+
+console.log("🔥 OPTIRAX SERVER – HERE Routing API v8 🔥");
 
 // ============================================================
 // HERE API KEY
@@ -726,10 +733,6 @@ app.post("/api/admin/users/:id/extend-trial", requireAuth, requireAdmin, async (
 // ============================================================
 // SUPABASE – klient REST
 // ============================================================
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
-console.log("Supabase URL:", SUPABASE_URL ? SUPABASE_URL.slice(0,40) + "..." : "BRAK");
-console.log("Supabase KEY:", SUPABASE_KEY ? SUPABASE_KEY.slice(0,20) + "..." : "BRAK");
 
 async function sbFetch(table, method = "GET", body = null, params = "") {
   if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error("Brak konfiguracji Supabase w .env");
