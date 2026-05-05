@@ -116,7 +116,7 @@ async function doLogin(){
     localStorage.setItem('optirax_token', data.token);
     localStorage.setItem('optirax_refresh', data.refresh_token);
     localStorage.setItem('optirax_user', JSON.stringify(data.user));
-    localStorage.setItem('optirax_profile', JSON.stringify(data.profile));
+    localStorage.setItem('optirax_profile', JSON.stringify(data.profile || {}));
 
     // Przekieruj
     window.location.href = '/';
