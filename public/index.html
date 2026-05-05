@@ -2398,8 +2398,8 @@ body.dark .eval-line{ color:#ddd; }
 <script>
 (function(){
   var profile={},user={};
-  try{profile=JSON.parse(localStorage.getItem('optirax_profile')||'{}');}catch(e){}
-  try{user=JSON.parse(localStorage.getItem('optirax_user')||'{}');}catch(e){}
+  try{profile=JSON.parse(localStorage.getItem('optirax_profile')||'{}')||{};}catch(e){}
+  try{user=JSON.parse(localStorage.getItem('optirax_user')||'{}')||{};}catch(e){}
   var email=profile.email||user.email||'';
   var plan=(profile.plan||'trial').toUpperCase();
   var pc={TRIAL:'#6366f1',SOLO:'#22c55e',PRO:'#38bdf8',TEAM:'#f59e0b'}[plan]||'#6366f1';
