@@ -268,7 +268,7 @@ function parseHereRoute(hereData, routeIdx = 0) {
   // NLD – pomijamy całkowicie, bo do lipca 2025 obowiązuje winieta dzienna 12€
   // która zastępuje wszystkie opłaty drogowe. HERE błędnie sumuje bramki A2/A20.
   // NLD jest liczone przez calcDailyVignettesFromGeo w app.js.
-  const SKIP_COUNTRIES = new Set(["NLD", "CHE"]);
+  const SKIP_COUNTRIES = new Set(["NLD"]);
 
   const tollCostByCode = {};
   // Deduplikacja: dla tego samego systemu opłat (np. A2 Autostrada Wielkopolska)
@@ -345,19 +345,6 @@ function parseHereRoute(hereData, routeIdx = 0) {
         rate_eur_per_km: 0,
         cost_eur: 0,
         source: "geo-only", // tylko km, koszt przez winietę
-      });
-    }
-
-    // Dodaj Szwajcarię z geometrii — LSVA 0.75 EUR/km dla zestawu 40t
-    if (geoByName["Szwajcaria"] && !by_country.find(x => x.country === "Szwajcaria")) {
-      const cheKm = geoByName["Szwajcaria"];
-      const cheRate = 0.75;
-      by_country.push({
-        country: "Szwajcaria",
-        km: cheKm,
-        rate_eur_per_km: cheRate,
-        cost_eur: round2(cheKm * cheRate),
-        source: "geo-lsva",
       });
     }
 
