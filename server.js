@@ -82,7 +82,7 @@ const TOLL_RATE = {
   "Rumunia":         0.09,
   "Bułgaria":        0.08,
   "Serbia":          0.08,
-  "Hiszpania":       0.12,
+  "Hiszpania":       0.18,
   "Portugalia":      0.18,
   "Szwecja":         0.00,
   "Dania":           0.00,
@@ -783,7 +783,7 @@ app.get("/api/history", requireAuth, requireActiveSubscription, async (req, res)
   try {
     const uid = req.userId;
     const data = await sbFetch("quotes", "GET", null,
-      `?user_id=eq.${uid}&order=ts.desc&limit=200`);
+      `?auth_user_id=eq.${uid}&order=ts.desc&limit=200`);
     res.json(data || []);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -827,7 +827,7 @@ app.delete("/api/history/:id", requireAuth, async (req, res) => {
   try {
     const uid = req.userId;
     await sbFetch("quotes", "DELETE", null,
-      `?id=eq.${req.params.id}&user_id=eq.${uid}`);
+      `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -842,7 +842,7 @@ function fleetRoutes(entity) {
     try {
       const uid = req.userId;
       const data = await sbFetch(entity, "GET", null,
-        `?user_id=eq.${uid}&active=neq.false&order=created_at.desc`);
+        `?auth_user_id=eq.${uid}&active=neq.false&order=created_at.desc`);
       res.json(data || []);
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
@@ -880,7 +880,7 @@ function fleetRoutes(entity) {
     try {
       const uid = req.userId;
       await sbFetch(entity, "PATCH", { active: false },
-        `?id=eq.${req.params.id}&user_id=eq.${uid}`);
+        `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
       res.json({ ok: true });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
@@ -894,7 +894,7 @@ app.get("/api/fuel", requireAuth, requireActiveSubscription, async (req, res) =>
   try {
     const uid = req.userId;
     const data = await sbFetch("fuel_trips", "GET", null,
-      `?user_id=eq.${uid}&order=created_at.desc&limit=500`);
+      `?auth_user_id=eq.${uid}&order=created_at.desc&limit=500`);
     res.json(data || []);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -931,7 +931,7 @@ app.delete("/api/fuel/:id", requireAuth, async (req, res) => {
   try {
     const uid = req.userId;
     await sbFetch("fuel_trips", "DELETE", null,
-      `?id=eq.${req.params.id}&user_id=eq.${uid}`);
+      `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
