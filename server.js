@@ -361,6 +361,22 @@ function parseHereRoute(hereData, routeIdx = 0) {
       });
     }
 
+    // Dodaj Hiszpanię z geometrii jeśli HERE nie zwrócił — fallback na średnią stawkę
+    if (geoByName["Hiszpania"] && !by_country.find(x => x.country === "Hiszpania")) {
+      const espKm = geoByName["Hiszpania"];
+      const espRate = TOLL_RATE["Hiszpania"] ?? 0.18;
+      by_country.push({
+        country: "Hiszpania",
+        km: espKm,
+        rate_eur_per_km: espRate,
+        cost_eur: round2(espKm * espRate),
+        source: "geo-fallback",
+      });
+    }
+
+    console.log("by_country debug:", JSON.stringify(by_country.map(x => `${x.country}:${x.km}km/${x.cost_eur}€/${x.source}`)));
+    console.log("geoByName keys:", Object.keys(geoByName));
+
     total_eur = round2(by_country.reduce((s,x) => s + x.cost_eur, 0));
   } else {
     // HERE nie zwróciło myto (np. trasa multi bez toll sections) – fallback offline
@@ -434,7 +450,7 @@ function tollsFromGeometryFallback(geometry) {
   const coords = geometry?.coordinates;
   if (!Array.isArray(coords) || coords.length < 2) return { total_eur: 0, by_country: [] };
 
-  const step = Math.max(1, Math.floor(coords.length / 140));
+  const step = Math.max(1, Math.floor(coords.length / 500));
   const samples = [];
   for (let i = 0; i < coords.length; i += step) samples.push({ lat: coords[i][1], lon: coords[i][0] });
 

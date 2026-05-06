@@ -560,6 +560,14 @@ function buildTileLayers(apiKey) {
       ? L.tileLayer(hereTileUrl("explore", "night", apiKey),         { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
 
+    "here-logistics-day": apiKey
+      ? L.tileLayer(hereTileUrl("logistics", "day", apiKey),         { attribution: attr_here, maxZoom: 20 })
+      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm }),
+
+    "here-logistics-night": apiKey
+      ? L.tileLayer(hereTileUrl("logistics", "night", apiKey),       { attribution: attr_here, maxZoom: 20 })
+      : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
+
     "here-satellite": apiKey
       ? L.tileLayer(hereTileUrl("satellite", "day", apiKey),         { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
