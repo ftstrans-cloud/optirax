@@ -393,9 +393,13 @@ function parseHereRoute(hereData, routeIdx = 0) {
 // OSRM + OFFLINE FALLBACK  (bez Turf.js – własny ray-casting)
 // ============================================================
 const EU_A3 = new Set([
+  // UE
   "AUT","BEL","BGR","HRV","CYP","CZE","DNK","EST","FIN","FRA","DEU","GRC",
   "HUN","IRL","ITA","LVA","LTU","LUX","MLT","NLD","POL","PRT","ROU","SVK",
-  "SVN","ESP","SWE","GBR"
+  "SVN","ESP","SWE","GBR",
+  // poza-UE Europa (transport)
+  "CHE","NOR","SRB","BIH","MKD","MNE","ALB","LIE","TUR","UKR","BLR","MDA",
+  "ISL","XKX",
 ]);
 let countryFeatures = [];
 

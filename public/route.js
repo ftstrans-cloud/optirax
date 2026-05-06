@@ -540,10 +540,12 @@ document.addEventListener("input", (e) => {
 const HERE_KEY = window._hereApiKey || "";  // wstrzyknięty przez serwer lub odczytany z meta
 
 // Buduje URL HERE Map Tile v3
-function hereTileUrl(style, scheme, apiKey) {
-  // style: 'base' | 'satellite' | 'explore'
-  // scheme: 'day' | 'night' | 'satellite.day'
-  return `https://maps.hereapi.com/v3/background/mc/{z}/{x}/{y}/png?style=${style}.${scheme}&apiKey=${apiKey}&lang=pl&ppi=100`;
+function hereTileUrl(style, scheme, apiKey, resource) {
+  // resource: 'background' (tło bez label) | 'base' (tło+drogi+label) | 'label' (tylko label)
+  // style: 'explore' | 'lite' | 'satellite' | 'logistics'
+  // scheme: 'day' | 'night'
+  const res = resource || "base";
+  return `https://maps.hereapi.com/v3/${res}/mc/{z}/{x}/{y}/png?style=${style}.${scheme}&apiKey=${apiKey}&lang=pl&ppi=100&size=512`;
 }
 
 // Mapa stylów do warstw Leaflet
@@ -553,27 +555,19 @@ function buildTileLayers(apiKey) {
 
   return {
     "here-road-day": apiKey
-      ? L.tileLayer(hereTileUrl("explore", "day", apiKey),           { attribution: attr_here, maxZoom: 20 })
+      ? L.tileLayer(hereTileUrl("explore", "day", apiKey, "base"),    { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm }),
 
     "here-road-night": apiKey
-      ? L.tileLayer(hereTileUrl("explore", "night", apiKey),         { attribution: attr_here, maxZoom: 20 })
-      : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
-
-    "here-logistics-day": apiKey
-      ? L.tileLayer(hereTileUrl("logistics", "day", apiKey),         { attribution: attr_here, maxZoom: 20 })
-      : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm }),
-
-    "here-logistics-night": apiKey
-      ? L.tileLayer(hereTileUrl("logistics", "night", apiKey),       { attribution: attr_here, maxZoom: 20 })
+      ? L.tileLayer(hereTileUrl("explore", "night", apiKey, "base"),  { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
 
     "here-satellite": apiKey
-      ? L.tileLayer(hereTileUrl("satellite", "day", apiKey),         { attribution: attr_here, maxZoom: 20 })
+      ? L.tileLayer(hereTileUrl("satellite", "day", apiKey, "base"),  { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
 
     "here-sat-night": apiKey
-      ? L.tileLayer(hereTileUrl("satellite", "night", apiKey), { attribution: attr_here, maxZoom: 20 })
+      ? L.tileLayer(hereTileUrl("satellite", "night", apiKey, "base"), { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
 
     "osm": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm, maxZoom: 19 }),
