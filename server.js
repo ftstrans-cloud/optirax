@@ -633,6 +633,23 @@ app.get("/api/config", (req, res) => res.json({
   hereApiKey: HERE_API_KEY || "",
 }));
 
+// Proxy do Nominatim (autocomplete adresów) - omija CORS
+app.get("/api/geocode", async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (!q || q.length < 2) return res.json([]);
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=6&addressdetails=1&q=${encodeURIComponent(q)}`;
+    const r = await fetch(url, {
+      headers: { "User-Agent": "OPTIRAX/1.0 (kontakt@optirax.pl)" }
+    });
+    if (!r.ok) return res.status(r.status).json({ error: `Nominatim ${r.status}` });
+    const data = await r.json();
+    res.json(data);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ============================================================
 // AUTH ENDPOINTS
 // ============================================================

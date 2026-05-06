@@ -11,12 +11,8 @@ async function fetchSuggestions(query) {
   if (acCache[q]) return acCache[q];
 
   try {
-    const url =
-      "https://nominatim.openstreetmap.org/search?format=json&limit=6&addressdetails=1&q=" +
-      encodeURIComponent(q);
-    const r = await fetch(url, {
-      headers: { "User-Agent": "optirax-kalkulator/1.0", "Accept-Language": "pl" }
-    });
+    const url = "/api/geocode?q=" + encodeURIComponent(q);
+    const r = await fetch(url);
     const data = await r.json();
     const results = (data || []).map(x => ({
       label: x.display_name,
