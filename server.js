@@ -78,7 +78,7 @@ const TOLL_RATE = {
   "Słowenia":        0.20,
   "Chorwacja":       0.12,
   "Wielka Brytania": 0.00,   // winieta dzienna
-  "Szwajcaria":      0.75,   // LSVA dla 40t, kraj wykluczony z HERE
+  "Szwajcaria":      1.00,   // płaska stawka 40t, kraj wykluczony z HERE
   "Rumunia":         0.09,
   "Bułgaria":        0.08,
   "Serbia":          0.08,
@@ -268,7 +268,7 @@ function parseHereRoute(hereData, routeIdx = 0) {
   // NLD – pomijamy całkowicie, bo do lipca 2025 obowiązuje winieta dzienna 12€
   // która zastępuje wszystkie opłaty drogowe. HERE błędnie sumuje bramki A2/A20.
   // NLD jest liczone przez calcDailyVignettesFromGeo w app.js.
-  const SKIP_COUNTRIES = new Set(["NLD"]);
+  const SKIP_COUNTRIES = new Set(["NLD", "CHE"]);
 
   const tollCostByCode = {};
   // Deduplikacja: dla tego samego systemu opłat (np. A2 Autostrada Wielkopolska)
@@ -345,6 +345,19 @@ function parseHereRoute(hereData, routeIdx = 0) {
         rate_eur_per_km: 0,
         cost_eur: 0,
         source: "geo-only", // tylko km, koszt przez winietę
+      });
+    }
+
+    // Dodaj Szwajcarię z geometrii — tymczasowo 1.00 EUR/km dla 40t (kraj wykluczony z HERE)
+    if (geoByName["Szwajcaria"] && !by_country.find(x => x.country === "Szwajcaria")) {
+      const cheKm = geoByName["Szwajcaria"];
+      const cheRate = 1.00;
+      by_country.push({
+        country: "Szwajcaria",
+        km: cheKm,
+        rate_eur_per_km: cheRate,
+        cost_eur: round2(cheKm * cheRate),
+        source: "geo-flat",
       });
     }
 
