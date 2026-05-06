@@ -545,7 +545,7 @@ function hereTileUrl(style, scheme, apiKey, resource) {
   // style: 'explore' | 'lite' | 'satellite' | 'logistics'
   // scheme: 'day' | 'night'
   const res = resource || "base";
-  return `https://maps.hereapi.com/v3/${res}/mc/{z}/{x}/{y}/png?style=${style}.${scheme}&apiKey=${apiKey}&lang=pl&ppi=250`;
+  return `https://maps.hereapi.com/v3/${res}/mc/{z}/{x}/{y}/png?style=${style}.${scheme}&apiKey=${apiKey}&lang=pl&ppi=100`;
 }
 
 // Mapa stylów do warstw Leaflet
