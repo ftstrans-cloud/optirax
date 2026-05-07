@@ -540,15 +540,46 @@ async function geocode(q) {
   if (!key) return null;
   if (geoCache.has(key)) return geoCache.get(key);
 
-  const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(key);
-  const r = await fetch(url, { headers: { "User-Agent": "optirax-kalkulator/2.0", "Accept-Language": "pl,en" } });
-  if (!r.ok) throw new Error("Geocoding failed: " + r.status);
-  const data = await r.json();
-  if (!data?.length) return null;
+  // Wyczyść typowe człony administracyjne z Google Maps
+  // np. "Mantova, Prowincja Mantova, Lombardia, Włochy" → próbuj od najdłuższej do najkrótszej
+  const cleanAddress = (s) => s
+    .replace(/\bProvincia\s+di\b/gi, "")
+    .replace(/\bKreis\b|\bLandkreis\b/gi, "")
+    .replace(/\bComarca\b/gi, "")
+    .replace(/\bGmina\b|\bPowiat\b/gi, "")
+    .replace(/\bDépartement\b/gi, "")
+    .replace(/\bDistrict\b/gi, "")
+    .replace(/\bCounty\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
-  const out = { lat: Number(data[0].lat), lon: Number(data[0].lon), display: data[0].display_name };
-  geoCache.set(key, out);
-  return out;
+  // Buduj listę kandydatów: pełna → bez prowincji → pierwsza część
+  const candidates = [key];
+  const cleaned = cleanAddress(key);
+  if (cleaned !== key) candidates.push(cleaned);
+
+  // Podziel po przecinkach — próbuj skracać od prawej
+  const parts = key.split(",").map(s => s.trim()).filter(Boolean);
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const shorter = parts.slice(0, i).join(", ");
+    if (!candidates.includes(shorter)) candidates.push(shorter);
+  }
+
+  for (const candidate of candidates) {
+    const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(candidate);
+    try {
+      const r = await fetch(url, { headers: { "User-Agent": "optirax-kalkulator/2.0", "Accept-Language": "pl,en" } });
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (data?.length) {
+        const out = { lat: Number(data[0].lat), lon: Number(data[0].lon), display: data[0].display_name };
+        geoCache.set(key, out);
+        return out;
+      }
+    } catch(e) { continue; }
+  }
+
+  return null;
 }
 
 // ============================================================
