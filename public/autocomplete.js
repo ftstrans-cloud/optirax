@@ -167,16 +167,51 @@ function parseGoogleMapsUrl(url) {
         .map(s => decodeURIComponent(s).replace(/\+/g, " ").trim())
         .filter(s => s.length > 0 && !s.startsWith("@"));
 
-      if (parts.length >= 2) {
+      // BONUS: wyciągnij coords z bloku data=!4m... który zawiera !1d{lon}!2d{lat}
+      // dla każdego punktu na trasie. Jeśli mamy tyle samo coords co punktów -
+      // używamy coords zamiast nazw (znacznie pewniejsze niż geocoding).
+      const coordsFromData = [];
+      const dataMatch = str.match(/data=([^?#]+)/);
+      if (dataMatch) {
+        // Sparsuj wszystkie pary !1d{number}!2d{number}
+        const re = /!1d(-?\d+\.?\d*)!2d(-?\d+\.?\d*)/g;
+        let m;
+        while ((m = re.exec(dataMatch[1])) !== null) {
+          coordsFromData.push(`${m[2]},${m[1]}`); // lat,lon (uwaga: 1d=lon, 2d=lat)
+        }
+      }
+
+      // Funkcja pomocnicza - czy parts[i] to coords?
+      const isCoords = (s) => /^-?\d+\.\d+\s*,\s*-?\d+\.\d+$/.test(s.trim());
+
+      // Strategia mapowania coords z data block do textowych punktów:
+      // Coords z data block są tylko dla punktów które NIE są już coords w URL.
+      // Liczymy pozycję kolejnego non-coord text part
+      let coordIdx = 0;
+      const enrichedParts = parts.map((p) => {
+        if (isCoords(p)) {
+          // Punkt jest już coords w URL - używaj jak jest, znormalizowany
+          return p.replace(/\s+/g, "");
+        }
+        // Punkt tekstowy - spróbuj zastąpić coords z data
+        if (coordsFromData[coordIdx]) {
+          const result = coordsFromData[coordIdx];
+          coordIdx++;
+          return result;
+        }
+        coordIdx++;
+        return p; // fallback - nazwa tekstowa, geocode zrobi resztę
+      });
+
+      if (enrichedParts.length >= 2) {
         return {
-          origin:      parts[0],
-          destination: parts[parts.length - 1],
-          stops:       parts.slice(1, -1),
+          origin:      enrichedParts[0],
+          destination: enrichedParts[enrichedParts.length - 1],
+          stops:       enrichedParts.slice(1, -1),
         };
       }
-      // Jeden punkt – może być samo „skąd"
-      if (parts.length === 1) {
-        return { origin: parts[0], destination: "", stops: [] };
+      if (enrichedParts.length === 1) {
+        return { origin: enrichedParts[0], destination: "", stops: [] };
       }
     }
 
@@ -255,11 +290,32 @@ function parseGoogleMapsUrl(url) {
   }
 }
 
-function pasteGoogleMaps() {
+async function pasteGoogleMaps() {
   const raw = (document.getElementById("gmapsInput")?.value || "").trim();
   if (!raw) { alert("Wklej link z Google Maps."); return; }
 
-  const parsed = parseGoogleMapsUrl(raw);
+  // Sprawdź czy to skrócony link - rozwiń przez backend
+  let url = raw;
+  if (/maps\.app\.goo\.gl|goo\.gl\/maps/i.test(raw)) {
+    try {
+      const btn = document.querySelector('[onclick*="pasteGoogleMaps"]');
+      if (btn) { btn.disabled = true; btn.textContent = "Rozwijam link..."; }
+      const r = await fetch("/api/expand-url", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ url: raw })
+      });
+      if (r.ok) {
+        const data = await r.json();
+        url = data.url || raw;
+      }
+      if (btn) { btn.disabled = false; btn.textContent = "Wklej link"; }
+    } catch(e) {
+      console.error("Expand failed:", e);
+    }
+  }
+
+  const parsed = parseGoogleMapsUrl(url);
 
   if (!parsed || !parsed.origin) {
     alert(
@@ -268,6 +324,7 @@ function pasteGoogleMaps() {
       "• google.com/maps/dir/Warszawa/Berlin/Hamburg\n" +
       "• google.com/maps/dir/Warszawa,+Polska/Berlin,+Niemcy\n" +
       "• maps.google.com/?saddr=Warszawa&daddr=Berlin\n" +
+      "• maps.app.goo.gl/... (skrócony)\n" +
       "• google.com/maps/place/Warszawa\n" +
       "• google.com/maps/@52.229,21.012,12z\n\n" +
       "Wskazówka: w Google Maps kliknij Udostępnij → Kopiuj link"

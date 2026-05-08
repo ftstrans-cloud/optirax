@@ -540,28 +540,87 @@ async function geocode(q) {
   if (!key) return null;
   if (geoCache.has(key)) return geoCache.get(key);
 
-  // Wyczyść typowe człony administracyjne z Google Maps
-  // np. "Mantova, Prowincja Mantova, Lombardia, Włochy" → próbuj od najdłuższej do najkrótszej
-  const cleanAddress = (s) => s
-    .replace(/\bProvincia\s+di\b/gi, "")
-    .replace(/\bKreis\b|\bLandkreis\b/gi, "")
-    .replace(/\bComarca\b/gi, "")
-    .replace(/\bGmina\b|\bPowiat\b/gi, "")
-    .replace(/\bDépartement\b/gi, "")
-    .replace(/\bDistrict\b/gi, "")
-    .replace(/\bCounty\b/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // SHORTCUT: jeśli wejście to "lat,lon" (coords z Google Maps URL data block)
+  // to nie pytaj Nominatim - po prostu użyj coords bezpośrednio
+  const coordsMatch = key.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/);
+  if (coordsMatch) {
+    const lat = Number(coordsMatch[1]);
+    const lon = Number(coordsMatch[2]);
+    if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+      const out = { lat, lon, display: `${lat.toFixed(6)}, ${lon.toFixed(6)}` };
+      geoCache.set(key, out);
+      console.log(`[geocode] coords passthrough: ${key}`);
+      return out;
+    }
+  }
 
-  // Buduj listę kandydatów: pełna → bez prowincji → pierwsza część
-  const candidates = [key];
+  // Mapowanie polskich nazw krajów na angielskie (Nominatim lepiej rozumie EN)
+  const PL_TO_EN = {
+    "Hiszpania":"Spain","Włochy":"Italy","Niemcy":"Germany","Francja":"France",
+    "Belgia":"Belgium","Holandia":"Netherlands","Czechy":"Czechia","Słowacja":"Slovakia",
+    "Austria":"Austria","Szwajcaria":"Switzerland","Wielka Brytania":"United Kingdom",
+    "Anglia":"England","Portugalia":"Portugal","Dania":"Denmark","Szwecja":"Sweden",
+    "Norwegia":"Norway","Finlandia":"Finland","Rumunia":"Romania","Bułgaria":"Bulgaria",
+    "Chorwacja":"Croatia","Słowenia":"Slovenia","Węgry":"Hungary","Grecja":"Greece",
+    "Serbia":"Serbia","Polska":"Poland","Estonia":"Estonia","Łotwa":"Latvia","Litwa":"Lithuania"
+  };
+
+  // Wyczyść typowe człony administracyjne (PL/EN/IT/DE/FR/ES)
+  const cleanAddress = (s) => {
+    let r = s;
+    // Polskie nazwy krajów → angielskie
+    for (const [pl, en] of Object.entries(PL_TO_EN)) {
+      r = r.replace(new RegExp(`\\b${pl}\\b`, "gi"), en);
+    }
+    return r
+      .replace(/\bProvincia\s+di\b/gi, "")
+      .replace(/\bProwincja\s+\w+/gi, "")        // "Prowincja Livorno"
+      .replace(/\bKreis\b|\bLandkreis\b/gi, "")
+      .replace(/\bComarca\b/gi, "")
+      .replace(/\bGmina\b|\bPowiat\b/gi, "")
+      .replace(/\bDépartement\b/gi, "")
+      .replace(/\bDistrict\b/gi, "")
+      .replace(/\bCounty\b/gi, "")
+      .replace(/\bregion\s+\w+/gi, "")
+      .replace(/\bWspólnota\b/gi, "")
+      .replace(/\s{2,}/g, " ")
+      .replace(/,\s*,/g, ",")
+      .trim();
+  };
+
+  // Strip ulicy z numerami: "Carrer de la Terra Alta, 32, 38, 08211 Castellar"
+  // → "Castellar" (od pierwszego elementu który nie jest liczbą / ulicą / kodem)
+  const stripStreet = (s) => {
+    const parts = s.split(",").map(p => p.trim()).filter(Boolean);
+    // Usuń elementy które są: same cyfry, kod pocztowy (5 cyfr), zaczynają od ulicy
+    const cleaned = parts.filter(p => {
+      if (/^\d+$/.test(p)) return false;                          // czysty numer
+      if (/^\d{2,5}([-\s]\w+)?$/.test(p)) return false;            // 08211 / 08211 Castellar
+      if (/^(Carrer|Calle|Avenida|Avinguda|Via|Strasse|Rue|ul\.?|ulica|Nave|s\/n)\b/i.test(p)) return false;
+      return true;
+    });
+    return cleaned.join(", ");
+  };
+
+  // Lista kandydatów do prób:
+  const candidates = [key];                                        // 1. oryginał
   const cleaned = cleanAddress(key);
-  if (cleaned !== key) candidates.push(cleaned);
+  if (cleaned !== key) candidates.push(cleaned);                   // 2. po cleaning
 
-  // Podziel po przecinkach — próbuj skracać od prawej
-  const parts = key.split(",").map(s => s.trim()).filter(Boolean);
-  for (let i = parts.length - 1; i >= 1; i--) {
-    const shorter = parts.slice(0, i).join(", ");
+  const noStreet = stripStreet(cleaned);
+  if (noStreet && noStreet !== cleaned) candidates.push(noStreet); // 3. bez ulicy
+
+  // 4. ostatnie 2-3 człony (miasto + region + kraj)
+  const parts = noStreet.split(",").map(s => s.trim()).filter(Boolean);
+  for (let i = parts.length; i >= 1; i--) {
+    const sub = parts.slice(Math.max(0, parts.length - i)).join(", ");
+    if (!candidates.includes(sub) && sub.length > 2) candidates.push(sub);
+  }
+
+  // 5. od prawej (od kraju) skracaj
+  const partsFull = key.split(",").map(s => s.trim()).filter(Boolean);
+  for (let i = partsFull.length - 1; i >= 1; i--) {
+    const shorter = partsFull.slice(0, i).join(", ");
     if (!candidates.includes(shorter)) candidates.push(shorter);
   }
 
@@ -572,6 +631,7 @@ async function geocode(q) {
       if (!r.ok) continue;
       const data = await r.json();
       if (data?.length) {
+        console.log(`[geocode] "${key.slice(0,40)}" → matched via "${candidate.slice(0,40)}"`);
         const out = { lat: Number(data[0].lat), lon: Number(data[0].lon), display: data[0].display_name };
         geoCache.set(key, out);
         return out;
@@ -579,6 +639,7 @@ async function geocode(q) {
     } catch(e) { continue; }
   }
 
+  console.log(`[geocode] FAILED: "${key.slice(0,80)}"`);
   return null;
 }
 
@@ -696,6 +757,32 @@ app.get("/api/geocode", async (req, res) => {
     if (!r.ok) return res.status(r.status).json({ error: `Nominatim ${r.status}` });
     const data = await r.json();
     res.json(data);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Rozwija skrócone linki (maps.app.goo.gl, goo.gl/maps) do pełnego URL
+app.post("/api/expand-url", async (req, res) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== "string") return res.status(400).json({ error: "Brak URL" });
+    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Nieprawidłowy URL" });
+
+    // Fetch z manual redirect żeby zobaczyć Location header
+    let currentUrl = url;
+    let hops = 0;
+    while (hops < 5) {
+      const r = await fetch(currentUrl, { method: "GET", redirect: "manual" });
+      const loc = r.headers.get("location");
+      if (loc && (r.status >= 300 && r.status < 400)) {
+        currentUrl = loc.startsWith("http") ? loc : new URL(loc, currentUrl).href;
+        hops++;
+      } else {
+        break;
+      }
+    }
+    res.json({ url: currentUrl });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
