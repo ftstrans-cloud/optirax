@@ -769,21 +769,40 @@ app.post("/api/expand-url", async (req, res) => {
     if (!url || typeof url !== "string") return res.status(400).json({ error: "Brak URL" });
     if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Nieprawidłowy URL" });
 
-    // Fetch z manual redirect żeby zobaczyć Location header
+    // Google Maps wymaga przeglądarkowego User-Agent
+    const headers = {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "pl,en;q=0.9",
+    };
+
     let currentUrl = url;
     let hops = 0;
-    while (hops < 5) {
-      const r = await fetch(currentUrl, { method: "GET", redirect: "manual" });
+    while (hops < 10) {
+      const r = await fetch(currentUrl, { method: "GET", redirect: "manual", headers });
       const loc = r.headers.get("location");
+      console.log(`[expand-url] hop ${hops}: ${r.status} -> ${loc?.slice(0,100) || "(no redirect)"}`);
       if (loc && (r.status >= 300 && r.status < 400)) {
         currentUrl = loc.startsWith("http") ? loc : new URL(loc, currentUrl).href;
         hops++;
+      } else if (r.status === 200) {
+        // Dla niektórych skróconych linków Google odpowiada HTML z meta redirect
+        const html = await r.text();
+        // Szukaj prawdziwego URL w HTML (Google embedduje go w meta refresh / og:url / canonical)
+        const metaMatch = html.match(/<meta[^>]+(?:url=|content=")([^">]*\/maps\/[^">]+)/i);
+        if (metaMatch) {
+          currentUrl = metaMatch[1].replace(/&amp;/g, "&");
+          console.log(`[expand-url] meta redirect found: ${currentUrl.slice(0,100)}`);
+        }
+        break;
       } else {
         break;
       }
     }
+    console.log(`[expand-url] final: ${currentUrl.slice(0,150)}`);
     res.json({ url: currentUrl });
   } catch(e) {
+    console.error("[expand-url] error:", e.message);
     res.status(500).json({ error: e.message });
   }
 });

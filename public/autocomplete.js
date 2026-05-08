@@ -167,40 +167,61 @@ function parseGoogleMapsUrl(url) {
         .map(s => decodeURIComponent(s).replace(/\+/g, " ").trim())
         .filter(s => s.length > 0 && !s.startsWith("@"));
 
-      // BONUS: wyciągnij coords z bloku data=!4m... który zawiera !1d{lon}!2d{lat}
-      // dla każdego punktu na trasie. Jeśli mamy tyle samo coords co punktów -
-      // używamy coords zamiast nazw (znacznie pewniejsze niż geocoding).
+      // BONUS: wyciągnij coords z bloku data dla każdego user waypointa.
+      // Format Google Maps URL data:
+      //   !1m5!1m1!1s{place_id}!2m2!1d{lon}!2d{lat}  ← USER waypoint z miejscem (top-level !1m5)
+      //   !1m3!2m2!1d{lon}!2d{lat}                    ← USER waypoint coords-only (top-level !1m3)
+      //   !3m4!1m2!1d{lon}!2d{lat}!3s{...}            ← AUTO waypoint (Google route hint, pomijamy)
+      // Wewnątrz !1m5 jest zagnieżdżone !1m1 - pomijamy je.
       const coordsFromData = [];
       const dataMatch = str.match(/data=([^?#]+)/);
       if (dataMatch) {
-        // Sparsuj wszystkie pary !1d{number}!2d{number}
-        const re = /!1d(-?\d+\.?\d*)!2d(-?\d+\.?\d*)/g;
-        let m;
-        while ((m = re.exec(dataMatch[1])) !== null) {
-          coordsFromData.push(`${m[2]},${m[1]}`); // lat,lon (uwaga: 1d=lon, 2d=lat)
+        const dataStr = dataMatch[1];
+        // Tokenize wszystkie !XmY
+        const tokens = [];
+        const re = /!(\d)m(\d+)/g;
+        let tm;
+        while ((tm = re.exec(dataStr)) !== null) {
+          tokens.push({ idx: tm.index, type: tm[1], count: parseInt(tm[2]) });
+        }
+        // Bierzemy tylko top-level user waypoints: !1m5 lub !1m3
+        // Granicą jest następny !1m5/!1m3 lub !3m
+        for (let i = 0; i < tokens.length; i++) {
+          const t = tokens[i];
+          if (t.type !== "1" || t.count < 3) continue;
+          // Skip nested !1m1, !1m2 - akceptujemy !1m3, !1m5, !1m10, etc.
+          let endIdx = dataStr.length;
+          for (let j = i + 1; j < tokens.length; j++) {
+            const nt = tokens[j];
+            if ((nt.type === "1" && nt.count >= 3) || nt.type === "3") {
+              endIdx = nt.idx;
+              break;
+            }
+          }
+          const slice = dataStr.slice(t.idx, endIdx);
+          const cm = slice.match(/!2m2!1d(-?\d+\.?\d*)!2d(-?\d+\.?\d*)/);
+          if (cm) {
+            coordsFromData.push(`${cm[2]},${cm[1]}`); // lat,lon
+          }
         }
       }
 
-      // Funkcja pomocnicza - czy parts[i] to coords?
       const isCoords = (s) => /^-?\d+\.\d+\s*,\s*-?\d+\.\d+$/.test(s.trim());
 
-      // Strategia mapowania coords z data block do textowych punktów:
-      // Coords z data block są tylko dla punktów które NIE są już coords w URL.
-      // Liczymy pozycję kolejnego non-coord text part
-      let coordIdx = 0;
-      const enrichedParts = parts.map((p) => {
-        if (isCoords(p)) {
-          // Punkt jest już coords w URL - używaj jak jest, znormalizowany
-          return p.replace(/\s+/g, "");
-        }
-        // Punkt tekstowy - spróbuj zastąpić coords z data
-        if (coordsFromData[coordIdx]) {
-          const result = coordsFromData[coordIdx];
-          coordIdx++;
-          return result;
-        }
-        coordIdx++;
-        return p; // fallback - nazwa tekstowa, geocode zrobi resztę
+      // parts[0] = start (zwykle bez wpisu w data block)
+      // parts[1..n] = user stops + destination (każdy ma coords w data block)
+      // Mapowanie: parts[i] (i>=1) → coordsFromData[i-1]
+      let coordsForUse;
+      if (coordsFromData.length === parts.length) {
+        coordsForUse = coordsFromData;
+      } else {
+        coordsForUse = [null, ...coordsFromData];
+      }
+
+      const enrichedParts = parts.map((p, i) => {
+        const fromData = coordsForUse[i];
+        if (fromData) return fromData;
+        return isCoords(p) ? p.replace(/\s+/g, "") : p;
       });
 
       if (enrichedParts.length >= 2) {
