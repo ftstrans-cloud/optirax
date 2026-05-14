@@ -14,36 +14,40 @@ body{
   display:flex;
   align-items:center;
   justify-content:center;
+  padding:16px;
 }
 .card{
   background:#111827;
   border:1px solid #1e293b;
   border-radius:16px;
-  padding:36px 32px;
+  padding:40px 36px;
   width:100%;
-  max-width:400px;
+  max-width:460px;
   box-shadow:0 20px 60px rgba(0,0,0,.4);
 }
-.logo{font-size:28px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-bottom:4px;}
+.logo{font-size:30px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-bottom:4px;}
 .logo span{color:#6366f1;}
 .tagline{font-size:13px;color:#64748b;margin-bottom:28px;}
 .tabs{display:flex;gap:4px;margin-bottom:24px;background:#0f172a;border-radius:10px;padding:4px;}
-.tab{flex:1;padding:8px;border:none;border-radius:8px;background:transparent;
-     color:#64748b;cursor:pointer;font-size:13px;font-weight:500;}
+.tab{flex:1;padding:12px 8px;border:none;border-radius:8px;background:transparent;
+     color:#64748b;cursor:pointer;font-size:14px;font-weight:500;}
 .tab.active{background:#1e293b;color:#e2e8f0;}
-label{display:block;font-size:12px;color:#94a3b8;margin-bottom:4px;margin-top:14px;}
-input{width:100%;padding:10px 12px;background:#0f172a;border:1px solid #334155;
-      border-radius:8px;color:#e2e8f0;font-size:14px;}
+label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;margin-top:18px;font-weight:500;}
+input{width:100%;padding:14px 14px;background:#0f172a;border:1px solid #334155;
+      border-radius:8px;color:#e2e8f0;font-size:16px;min-height:48px;}
 input:focus{outline:none;border-color:#6366f1;}
-.btn{width:100%;margin-top:20px;padding:12px;background:#6366f1;border:none;
-     border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;}
+input.err-border{border-color:#dc2626;}
+.btn{width:100%;margin-top:24px;padding:15px;background:#6366f1;border:none;
+     border-radius:10px;color:#fff;font-size:16px;font-weight:600;cursor:pointer;min-height:50px;}
 .btn:hover{background:#4f46e5;}
 .btn:disabled{background:#374151;cursor:not-allowed;}
-.msg{margin-top:14px;padding:10px 12px;border-radius:8px;font-size:13px;display:none;}
+.msg{margin-top:14px;padding:12px 14px;border-radius:8px;font-size:14px;display:none;line-height:1.4;}
 .msg.ok{background:#052e16;color:#4ade80;border:1px solid #166534;}
 .msg.err{background:#450a0a;color:#f87171;border:1px solid #991b1b;}
-.trial-info{margin-top:16px;text-align:center;font-size:12px;color:#475569;}
+.msg.info{background:#172554;color:#93c5fd;border:1px solid #1e40af;}
+.trial-info{margin-top:18px;text-align:center;font-size:13px;color:#475569;}
 .trial-info b{color:#818cf8;}
+.hint{font-size:12px;color:#64748b;margin-top:4px;line-height:1.3;}
 </style>
 </head>
 <body>
@@ -77,6 +81,9 @@ input:focus{outline:none;border-color:#6366f1;}
     <input type="text" id="regCompany" placeholder="Nazwa firmy transportowej">
     <label>Email</label>
     <input type="email" id="regEmail" placeholder="twoj@email.com" autocomplete="email">
+    <div class="hint">📩 Wyślemy tu link aktywacyjny — wpisz dokładnie.</div>
+    <label>Powtórz email</label>
+    <input type="email" id="regEmail2" placeholder="twoj@email.com" autocomplete="email" onpaste="return false;">
     <label>Hasło (min. 8 znaków)</label>
     <input type="password" id="regPass" placeholder="••••••••" autocomplete="new-password">
     <button class="btn" onclick="doRegister()">Zarejestruj się</button>
@@ -134,9 +141,25 @@ async function doRegister(){
   const name    = document.getElementById('regName').value.trim();
   const company = document.getElementById('regCompany').value.trim();
   const email   = document.getElementById('regEmail').value.trim();
+  const email2  = document.getElementById('regEmail2').value.trim();
   const pass    = document.getElementById('regPass').value;
 
+  // Wyczyść poprzednie błędy
+  document.getElementById('regEmail').classList.remove('err-border');
+  document.getElementById('regEmail2').classList.remove('err-border');
+
   if(!email||!pass){ showMsg('registerMsg','Uzupełnij email i hasło.','err'); return; }
+  if(!email2){
+    document.getElementById('regEmail2').classList.add('err-border');
+    showMsg('registerMsg','Powtórz email — to zabezpieczenie przed literówką.','err');
+    return;
+  }
+  if(email.toLowerCase() !== email2.toLowerCase()){
+    document.getElementById('regEmail').classList.add('err-border');
+    document.getElementById('regEmail2').classList.add('err-border');
+    showMsg('registerMsg','Adresy email są różne — sprawdź czy nie ma literówki.','err');
+    return;
+  }
   if(pass.length<8){ showMsg('registerMsg','Hasło musi mieć co najmniej 8 znaków.','err'); return; }
 
   const btn = document.querySelector('#tab-register .btn');
@@ -149,7 +172,7 @@ async function doRegister(){
     });
     const data = await r.json();
     if(!r.ok){ showMsg('registerMsg',data.error||'Błąd rejestracji','err'); return; }
-    showMsg('registerMsg','✅ Sprawdź email aby aktywować konto. Możesz się już zalogować.','ok');
+    showMsg('registerMsg','✅ Sprawdź skrzynkę email — wysłaliśmy link aktywacyjny na '+email+'. Po kliknięciu w link będziesz mógł się zalogować.','ok');
   }catch(e){
     showMsg('registerMsg','Błąd połączenia z serwerem.','err');
   }finally{

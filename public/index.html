@@ -1034,6 +1034,36 @@ button{
 
 }
 
+/* Mobile fix: scrollable action bar - przyciski nie znikają poza ekran */
+@media (max-width: 768px){
+  .actionBar{
+    display: flex !important;
+    grid-template-columns: unset !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+    padding: 12px 14px;
+    gap: 8px;
+  }
+  .actionBar .btn{
+    flex: 0 0 auto;
+    min-width: 110px;
+    white-space: nowrap;
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+  /* Subtelny fade po prawej żeby było widać że jest więcej contentu */
+  .actionBar::after{
+    content: "";
+    flex: 0 0 4px;
+  }
+  /* Cienki scrollbar */
+  .actionBar::-webkit-scrollbar{ height: 4px; }
+  .actionBar::-webkit-scrollbar-thumb{ background: rgba(99,102,241,.4); border-radius: 2px; }
+}
+
 .route-evaluation{
   margin-top:20px;
   padding:12px;
