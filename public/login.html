@@ -68,6 +68,9 @@ input:focus{outline:none;border-color:#6366f1;}
 
   <!-- REGISTER -->
   <div id="tab-register" style="display:none;">
+    <div id="planBadge" style="display:none;margin-bottom:16px;padding:10px 12px;background:#1e1b4b;border:1px solid #6366f1;border-radius:8px;font-size:13px;color:#c7d2fe;text-align:center;">
+      📋 Wybrałeś: <b id="planLabel"></b>
+    </div>
     <label>Imię i nazwisko</label>
     <input type="text" id="regName" placeholder="Jan Kowalski">
     <label>Firma (opcjonalnie)</label>
@@ -142,7 +145,7 @@ async function doRegister(){
   try{
     const r = await fetch('/api/auth/register',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,password:pass,full_name:name,company})
+      body:JSON.stringify({email,password:pass,full_name:name,company,plan:SELECTED_PLAN})
     });
     const data = await r.json();
     if(!r.ok){ showMsg('registerMsg',data.error||'Błąd rejestracji','err'); return; }
@@ -152,6 +155,24 @@ async function doRegister(){
   }finally{
     btn.disabled=false; btn.textContent='Zarejestruj się';
   }
+}
+
+// Odczyt parametru ?plan= z URL i auto-przełączenie na rejestrację
+const PLAN_LABELS = {
+  solo: 'Plan Solo — 49 zł / mc',
+  pro:  'Plan Pro — 149 zł / mc',
+  team: 'Plan Team — 349 zł / mc',
+};
+const urlParams = new URLSearchParams(window.location.search);
+const planParam = urlParams.get('plan');
+const SELECTED_PLAN = ['solo','pro','team'].includes(planParam) ? planParam : null;
+
+if(SELECTED_PLAN){
+  // Przełącz na zakładkę rejestracji
+  showTab('register');
+  // Pokaż badge z wybranym planem
+  document.getElementById('planBadge').style.display = 'block';
+  document.getElementById('planLabel').textContent = PLAN_LABELS[SELECTED_PLAN];
 }
 
 // Jeśli już zalogowany — przekieruj

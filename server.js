@@ -4,8 +4,51 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
+import { Resend } from "resend";
 
 dotenv.config();
+
+// ============================================================
+// EMAIL NOTIFICATIONS (Resend)
+// Zmienne: RESEND_API_KEY, NOTIFICATION_EMAIL, NOTIFICATION_FROM
+// ============================================================
+const RESEND_API_KEY     = process.env.RESEND_API_KEY || "";
+const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || "kontakt@optirax.pl";
+const NOTIFICATION_FROM  = process.env.NOTIFICATION_FROM  || "OPTIRAX <onboarding@resend.dev>";
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+
+if (!RESEND_API_KEY) {
+  console.warn("⚠️  Brak RESEND_API_KEY – powiadomienia mailowe wyłączone");
+} else {
+  console.log("📧 Resend skonfigurowany – powiadomienia na:", NOTIFICATION_EMAIL);
+}
+
+/**
+ * Wysyła powiadomienie do właściciela aplikacji.
+ * Nie blokuje requesta — błąd loguje, nie rzuca dalej.
+ * @param {string} subject - temat maila
+ * @param {string} html    - treść HTML
+ */
+async function notifyOwner(subject, html) {
+  if (!resend) return; // nie skonfigurowany – po prostu pomiń
+  try {
+    await resend.emails.send({
+      from:    NOTIFICATION_FROM,
+      to:      NOTIFICATION_EMAIL,
+      subject: subject,
+      html:    html,
+    });
+    console.log("📧 Wysłano powiadomienie:", subject);
+  } catch (e) {
+    console.error("📧 Błąd wysyłki maila:", e.message);
+    // nie rzucamy dalej – mail jest "best effort"
+  }
+}
+
+/** Formatuje datę dla maila */
+function fmtDate(d = new Date()) {
+  return d.toLocaleString("pl-PL", { timeZone: "Europe/Warsaw" });
+}
 
 // Klucze API – wczytane raz na starcie
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
@@ -814,16 +857,50 @@ app.post("/api/expand-url", async (req, res) => {
 // Rejestracja
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { email, password, full_name, company } = req.body;
+    const { email, password, full_name, company, plan } = req.body;
     if (!email || !password) return res.status(400).json({ error: "Email i hasło są wymagane" });
+
+    // Walidacja planu (whitelist)
+    const validPlans = ["solo", "pro", "team"];
+    const selectedPlan = validPlans.includes(plan) ? plan : null;
 
     const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
       method: "POST",
       headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, data: { full_name, company } }),
+      body: JSON.stringify({
+        email,
+        password,
+        data: { full_name, company, selected_plan: selectedPlan }
+      }),
     });
     const data = await r.json();
     if (!r.ok) return res.status(400).json({ error: data.msg || data.error_description || "Błąd rejestracji" });
+
+    // Powiadomienie do właściciela (nie blokuje rejestracji)
+    const planLabel = {
+      solo: "Solo (49 zł)",
+      pro:  "Pro (149 zł)",
+      team: "Team (349 zł)",
+    }[selectedPlan] || "Nie wybrał planu z landingu";
+
+    notifyOwner(
+      `🎉 Nowa rejestracja: ${email}`,
+      `
+        <h2>Nowa rejestracja w OPTIRAX</h2>
+        <table style="font-family:sans-serif;font-size:14px;border-collapse:collapse;">
+          <tr><td style="padding:6px 12px;color:#666;">Email:</td><td style="padding:6px 12px;"><b>${email}</b></td></tr>
+          <tr><td style="padding:6px 12px;color:#666;">Imię i nazwisko:</td><td style="padding:6px 12px;">${full_name || "—"}</td></tr>
+          <tr><td style="padding:6px 12px;color:#666;">Firma:</td><td style="padding:6px 12px;">${company || "—"}</td></tr>
+          <tr><td style="padding:6px 12px;color:#666;">Wybrany plan:</td><td style="padding:6px 12px;"><b>${planLabel}</b></td></tr>
+          <tr><td style="padding:6px 12px;color:#666;">Data:</td><td style="padding:6px 12px;">${fmtDate()}</td></tr>
+        </table>
+        <p style="font-size:13px;color:#666;margin-top:16px;">
+          ⚠️ To rejestracja — nie wiadomo czy aktywował konto klikając link w mailu.<br>
+          Jeśli za 24h nie przyjdzie mail "pierwsze logowanie" — warto napisać follow-up.
+        </p>
+      `
+    );
+
     res.json({ ok: true, message: "Sprawdź email aby aktywować konto" });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -842,6 +919,52 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Pobierz profil
     const profile = await sbFetch("profiles", "GET", null, `?id=eq.${data.user.id}`);
+
+    // Powiadomienie o PIERWSZYM logowaniu (aktywacja konta)
+    // Detekcja: jeśli w user_metadata nie ma flagi first_login_at — to pierwsze logowanie.
+    const meta = data.user?.user_metadata || {};
+    if (!meta.first_login_at) {
+      // Ustaw flagę w Supabase (żeby kolejne logowania nie triggerowały maila)
+      try {
+        await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          method: "PUT",
+          headers: {
+            "apikey": SUPABASE_KEY,
+            "Authorization": `Bearer ${data.access_token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            data: { ...meta, first_login_at: new Date().toISOString() }
+          }),
+        });
+      } catch(e) {
+        console.error("Nie udało się ustawić first_login_at:", e.message);
+      }
+
+      const planLabel = {
+        solo: "Solo (49 zł)",
+        pro:  "Pro (149 zł)",
+        team: "Team (349 zł)",
+      }[meta.selected_plan] || "Bez planu z landingu";
+
+      notifyOwner(
+        `✅ Aktywacja konta: ${email}`,
+        `
+          <h2>Pierwsze logowanie w OPTIRAX</h2>
+          <p style="font-family:sans-serif;font-size:14px;">User <b>${email}</b> aktywował konto i zalogował się po raz pierwszy. Konto jest realne — można zacząć follow-up.</p>
+          <table style="font-family:sans-serif;font-size:14px;border-collapse:collapse;">
+            <tr><td style="padding:6px 12px;color:#666;">Email:</td><td style="padding:6px 12px;"><b>${email}</b></td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Imię i nazwisko:</td><td style="padding:6px 12px;">${meta.full_name || "—"}</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Firma:</td><td style="padding:6px 12px;">${meta.company || "—"}</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Wybrany plan:</td><td style="padding:6px 12px;"><b>${planLabel}</b></td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Data:</td><td style="padding:6px 12px;">${fmtDate()}</td></tr>
+          </table>
+          <p style="font-size:13px;color:#666;margin-top:16px;">
+            💡 Sugestia: napisz personalny mail "Witaj w OPTIRAX, jakie trasy najczęściej liczysz?" za 2-3h.
+          </p>
+        `
+      );
+    }
 
     res.json({
       token:        data.access_token,
@@ -1128,6 +1251,43 @@ app.post("/api/route", requireAuth, requireActiveSubscription, async (req, res) 
     const revenue = req.body.revenue || 0;
     const margin  = revenue - main.tolls_geo.total_eur;
     const score   = getRouteScore(margin);
+
+    // Powiadomienie o PIERWSZEJ kalkulacji trasy (najmocniejszy sygnał — user realnie używa)
+    const meta = req.user?.user_metadata || {};
+    if (!meta.first_route_at) {
+      const token = (req.headers.authorization || "").slice(7);
+      try {
+        await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+          method: "PUT",
+          headers: {
+            "apikey": SUPABASE_KEY,
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            data: { ...meta, first_route_at: new Date().toISOString() }
+          }),
+        });
+      } catch(e) {
+        console.error("Nie udało się ustawić first_route_at:", e.message);
+      }
+
+      notifyOwner(
+        `🚛 Pierwsza kalkulacja: ${req.user.email}`,
+        `
+          <h2>User zrobił pierwszą kalkulację trasy!</h2>
+          <p style="font-family:sans-serif;font-size:14px;">To najmocniejszy sygnał aktywacji — <b>${req.user.email}</b> realnie używa aplikacji. Najlepszy moment na personalny mail/telefon.</p>
+          <table style="font-family:sans-serif;font-size:14px;border-collapse:collapse;">
+            <tr><td style="padding:6px 12px;color:#666;">Email:</td><td style="padding:6px 12px;"><b>${req.user.email}</b></td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Firma:</td><td style="padding:6px 12px;">${meta.company || "—"}</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Trasa:</td><td style="padding:6px 12px;">${a.display} → ${b.display}</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Dystans:</td><td style="padding:6px 12px;">${main.distance_km} km</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Koszt tras:</td><td style="padding:6px 12px;">${main.tolls_geo.total_eur} EUR</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Data:</td><td style="padding:6px 12px;">${fmtDate()}</td></tr>
+          </table>
+        `
+      );
+    }
 
     return res.json({
       origin_resolved:      a.display,
