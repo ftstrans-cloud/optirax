@@ -878,9 +878,9 @@ app.post("/api/auth/register", async (req, res) => {
 
     // Powiadomienie do właściciela (nie blokuje rejestracji)
     const planLabel = {
-      solo: "Solo (49 zł)",
+      solo: "Solo (79 zł)",
       pro:  "Pro (149 zł)",
-      team: "Team (349 zł)",
+      team: "Team (299 zł)",
     }[selectedPlan] || "Nie wybrał planu z landingu";
 
     notifyOwner(
@@ -942,9 +942,9 @@ app.post("/api/auth/login", async (req, res) => {
       }
 
       const planLabel = {
-        solo: "Solo (49 zł)",
+        solo: "Solo (79 zł)",
         pro:  "Pro (149 zł)",
-        team: "Team (349 zł)",
+        team: "Team (299 zł)",
       }[meta.selected_plan] || "Bez planu z landingu";
 
       notifyOwner(
@@ -988,6 +988,100 @@ app.post("/api/auth/refresh", async (req, res) => {
     if (!r.ok) return res.status(401).json({ error: "Token wygasł, zaloguj się ponownie" });
     res.json({ token: data.access_token, refresh_token: data.refresh_token });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Pobierz dane usera używając access_token (po aktywacji konta z linku w mailu)
+app.post("/api/auth/me-from-token", async (req, res) => {
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "Brak tokenu" });
+
+    // Pobierz usera używając tokenu
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+    });
+    if (!r.ok) return res.status(401).json({ error: "Nieprawidłowy lub wygasły token" });
+    const user = await r.json();
+
+    // Pobierz profil
+    const profileData = await sbFetch("profiles", "GET", null, `?id=eq.${user.id}`);
+
+    res.json({ user, profile: profileData?.[0] || null });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reset hasła – wyślij mail z linkiem
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: "Podaj adres email" });
+
+    // Supabase wyśle maila z linkiem do reset hasła
+    // Po kliknięciu w link user trafi na /reset-password z access_token w hash
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    // Supabase celowo NIE mówi czy email istnieje (ochrona przed enumeracją)
+    // Zawsze zwracamy sukces, niezależnie od wyniku
+    if (!r.ok) {
+      const errData = await r.json().catch(() => ({}));
+      console.error("forgot-password Supabase error:", errData);
+    }
+
+    res.json({
+      ok: true,
+      message: "Jeśli konto istnieje, wysłaliśmy link do resetu hasła. Sprawdź skrzynkę."
+    });
+  } catch(e) {
+    console.error("forgot-password error:", e);
+    // Nawet przy błędzie zwracamy sukces (ochrona przed enumeracją emaili)
+    res.json({
+      ok: true,
+      message: "Jeśli konto istnieje, wysłaliśmy link do resetu hasła. Sprawdź skrzynkę."
+    });
+  }
+});
+
+// Reset hasła – ustaw nowe hasło (po kliknięciu w link z maila)
+// Frontend musi mieć access_token z hash URL i wysłać go w nagłówku Authorization
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const { password } = req.body;
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+    if (!token) return res.status(401).json({ error: "Brak tokenu z linka resetującego" });
+    if (!password) return res.status(400).json({ error: "Podaj nowe hasło" });
+    if (password.length < 8) return res.status(400).json({ error: "Hasło musi mieć co najmniej 8 znaków" });
+
+    // Supabase PUT /auth/v1/user — aktualizuje dane usera (w tym hasło)
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) {
+      return res.status(400).json({
+        error: data.msg || data.error_description || "Token wygasł, poproś o nowy link"
+      });
+    }
+
+    res.json({ ok: true, message: "Hasło zostało zmienione. Możesz się zalogować." });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Profil zalogowanego usera
@@ -1448,6 +1542,14 @@ app.get("/login", (req, res) =>
 
 app.get("/admin", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "admin.html")));
+
+// Callback po aktywacji konta / kliknięciu magic link
+app.get("/auth/callback", (req, res) =>
+  res.sendFile(path.join(process.cwd(), "public", "auth-callback.html")));
+
+// Reset hasła – ekran z formularzem nowego hasła
+app.get("/reset-password", (req, res) =>
+  res.sendFile(path.join(process.cwd(), "public", "reset-password.html")));
 
 // Główna strona – wstrzykuje klucz HERE jako meta tag
 app.get("/", (req, res) => {

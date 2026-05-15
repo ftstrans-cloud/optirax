@@ -68,6 +68,24 @@ input.err-border{border-color:#dc2626;}
     <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password">
     <button class="btn" onclick="doLogin()">Zaloguj się</button>
     <div class="msg" id="loginMsg"></div>
+    <div style="text-align:center;margin-top:16px;">
+      <a href="#" onclick="showTab('forgot');return false;" style="color:#818cf8;text-decoration:none;font-size:14px;">Zapomniałem hasła</a>
+    </div>
+  </div>
+
+  <!-- FORGOT PASSWORD -->
+  <div id="tab-forgot" style="display:none;">
+    <h2 style="font-size:18px;color:#e2e8f0;margin-bottom:8px;font-weight:600;">Reset hasła</h2>
+    <p style="font-size:14px;color:#94a3b8;margin-bottom:12px;line-height:1.4;">
+      Podaj email konta. Wyślemy link do ustawienia nowego hasła.
+    </p>
+    <label>Email</label>
+    <input type="email" id="forgotEmail" placeholder="twoj@email.com" autocomplete="email">
+    <button class="btn" onclick="doForgot()">Wyślij link resetu</button>
+    <div class="msg" id="forgotMsg"></div>
+    <div style="text-align:center;margin-top:16px;">
+      <a href="#" onclick="showTab('login');return false;" style="color:#818cf8;text-decoration:none;font-size:14px;">← Wróć do logowania</a>
+    </div>
   </div>
 
   <!-- REGISTER -->
@@ -96,7 +114,11 @@ input.err-border{border-color:#dc2626;}
 function showTab(t){
   document.getElementById('tab-login').style.display    = t==='login'    ? '' : 'none';
   document.getElementById('tab-register').style.display = t==='register' ? '' : 'none';
-  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',i===(t==='login'?0:1)));
+  document.getElementById('tab-forgot').style.display   = t==='forgot'   ? '' : 'none';
+  // Tabs jedynie pokazują login/register, forgot to osobny widok bez tab buttona
+  if (t === 'login' || t === 'register') {
+    document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('active',i===(t==='login'?0:1)));
+  }
 }
 
 function showMsg(id, text, type){
@@ -104,6 +126,28 @@ function showMsg(id, text, type){
   el.textContent = text;
   el.className = 'msg ' + type;
   el.style.display = 'block';
+}
+
+async function doForgot(){
+  const email = document.getElementById('forgotEmail').value.trim();
+  if(!email){ showMsg('forgotMsg','Wpisz adres email.','err'); return; }
+
+  const btn = document.querySelector('#tab-forgot .btn');
+  btn.disabled=true; btn.textContent='Wysyłanie...';
+
+  try{
+    const r = await fetch('/api/auth/forgot-password',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({email})
+    });
+    const data = await r.json();
+    // Zawsze pokazujemy sukces (ochrona przed enumeracją kont)
+    showMsg('forgotMsg', data.message || 'Jeśli konto istnieje, wysłaliśmy link do resetu hasła. Sprawdź skrzynkę (również SPAM).', 'ok');
+  }catch(e){
+    showMsg('forgotMsg','Błąd połączenia z serwerem.','err');
+  }finally{
+    btn.disabled=false; btn.textContent='Wyślij link resetu';
+  }
 }
 
 async function doLogin(){
@@ -182,9 +226,9 @@ async function doRegister(){
 
 // Odczyt parametru ?plan= z URL i auto-przełączenie na rejestrację
 const PLAN_LABELS = {
-  solo: 'Plan Solo — 49 zł / mc',
+  solo: 'Plan Solo — 79 zł / mc',
   pro:  'Plan Pro — 149 zł / mc',
-  team: 'Plan Team — 349 zł / mc',
+  team: 'Plan Team — 299 zł / mc',
 };
 const urlParams = new URLSearchParams(window.location.search);
 const planParam = urlParams.get('plan');
@@ -206,8 +250,11 @@ if(localStorage.getItem('optirax_token')){
 // Enter key
 document.addEventListener('keydown',e=>{
   if(e.key==='Enter'){
-    const loginVisible = document.getElementById('tab-login').style.display !== 'none';
-    if(loginVisible) doLogin(); else doRegister();
+    const loginVisible   = document.getElementById('tab-login').style.display   !== 'none';
+    const forgotVisible  = document.getElementById('tab-forgot').style.display  !== 'none';
+    if(forgotVisible)      doForgot();
+    else if(loginVisible)  doLogin();
+    else                   doRegister();
   }
 });
 </script>

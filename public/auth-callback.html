@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPTIRAX – Aktywacja konta</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:#0a0f1e;
+  color:#e2e8f0;
+  font-family:system-ui,-apple-system,sans-serif;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+.card{
+  background:#111827;
+  border:1px solid #1e293b;
+  border-radius:16px;
+  padding:40px 36px;
+  width:100%;
+  max-width:460px;
+  text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.4);
+}
+.logo{font-size:30px;font-weight:800;color:#fff;letter-spacing:-0.5px;margin-bottom:8px;}
+.logo span{color:#6366f1;}
+.spinner{
+  width:48px;height:48px;
+  border:3px solid #1e293b;
+  border-top-color:#6366f1;
+  border-radius:50%;
+  margin:24px auto;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.msg{font-size:15px;color:#94a3b8;line-height:1.5;margin-top:8px;}
+.msg.ok{color:#4ade80;}
+.msg.err{color:#f87171;}
+.btn{
+  display:inline-block;margin-top:24px;padding:12px 28px;
+  background:#6366f1;border:none;border-radius:10px;
+  color:#fff;font-size:15px;font-weight:600;cursor:pointer;
+  text-decoration:none;
+}
+.btn:hover{background:#4f46e5;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">OPTI<span>RAX</span></div>
+  <div class="spinner" id="spinner"></div>
+  <div class="msg" id="status">Aktywujemy Twoje konto...</div>
+  <div id="actions"></div>
+</div>
+
+<script>
+(function(){
+  // Hash może wyglądać tak:
+  //   #access_token=eyJ...&refresh_token=xxx&expires_in=3600&token_type=bearer&type=signup
+  // Lub po błędzie:
+  //   #error=access_denied&error_code=otp_expired&error_description=Email%20link%20is%20invalid
+  const hash = window.location.hash.substring(1);
+  if (!hash) {
+    showError('Brak danych autoryzacji. Spróbuj ponownie z linkiem aktywacyjnym z maila.');
+    return;
+  }
+
+  const params = new URLSearchParams(hash);
+
+  // Sprawdź czy Supabase zwrócił błąd
+  const error = params.get('error');
+  if (error) {
+    const description = params.get('error_description') || error;
+    showError(decodeURIComponent(description).replace(/\+/g, ' '));
+    return;
+  }
+
+  const accessToken  = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  const type         = params.get('type'); // 'signup', 'recovery', 'magiclink'
+
+  if (!accessToken) {
+    showError('Brak tokenu w linku. Sprawdź czy link nie jest stary lub uszkodzony.');
+    return;
+  }
+
+  // Pobierz dane usera używając tokenu (potwierdzenie + dane do localStorage)
+  fetch('/api/auth/me-from-token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + accessToken,
+    },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      showError(data.error);
+      return;
+    }
+
+    // Zapisz tokeny i user info
+    localStorage.setItem('optirax_token', accessToken);
+    if (refreshToken) localStorage.setItem('optirax_refresh', refreshToken);
+    if (data.user)    localStorage.setItem('optirax_user', JSON.stringify(data.user));
+    if (data.profile) localStorage.setItem('optirax_profile', JSON.stringify(data.profile));
+
+    // Pokaż sukces przez 1.5s, potem redirect
+    document.getElementById('spinner').style.display = 'none';
+    const statusEl = document.getElementById('status');
+    statusEl.className = 'msg ok';
+    statusEl.textContent = type === 'signup'
+      ? '✅ Konto aktywowane! Za chwilę przeniesiemy Cię do aplikacji.'
+      : '✅ Zalogowano pomyślnie!';
+
+    setTimeout(() => { window.location.href = '/'; }, 1500);
+  })
+  .catch(e => {
+    showError('Nie udało się aktywować konta. Spróbuj zalogować się ręcznie.');
+  });
+
+  function showError(text){
+    document.getElementById('spinner').style.display = 'none';
+    const statusEl = document.getElementById('status');
+    statusEl.className = 'msg err';
+    statusEl.textContent = '❌ ' + text;
+    document.getElementById('actions').innerHTML =
+      '<a href="/login" class="btn">Idź do logowania</a>';
+  }
+})();
+</script>
+</body>
+</html>
