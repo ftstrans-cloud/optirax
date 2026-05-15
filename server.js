@@ -1101,6 +1101,44 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   }
 });
 
+// Reset hasła – ustaw nowe hasło używając JWT (stary flow Supabase)
+// Frontend ma już JWT z URL hash bo Supabase sam zweryfikował OTP po kliknięciu linku
+app.post("/api/auth/reset-password-jwt", async (req, res) => {
+  try {
+    const { password } = req.body;
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+    if (!token)    return res.status(401).json({ error: "Brak tokenu z linka resetującego" });
+    if (!password) return res.status(400).json({ error: "Podaj nowe hasło" });
+    if (password.length < 8) return res.status(400).json({ error: "Hasło musi mieć co najmniej 8 znaków" });
+
+    // PUT /auth/v1/user — aktualizuje hasło używając Bearer JWT
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) {
+      console.error("reset-password-jwt error:", data);
+      return res.status(400).json({
+        error: data.msg || data.error_description || "Token wygasł, poproś o nowy link"
+      });
+    }
+
+    res.json({ ok: true, message: "Hasło zostało zmienione. Możesz się zalogować." });
+  } catch(e) {
+    console.error("reset-password-jwt error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Reset hasła – ustaw nowe hasło (po kliknięciu w link z maila)
 // Supabase teraz zwraca OTP (6-8 cyfr) zamiast JWT, więc musimy najpierw
 // zweryfikować OTP -> dostać JWT -> dopiero potem ustawić hasło
