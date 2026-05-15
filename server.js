@@ -1019,16 +1019,21 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ error: "Podaj adres email" });
 
+    // Wskazujemy Supabase gdzie ma odesłać usera po kliknięciu w link.
+    // Bez tego Supabase używa Site URL (root domeny) i token leci na /, gdzie
+    // index.html redirectuje na /login (bo nie ma jeszcze tokenu w localStorage).
+    const redirectTo = req.headers.origin
+      ? `${req.headers.origin}/reset-password`
+      : "https://app.optirax.pl/reset-password";
+
     // Supabase wyśle maila z linkiem do reset hasła
-    // Po kliknięciu w link user trafi na /reset-password z access_token w hash
     const r = await fetch(`${SUPABASE_URL}/auth/v1/recover`, {
       method: "POST",
       headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, redirect_to: redirectTo }),
     });
 
     // Supabase celowo NIE mówi czy email istnieje (ochrona przed enumeracją)
-    // Zawsze zwracamy sukces, niezależnie od wyniku
     if (!r.ok) {
       const errData = await r.json().catch(() => ({}));
       console.error("forgot-password Supabase error:", errData);
@@ -1040,7 +1045,6 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     });
   } catch(e) {
     console.error("forgot-password error:", e);
-    // Nawet przy błędzie zwracamy sukces (ochrona przed enumeracją emaili)
     res.json({
       ok: true,
       message: "Jeśli konto istnieje, wysłaliśmy link do resetu hasła. Sprawdź skrzynkę."
