@@ -990,6 +990,54 @@ app.post("/api/auth/refresh", async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Weryfikacja OTP signup - po kliknięciu linku aktywacyjnego z maila
+// Zamienia OTP token (z URL hash) na pełny JWT + refresh token
+app.post("/api/auth/verify-signup", async (req, res) => {
+  try {
+    const { token, email } = req.body;
+    if (!token) return res.status(400).json({ error: "Brak tokenu z linka aktywacyjnego" });
+    if (!email) return res.status(400).json({ error: "Brak emaila — wpisz email z którym się rejestrowałeś" });
+
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type:  "signup",
+        token: token,
+        email: email,
+      }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) {
+      console.error("verify-signup error:", data);
+      return res.status(400).json({
+        error: data.msg || data.error_description ||
+               "Link wygasł lub był już użyty. Zaloguj się, jeśli konto jest aktywne."
+      });
+    }
+
+    // Pobierz profil
+    let profile = null;
+    try {
+      const profileData = await sbFetch("profiles", "GET", null, `?id=eq.${data.user.id}`);
+      profile = profileData?.[0] || null;
+    } catch(e) {
+      console.error("verify-signup profile fetch:", e.message);
+    }
+
+    res.json({
+      token:         data.access_token,
+      refresh_token: data.refresh_token,
+      user:          data.user,
+      profile:       profile,
+    });
+  } catch(e) {
+    console.error("verify-signup error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Pobierz dane usera używając access_token (po aktywacji konta z linku w mailu)
 app.post("/api/auth/me-from-token", async (req, res) => {
   try {
@@ -1053,37 +1101,64 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 });
 
 // Reset hasła – ustaw nowe hasło (po kliknięciu w link z maila)
-// Frontend musi mieć access_token z hash URL i wysłać go w nagłówku Authorization
+// Supabase teraz zwraca OTP (6-8 cyfr) zamiast JWT, więc musimy najpierw
+// zweryfikować OTP -> dostać JWT -> dopiero potem ustawić hasło
 app.post("/api/auth/reset-password", async (req, res) => {
   try {
-    const { password } = req.body;
-    const auth = req.headers.authorization || "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    const { password, token, email } = req.body;
 
-    if (!token) return res.status(401).json({ error: "Brak tokenu z linka resetującego" });
+    if (!token)    return res.status(400).json({ error: "Brak tokenu z linka resetującego" });
+    if (!email)    return res.status(400).json({ error: "Brak adresu email — kliknij ponownie link z maila" });
     if (!password) return res.status(400).json({ error: "Podaj nowe hasło" });
     if (password.length < 8) return res.status(400).json({ error: "Hasło musi mieć co najmniej 8 znaków" });
 
-    // Supabase PUT /auth/v1/user — aktualizuje dane usera (w tym hasło)
-    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    // Krok 1: zweryfikuj OTP w Supabase, otrzymaj prawdziwy JWT access_token
+    const verifyR = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type:  "recovery",
+        token: token,
+        email: email,
+      }),
+    });
+
+    const verifyData = await verifyR.json();
+    if (!verifyR.ok) {
+      console.error("Reset password verify error:", verifyData);
+      return res.status(400).json({
+        error: verifyData.msg || verifyData.error_description ||
+               "Link wygasł lub był już użyty. Poproś o nowy link."
+      });
+    }
+
+    const jwtToken = verifyData.access_token;
+    if (!jwtToken) {
+      return res.status(400).json({ error: "Supabase nie zwrócił tokenu — spróbuj ponownie" });
+    }
+
+    // Krok 2: ustaw nowe hasło używając JWT
+    const updateR = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       method: "PUT",
       headers: {
         "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `Bearer ${jwtToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ password }),
     });
 
-    const data = await r.json();
-    if (!r.ok) {
+    const updateData = await updateR.json();
+    if (!updateR.ok) {
+      console.error("Reset password update error:", updateData);
       return res.status(400).json({
-        error: data.msg || data.error_description || "Token wygasł, poproś o nowy link"
+        error: updateData.msg || updateData.error_description || "Błąd ustawiania hasła"
       });
     }
 
     res.json({ ok: true, message: "Hasło zostało zmienione. Możesz się zalogować." });
   } catch(e) {
+    console.error("reset-password error:", e);
     res.status(500).json({ error: e.message });
   }
 });
