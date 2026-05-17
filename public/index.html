@@ -1491,12 +1491,13 @@ body.dark .eval-line{ color:#ddd; }
     </div>
   </div>
 
-  <!-- actionBar bez zmian -->
-  <div class="actionBar" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;">
+  <!-- actionBar -->
+  <div class="actionBar" style="grid-template-columns:repeat(6, 1fr);">
     <button type="button" class="btn" onclick="run()">Policz</button>
     <button type="button" class="btn secondary" onclick="toggleHistoryPanel(true)">📚 Historia</button>
     <button type="button" class="btn secondary" onclick="openPdfReport()">PDF oferta</button>
     <button type="button" class="btn secondary" onclick="openFuelTracker()">⛽ Paliwo</button>
+    <button type="button" class="btn secondary" onclick="openCargoCalc()">📐 Powierzchnia</button>
     <button type="button" class="btn secondary" onclick="openFleetManager()">🚛 Flota</button>
   </div>
   
@@ -1612,6 +1613,237 @@ body.dark .eval-line{ color:#ddd; }
 .ft-empty{text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:2rem 0}
 .ft-divider{height:1px;background:var(--line,#334155);margin:10px 0}
 .ft-formula{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+
+/* ===== KALKULATOR POWIERZCHNI ŁADUNKOWEJ ===== */
+#cargoModal{
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,.6);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+}
+#cargoModal.open { display: flex; }
+
+#cargoPanel{
+  background: var(--bg, #0f172a);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 720px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 16px 16px 100px;
+  color: var(--text, #f8fafc);
+}
+:root[data-theme="light"] #cargoPanel { background: #f8fafc; color: #0f172a; }
+
+.cargo-header{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.cargo-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.cargo-close{
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.2);
+  color: inherit;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.cargo-section{
+  background: var(--panel, #253049);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+:root[data-theme="light"] .cargo-section { background: #ffffff; border: 1px solid #e2e8f0; }
+
+.cargo-section h4{
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent, #7aa2ff);
+}
+
+.cargo-row{
+  display: grid;
+  grid-template-columns: repeat(4, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: end;
+}
+.cargo-row label{
+  font-size: 11px;
+  color: var(--muted, #d1d9ff);
+  margin-bottom: 4px;
+  display: block;
+}
+.cargo-row input, .cargo-row select{
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(0,0,0,.2);
+  color: inherit;
+  font-size: 14px;
+}
+:root[data-theme="light"] .cargo-row input,
+:root[data-theme="light"] .cargo-row select{
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+.cargo-row .del-btn{
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.3);
+  color: #ef4444;
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.cargo-presets{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.cargo-preset{
+  padding: 6px 12px;
+  background: rgba(122,162,255,0.1);
+  border: 1px solid rgba(122,162,255,0.3);
+  border-radius: 999px;
+  color: var(--accent, #7aa2ff);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cargo-preset:hover{
+  background: rgba(122,162,255,0.25);
+}
+
+.cargo-add{
+  width: 100%;
+  padding: 10px;
+  background: rgba(122,162,255,0.12);
+  border: 1px dashed rgba(122,162,255,0.4);
+  color: var(--accent, #7aa2ff);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.cargo-summary{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 12px 0;
+}
+.cargo-summary-item{
+  background: rgba(0,0,0,.25);
+  padding: 12px;
+  border-radius: 8px;
+  text-align: center;
+}
+:root[data-theme="light"] .cargo-summary-item { background: #f1f5f9; }
+.cargo-summary-item .val{
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent, #7aa2ff);
+}
+.cargo-summary-item .lbl{
+  font-size: 11px;
+  color: var(--muted, #d1d9ff);
+  margin-top: 2px;
+}
+
+.cargo-vehicle{
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: rgba(0,0,0,.2);
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+:root[data-theme="light"] .cargo-vehicle { background: #f8fafc; }
+.cargo-vehicle.best{
+  border-color: #10b981;
+  background: rgba(16,185,129,0.08);
+}
+.cargo-vehicle.overflow{
+  opacity: 0.5;
+  border-color: rgba(239,68,68,0.3);
+}
+.cargo-vehicle .v-name{
+  font-weight: 600;
+  font-size: 14px;
+}
+.cargo-vehicle .v-specs{
+  font-size: 11px;
+  color: var(--muted, #d1d9ff);
+}
+.cargo-vehicle .v-bar{
+  width: 100%;
+  height: 8px;
+  background: rgba(255,255,255,.1);
+  border-radius: 4px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+.cargo-vehicle .v-fill{
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #3b82f6);
+  transition: width 0.4s;
+}
+.cargo-vehicle .v-fill.overfill{
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+.cargo-vehicle .v-pct{
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 60px;
+  text-align: right;
+}
+
+.cargo-btn-calc{
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.cargo-empty{
+  text-align: center;
+  padding: 30px;
+  color: var(--muted, #d1d9ff);
+  font-size: 14px;
+}
 </style>
 
 <div id="fuelModal">
@@ -2584,6 +2816,265 @@ window.addEventListener('load', function(){
     console.error('Navbar error:', err);
   }
 });
+</script>
+
+<!-- ===== KALKULATOR POWIERZCHNI ŁADUNKOWEJ ===== -->
+<div id="cargoModal">
+  <div id="cargoPanel">
+    <div class="cargo-header">
+      <h3>📐 Kalkulator powierzchni ładunkowej</h3>
+      <button class="cargo-close" onclick="closeCargoCalc()">×</button>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Szybkie ustawienia palet</h4>
+      <div class="cargo-presets">
+        <button class="cargo-preset" onclick="addCargoPreset('euro')">+ Paleta EURO 120×80</button>
+        <button class="cargo-preset" onclick="addCargoPreset('industrial')">+ Paleta przemysłowa 120×100</button>
+        <button class="cargo-preset" onclick="addCargoPreset('halfeuro')">+ Pół-paleta 80×60</button>
+        <button class="cargo-preset" onclick="addCargoPreset('custom')">+ Inne wymiary</button>
+      </div>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Lista ładunku</h4>
+      <div id="cargoItems">
+        <div class="cargo-empty">
+          Dodaj pierwszy element klikając przyciski powyżej
+        </div>
+      </div>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Podsumowanie</h4>
+      <div class="cargo-summary">
+        <div class="cargo-summary-item">
+          <div class="val" id="cargoSumArea">0,00</div>
+          <div class="lbl">Powierzchnia (m²)</div>
+        </div>
+        <div class="cargo-summary-item">
+          <div class="val" id="cargoSumVol">0,00</div>
+          <div class="lbl">Objętość (m³)</div>
+        </div>
+        <div class="cargo-summary-item">
+          <div class="val" id="cargoSumLdm">0,00</div>
+          <div class="lbl">Metry ładunkowe (LDM)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Dobór zabudowy</h4>
+      <div id="cargoVehicles">
+        <div class="cargo-vehicle" data-key="bus">
+          <div>
+            <div class="v-name">🚐 Bus</div>
+            <div class="v-specs">3,5t • ~18 m³ • 4,2×2,1×1,8</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="solo">
+          <div>
+            <div class="v-name">🚛 Solo</div>
+            <div class="v-specs">12t • ~50 m³ • 7,2×2,45×2,7</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="standard">
+          <div>
+            <div class="v-name">🚚 Standard 13,6</div>
+            <div class="v-specs">24t • 90 m³ • 13,6×2,45×2,7</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="mega">
+          <div>
+            <div class="v-name">🚛 Mega</div>
+            <div class="v-specs">24t • 105 m³ • 13,6×2,45×3,0</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="jumbo">
+          <div>
+            <div class="v-name">🚛 Jumbo</div>
+            <div class="v-specs">24t • 120 m³ • 7,7+7,7×2,48×3,0</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="cargo-btn-calc" onclick="calcCargo()">Przelicz dobór zabudowy</button>
+  </div>
+</div>
+
+<script>
+// ===== KALKULATOR POWIERZCHNI ŁADUNKOWEJ =====
+const CARGO_VEHICLES = {
+  bus:      { vol: 18,  ldm: 4.0,  area: 8.8,  name: 'Bus' },
+  solo:     { vol: 50,  ldm: 7.2,  area: 17.6, name: 'Solo' },
+  standard: { vol: 90,  ldm: 13.6, area: 33.3, name: 'Standard 13,6' },
+  mega:     { vol: 105, ldm: 13.6, area: 33.3, name: 'Mega' },
+  jumbo:    { vol: 120, ldm: 15.4, area: 38.2, name: 'Jumbo' }
+};
+
+const CARGO_PRESETS = {
+  euro:       { len: 120, wid: 80,  hei: 120, name: 'EURO' },
+  industrial: { len: 120, wid: 100, hei: 120, name: 'Przemysłowa' },
+  halfeuro:   { len: 80,  wid: 60,  hei: 100, name: 'Pół-paleta' },
+  custom:     { len: 100, wid: 80,  hei: 100, name: 'Własne' }
+};
+
+let cargoItems = [];
+
+function openCargoCalc(){
+  document.getElementById('cargoModal').classList.add('open');
+  renderCargoItems();
+  calcCargo();
+}
+function closeCargoCalc(){
+  document.getElementById('cargoModal').classList.remove('open');
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  const modal = document.getElementById('cargoModal');
+  if(modal){
+    modal.addEventListener('click', function(e){
+      if(e.target.id === 'cargoModal') closeCargoCalc();
+    });
+  }
+});
+
+function addCargoPreset(type){
+  const p = CARGO_PRESETS[type];
+  cargoItems.push({
+    name: p.name,
+    len: p.len,
+    wid: p.wid,
+    hei: p.hei,
+    qty: 1
+  });
+  renderCargoItems();
+  calcCargo();
+}
+
+function removeCargoItem(idx){
+  cargoItems.splice(idx, 1);
+  renderCargoItems();
+  calcCargo();
+}
+
+function updateCargoItem(idx, field, val){
+  cargoItems[idx][field] = parseFloat(val) || 0;
+  calcCargo();
+}
+
+function renderCargoItems(){
+  const wrap = document.getElementById('cargoItems');
+  if(cargoItems.length === 0){
+    wrap.innerHTML = '<div class="cargo-empty">Dodaj pierwszy element klikając przyciski powyżej</div>';
+    return;
+  }
+  wrap.innerHTML = cargoItems.map((it, idx) => `
+    <div class="cargo-row">
+      <div>
+        <label>Nazwa</label>
+        <input type="text" value="${it.name}" onchange="cargoItems[${idx}].name=this.value">
+      </div>
+      <div>
+        <label>Dł. (cm)</label>
+        <input type="number" value="${it.len}" min="1" onchange="updateCargoItem(${idx},'len',this.value)">
+      </div>
+      <div>
+        <label>Szer. (cm)</label>
+        <input type="number" value="${it.wid}" min="1" onchange="updateCargoItem(${idx},'wid',this.value)">
+      </div>
+      <div>
+        <label>Wys. (cm)</label>
+        <input type="number" value="${it.hei}" min="1" onchange="updateCargoItem(${idx},'hei',this.value)">
+      </div>
+      <button class="del-btn" onclick="removeCargoItem(${idx})">×</button>
+    </div>
+    <div class="cargo-row" style="grid-template-columns: 1fr; margin-bottom: 14px;">
+      <div>
+        <label>Ilość sztuk</label>
+        <input type="number" value="${it.qty}" min="1" onchange="updateCargoItem(${idx},'qty',this.value)">
+      </div>
+    </div>
+  `).join('');
+}
+
+function calcCargo(){
+  let totalArea = 0;  // m²
+  let totalVol = 0;   // m³
+
+  cargoItems.forEach(it => {
+    const a = (it.len/100) * (it.wid/100); // m²
+    const v = a * (it.hei/100);            // m³
+    totalArea += a * it.qty;
+    totalVol  += v * it.qty;
+  });
+
+  // LDM = długość ładowna potrzebna przy szerokości 2,4m
+  // 1 LDM = 2,4 m² powierzchni podłogi
+  const ldm = totalArea / 2.4;
+
+  const sumArea = document.getElementById('cargoSumArea');
+  const sumVol  = document.getElementById('cargoSumVol');
+  const sumLdm  = document.getElementById('cargoSumLdm');
+  if(sumArea) sumArea.textContent = totalArea.toFixed(2).replace('.', ',');
+  if(sumVol)  sumVol.textContent  = totalVol.toFixed(2).replace('.', ',');
+  if(sumLdm)  sumLdm.textContent  = ldm.toFixed(2).replace('.', ',');
+
+  // Dobór zabudowy: kryterium = max(vol_fill, ldm_fill)
+  let bestKey = null;
+  let bestScore = Infinity; // najmniejsza zabudowa która zmieści
+
+  Object.entries(CARGO_VEHICLES).forEach(([key, veh]) => {
+    const volFill = (totalVol / veh.vol) * 100;
+    const ldmFill = (ldm / veh.ldm) * 100;
+    const fill = Math.max(volFill, ldmFill);
+
+    const row = document.querySelector(`.cargo-vehicle[data-key="${key}"]`);
+    if(!row) return;
+    const fillEl = row.querySelector('.v-fill');
+    const pctEl  = row.querySelector('.v-pct');
+
+    fillEl.style.width = Math.min(fill, 100) + '%';
+    pctEl.textContent  = fill.toFixed(0) + '%';
+
+    row.classList.remove('best', 'overflow');
+    fillEl.classList.remove('overfill');
+
+    if(fill > 100){
+      row.classList.add('overflow');
+      fillEl.classList.add('overfill');
+    } else if(fill > 0 && fill < bestScore){
+      bestScore = fill;
+      bestKey = key;
+    }
+  });
+
+  if(bestKey){
+    const bestRow = document.querySelector(`.cargo-vehicle[data-key="${bestKey}"]`);
+    if(bestRow) bestRow.classList.add('best');
+  }
+}
 </script>
 
 </body>
