@@ -73,6 +73,9 @@
   <meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OPTIRAX - Kalkulator kosztów trasy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
 
 html, body{
@@ -82,17 +85,35 @@ html, body{
 }
 
 :root{
-  --bg:#1f2937;          
-  --panel:#253049;       
-  --panel2:#2b3658;
-  --text:#f8fafc;        
-  --muted:#d1d9ff;       
-  --border:rgba(255,255,255,.22);
-  --accent:#7aa2ff;
-  --page-pad: 24px;         /* masz w body padding:24px */
---actionbar-h: 92px; /* jak masz większy pasek, podbij */
+  /* Paleta zsynchronizowana z landingiem optirax.pl */
+  --bg: #0a1628;
+  --bg-2: #0e1c33;
+  --bg-3: #14253f;
+  --panel: #182d4d;
+  --panel2: #1f3961;
+  --text: #e6edf7;
+  --muted: #8da4c5;
+  --text-muted: #5a7299;
+  --border: #1f3961;
+  --border-soft: rgba(96,165,250,0.15);
+  --accent: #3b82f6;
+  --accent-2: #60a5fa;
+  --accent-glow: rgba(59,130,246,0.35);
+  --gradient: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --page-pad: 24px;
+  --actionbar-h: 92px;
   --pad: 24px;
   --gap: 16px;
+}
+
+/* Nagłówki w stylu landingu - Bricolage Grotesque */
+h1, h2, h3, .title{
+  font-family: 'Bricolage Grotesque', sans-serif;
+  letter-spacing: -0.02em;
+  font-weight: 700;
 }
 
 *{ box-sizing:border-box; }
@@ -102,12 +123,12 @@ body{
   line-height: 1.45;
   margin:0;
   padding:24px;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: 'Inter', -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
   color: var(--text);
   background:
-  radial-gradient(1200px 600px at 15% -10%, rgba(122,162,255,.45), transparent 60%),
-  radial-gradient(900px 500px at 85% 0%, rgba(99,102,241,.40), transparent 55%),
-  linear-gradient(180deg, #1e293b, #1f2937);
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(59,130,246,0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 10%, rgba(96,165,250,0.08), transparent),
+    var(--bg);
   padding-bottom: calc(var(--actionbar-h) + 24px);
 }
 
@@ -207,7 +228,7 @@ h2{ font-size: 15px; margin:0 0 10px; }
 
 .form input:focus{
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(122,162,255,.30);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.30);
 }
 
 .row2{
@@ -221,15 +242,28 @@ h2{ font-size: 15px; margin:0 0 10px; }
   padding:10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: rgba(110,168,255,.18);
-  color: var(--text);
+  background: var(--gradient);
+  color: #fff;
   cursor:pointer;
   font-weight:700;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px var(--accent-glow);
 }
 
-.btn:hover{ background: rgba(110,168,255,.28); }
-.btn.secondary{ background: rgba(255,255,255,.06); }
-.btn.secondary:hover{ background: rgba(255,255,255,.10); }
+.btn:hover{
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px var(--accent-glow);
+}
+.btn.secondary{
+  background: rgba(255,255,255,.04);
+  box-shadow: none;
+  color: var(--text);
+}
+.btn.secondary:hover{
+  background: rgba(255,255,255,.08);
+  filter: none;
+}
 
 .stack{ display:flex; flex-direction:column; gap:12px; }
 
@@ -427,7 +461,7 @@ pre{
   transition: border-color .15s, background .15s;
 }
 .altRouteCard:hover { background: rgba(255,255,255,.09); }
-.altRouteCard.selected { border-color: var(--accent); background: rgba(122,162,255,.12); }
+.altRouteCard.selected { border-color: var(--accent); background: rgba(59,130,246,.12); }
 .altRouteCard .altTitle { font-weight: 700; margin-bottom: 4px; }
 .altRouteCard .altMeta { font-size: 12px; opacity: .75; }
 
@@ -557,7 +591,7 @@ input, select, textarea{
 /* focus jak w panelach */
 input:focus, select:focus, textarea:focus{
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(122,162,255,.30);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.30);
 }
 
 /* placeholder */
@@ -710,7 +744,7 @@ button{
 :root[data-theme="light"] body{
   background:
     radial-gradient(1200px 600px at 15% -10%, rgba(37,99,235,.16), transparent 60%),
-    radial-gradient(900px 500px at 85% 0%, rgba(99,102,241,.12), transparent 55%),
+    radial-gradient(900px 500px at 85% 0%, rgba(96,165,250,.12), transparent 55%),
     linear-gradient(180deg, #f6f8fb, #eef2f7);
   color: var(--text);
 }
@@ -1061,7 +1095,7 @@ button{
   }
   /* Cienki scrollbar */
   .actionBar::-webkit-scrollbar{ height: 4px; }
-  .actionBar::-webkit-scrollbar-thumb{ background: rgba(99,102,241,.4); border-radius: 2px; }
+  .actionBar::-webkit-scrollbar-thumb{ background: rgba(96,165,250,.4); border-radius: 2px; }
 }
 
 .route-evaluation{
@@ -1676,7 +1710,7 @@ body.dark .eval-line{ color:#ddd; }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent, #7aa2ff);
+  color: var(--accent, #3b82f6);
 }
 
 .cargo-row{
@@ -1726,24 +1760,24 @@ body.dark .eval-line{ color:#ddd; }
 }
 .cargo-preset{
   padding: 6px 12px;
-  background: rgba(122,162,255,0.1);
-  border: 1px solid rgba(122,162,255,0.3);
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.3);
   border-radius: 999px;
-  color: var(--accent, #7aa2ff);
+  color: var(--accent, #3b82f6);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .cargo-preset:hover{
-  background: rgba(122,162,255,0.25);
+  background: rgba(59,130,246,0.25);
 }
 
 .cargo-add{
   width: 100%;
   padding: 10px;
-  background: rgba(122,162,255,0.12);
-  border: 1px dashed rgba(122,162,255,0.4);
-  color: var(--accent, #7aa2ff);
+  background: rgba(59,130,246,0.12);
+  border: 1px dashed rgba(59,130,246,0.4);
+  color: var(--accent, #3b82f6);
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;
@@ -1766,7 +1800,7 @@ body.dark .eval-line{ color:#ddd; }
 .cargo-summary-item .val{
   font-size: 22px;
   font-weight: 700;
-  color: var(--accent, #7aa2ff);
+  color: var(--accent, #3b82f6);
 }
 .cargo-summary-item .lbl{
   font-size: 11px;
