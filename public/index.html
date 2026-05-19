@@ -1104,6 +1104,84 @@ button{
 body.dark .route-evaluation{ background:#1e1e1e; border:1px solid #333; }
 body.dark .eval-line{ color:#ddd; }
 
+/* ===== Summary (Szczegóły kalkulacji) — uatrakcyjniony widok ===== */
+.summary-grid{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.summary-empty{
+  text-align: center;
+  padding: 28px 16px;
+  opacity: .7;
+}
+.summary-empty-icon{
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+.summary-empty-title{
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+.summary-empty-text{
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.summary-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  gap: 12px;
+}
+.summary-row.highlight{
+  background: linear-gradient(135deg, rgba(99,102,241,.10), rgba(220,38,38,.06));
+  border-color: rgba(220,38,38,.35);
+}
+.summary-row-label{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.summary-row-icon{
+  font-size: 17px;
+  width: 24px;
+  text-align: center;
+}
+.summary-row-value{
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.summary-row-value .unit{
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-left: 4px;
+}
+.summary-section-title{
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+  margin: 8px 0 -2px 4px;
+  opacity: .8;
+}
+:root[data-theme="light"] .summary-row{
+  background: rgba(30,64,175,.04);
+}
+
 </style>
 
 <link
@@ -1481,14 +1559,16 @@ body.dark .eval-line{ color:#ddd; }
         </div>
 
         <div class="card" style="margin-top:12px;">
-          <h2>Opis</h2>
-          <pre id="summary"></pre>
-        </div>
-
-        <div class="card" style="margin-top:12px;">
-          <h2>Debug</h2>
-          <div class="small">Jeśli chcesz podejrzeć surowe dane</div>
-          <pre id="out" style="margin-top:10px;"></pre>
+          <h2>Szczegóły kalkulacji</h2>
+          <div class="small">Rozbicie kosztów i parametrów trasy</div>
+          <div id="summaryView" class="summary-grid" style="margin-top:14px;">
+            <div class="summary-empty">
+              <div class="summary-empty-icon">📊</div>
+              <div class="summary-empty-title">Brak danych</div>
+              <div class="summary-empty-text">Wypełnij trasę po lewej i kliknij <b>Policz</b> aby zobaczyć szczegóły kalkulacji.</div>
+            </div>
+          </div>
+          <pre id="summary" style="display:none;"></pre>
         </div>
 
       </aside>
@@ -2589,6 +2669,113 @@ window.addEventListener('load', function(){
     console.error('Navbar error:', err);
   }
 });
+
+// ===== UATRAKCYJNIENIE: zamiana surowego <pre id="summary"> na ładny widok =====
+(function(){
+  const summaryEl = document.getElementById('summary');
+  const viewEl = document.getElementById('summaryView');
+  if (!summaryEl || !viewEl) return;
+
+  function parseLineToParts(line){
+    // np. "Paliwo: 720 EUR | Kierowca: 360 EUR" → [{lbl:"Paliwo",val:"720 EUR"}, {lbl:"Kierowca",val:"360 EUR"}]
+    return line.split('|').map(s => s.trim()).filter(Boolean).map(part => {
+      const ix = part.indexOf(':');
+      if (ix < 0) return { lbl: part, val: '' };
+      return { lbl: part.slice(0, ix).trim(), val: part.slice(ix+1).trim() };
+    });
+  }
+
+  function formatValue(val){
+    // Wyciągnij liczbę i jednostkę, sformatuj
+    const m = val.match(/^(-?[\d\s,.]+)\s*(.*)$/);
+    if (!m) return { num: val, unit: '' };
+    return { num: m[1].trim(), unit: m[2].trim() };
+  }
+
+  const ICONS = {
+    'Koszt całkowity': '💰',
+    'Dystans': '📏',
+    'Paliwo': '⛽',
+    'Kierowca': '👤',
+    'Myto': '🛣️',
+    'Promy': '⛴️',
+    'Inne': '📦',
+    'Cena zlecenia': '💵',
+    'Proponowana cena': '💵',
+    'Marża': '📈',
+  };
+
+  function renderEmpty(){
+    viewEl.innerHTML = `
+      <div class="summary-empty">
+        <div class="summary-empty-icon">📊</div>
+        <div class="summary-empty-title">Brak danych</div>
+        <div class="summary-empty-text">Wypełnij trasę po lewej i kliknij <b>Policz</b> aby zobaczyć szczegóły kalkulacji.</div>
+      </div>`;
+  }
+
+  function renderRich(text){
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) { renderEmpty(); return; }
+
+    const html = [];
+    let inSection = null;
+    const sections = {
+      meta: ['Koszt całkowity', 'Dystans'],
+      costs: ['Paliwo', 'Kierowca', 'Myto', 'Promy', 'Inne'],
+      result: ['Cena zlecenia', 'Proponowana cena', 'Marża'],
+    };
+    const sectionTitles = {
+      meta: 'Trasa',
+      costs: 'Rozbicie kosztów',
+      result: 'Wycena',
+    };
+    const buckets = { meta: [], costs: [], result: [] };
+
+    lines.forEach(line => {
+      const parts = parseLineToParts(line);
+      parts.forEach(p => {
+        if (!p.lbl) return;
+        let bucket = 'meta';
+        for (const key in sections){
+          if (sections[key].some(k => p.lbl.startsWith(k))) { bucket = key; break; }
+        }
+        const icon = ICONS[p.lbl.replace(/:.*$/, '').split(' ')[0]] || ICONS[p.lbl] || '•';
+        const valFmt = formatValue(p.val);
+        const isHighlight = (bucket === 'result' && p.lbl.startsWith('Marża'));
+        buckets[bucket].push(`
+          <div class="summary-row${isHighlight ? ' highlight' : ''}">
+            <div class="summary-row-label">
+              <span class="summary-row-icon">${icon}</span>
+              <span>${p.lbl}</span>
+            </div>
+            <div class="summary-row-value">${valFmt.num}${valFmt.unit ? `<span class="unit">${valFmt.unit}</span>` : ''}</div>
+          </div>`);
+      });
+    });
+
+    // składanie sekcji w kolejności
+    ['meta', 'costs', 'result'].forEach(key => {
+      if (buckets[key].length){
+        html.push(`<div class="summary-section-title">${sectionTitles[key]}</div>`);
+        html.push(buckets[key].join(''));
+      }
+    });
+
+    viewEl.innerHTML = html.join('');
+  }
+
+  // Observer — gdy calculator.js wpisze textContent w <pre id="summary">, przerysuj
+  const obs = new MutationObserver(() => {
+    const txt = (summaryEl.textContent || '').trim();
+    if (!txt){ renderEmpty(); return; }
+    renderRich(txt);
+  });
+  obs.observe(summaryEl, { childList: true, characterData: true, subtree: true });
+
+  // Pierwszy render (puste)
+  if (!(summaryEl.textContent || '').trim()) renderEmpty();
+})();
 </script>
 
 </body>
