@@ -304,7 +304,9 @@ function openPdfReport(){
   const isOffer = (calc.calc_mode === "offer" && Number(calc.offer_price_eur) > 0);
   const price = isOffer ? Number(calc.offer_price_eur) : Number(calc.suggested_price_eur);
 
-  // Dane klienta: preferuj ostatnio zapisany rekord historii, potem pola modala
+  // Dane klienta: priorytet = aktualna trasa (origin → destination) i pola modala.
+  // Historia użyta tylko wtedy, gdy user świeżo kliknął "Zapisz" (lastHistoryId
+  // jest czyszczone przy każdym nowym "Policz" w calculator.js).
   let clientName = "";
   let offerName = "";
   let note = "";
@@ -314,9 +316,13 @@ function openPdfReport(){
     const lastId = window.lastHistoryId;
     const it = lastId ? items.find(x => x.id === lastId) : null;
 
-    offerName = (it?.name || document.getElementById("h_name")?.value || "").trim();
-    clientName = (it?.client || document.getElementById("h_client")?.value || "").trim();
-    note = (it?.note || document.getElementById("h_note")?.value || "").trim();
+    // Auto-nazwa z aktualnej trasy (origin → destination) jako sensowny fallback
+    const autoName = [(r.origin || "").trim(), (r.destination || "").trim()]
+      .filter(Boolean).join(" → ");
+
+    offerName = (document.getElementById("h_name")?.value || it?.name || autoName || "").trim();
+    clientName = (document.getElementById("h_client")?.value || it?.client || "").trim();
+    note = (document.getElementById("h_note")?.value || it?.note || "").trim();
   } catch {}
 
   const now = new Date();

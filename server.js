@@ -1291,45 +1291,133 @@ async function sbFetch(table, method = "GET", body = null, params = "") {
 app.get("/api/history", requireAuth, requireActiveSubscription, async (req, res) => {
   try {
     const uid = req.userId;
+    // Domyślnie tylko stałe wpisy (bez draftów z autosave).
+    // ?include_drafts=1 zwraca wszystko (do debug/admin).
+    const draftFilter = req.query.include_drafts === "1" ? "" : "&is_draft=eq.false";
     const data = await sbFetch("quotes", "GET", null,
-      `?auth_user_id=eq.${uid}&order=ts.desc&limit=200`);
+      `?auth_user_id=eq.${uid}${draftFilter}&order=ts.desc&limit=200`);
     res.json(data || []);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// Helper: zbuduj wiersz dla tabeli quotes z item-a frontowego
+function buildQuoteRow(item, userId, { isDraft = false } = {}) {
+  return {
+    id:           item.id,
+    user_id:      "default",
+    auth_user_id: userId,
+    ts:           item.ts || Date.now(),
+    name:         item.name || "",
+    client:       item.client || "",
+    note:         item.note || "",
+    origin:       item.route?.origin || "",
+    destination:  item.route?.destination || "",
+    stops:        item.route?.stops || [],
+    distance_km:  item.calc?.distance_km ?? null,
+    duration_h:   item.calc?.duration_h ?? null,
+    total_cost:   item.calc?.total_cost_eur ?? null,
+    price_eur:    item.calc?.price_eur ?? null,
+    margin_eur:   item.calc?.margin_eur ?? null,
+    margin_pct:   item.calc?.margin_pct ?? null,
+    tolls_eur:    item.calc?.tolls_eur ?? null,
+    fuel_eur:     item.calc?.fuel_cost_eur ?? null,
+    driver_eur:   item.calc?.driver_cost_eur ?? null,
+    other_eur:    item.calc?.other_costs_eur ?? null,
+    tolls_geo:    item.tolls_geo || null,
+    vignettes:    item.vignettes || null,
+    calc:         item.calc || null,
+    input:        item.input || null,
+    is_draft:     !!isDraft,
+  };
+}
+
+// Helper: znajdź draft dla danej trasy (origin + destination, te same stops)
+// Zwraca id draftu albo null. Stops porównujemy luźno (po stringified arr).
+async function findDraftForRoute(userId, origin, destination, stops) {
+  try {
+    const o = encodeURIComponent(origin || "");
+    const d = encodeURIComponent(destination || "");
+    const data = await sbFetch("quotes", "GET", null,
+      `?auth_user_id=eq.${userId}&is_draft=eq.true&origin=eq.${o}&destination=eq.${d}&order=ts.desc&limit=10`);
+    if (!Array.isArray(data) || data.length === 0) return null;
+
+    // Dopasuj po stops (jak dwie trasy mają takie same origin+destination
+    // ale różne punkty pośrednie = osobne drafty)
+    const stopsStr = JSON.stringify(stops || []);
+    const match = data.find(row => JSON.stringify(row.stops || []) === stopsStr);
+    return match?.id || null;
+  } catch {
+    return null;
+  }
+}
 
 app.post("/api/history", requireAuth, requireActiveSubscription, async (req, res) => {
   try {
     const item = req.body;
     if (!item?.id) return res.status(400).json({ error: "Brak id" });
-    const row = {
-      id:          item.id,
-      user_id:     "default",
-      auth_user_id: req.userId,
-      ts:          item.ts || Date.now(),
-      name:        item.name || "",
-      client:      item.client || "",
-      note:        item.note || "",
-      origin:      item.route?.origin || "",
-      destination: item.route?.destination || "",
-      stops:       item.route?.stops || [],
-      distance_km: item.calc?.distance_km ?? null,
-      duration_h:  item.calc?.duration_h ?? null,
-      total_cost:  item.calc?.total_cost_eur ?? null,
-      price_eur:   item.calc?.price_eur ?? null,
-      margin_eur:  item.calc?.margin_eur ?? null,
-      margin_pct:  item.calc?.margin_pct ?? null,
-      tolls_eur:   item.calc?.tolls_eur ?? null,
-      fuel_eur:    item.calc?.fuel_cost_eur ?? null,
-      driver_eur:  item.calc?.driver_cost_eur ?? null,
-      other_eur:   item.calc?.other_costs_eur ?? null,
-      tolls_geo:   item.tolls_geo || null,
-      vignettes:   item.vignettes || null,
-      calc:        item.calc || null,
-      input:       item.input || null,
-    };
-    const data = await sbFetch("quotes", "POST", row);
-    res.json(data?.[0] || row);
+
+    // Sprawdź czy istnieje draft tej samej trasy - jeśli tak, promuj go
+    // (UPDATE is_draft=false + nadpisz dane) zamiast tworzyć nowy wiersz.
+    const draftId = await findDraftForRoute(
+      req.userId,
+      item.route?.origin,
+      item.route?.destination,
+      item.route?.stops
+    );
+
+    const row = buildQuoteRow(item, req.userId, { isDraft: false });
+
+    if (draftId) {
+      // PROMOTE: nadpisz draft danymi z ręcznego zapisu (nazwa/klient/notatka itd.),
+      // przełącz is_draft=false. Zachowujemy id draftu - mniej śmieci w bazie.
+      const patchRow = { ...row, id: undefined }; // id w URL, nie w body
+      await sbFetch("quotes", "PATCH", patchRow,
+        `?id=eq.${draftId}&auth_user_id=eq.${req.userId}`);
+      res.json({ ...row, id: draftId, promoted_from_draft: true });
+    } else {
+      const data = await sbFetch("quotes", "POST", row);
+      res.json(data?.[0] || row);
+    }
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// AUTOSAVE: zapisuje draft po każdym "Policz".
+// Logika: jeśli istnieje draft tej samej trasy (origin+destination+stops) - UPDATE
+// (ten sam id, nadpisz parametry). Inaczej INSERT z is_draft=true.
+// Cel: zero spamu w bazie przy iterowaniu wariantów tej samej trasy.
+app.post("/api/history/autosave", requireAuth, requireActiveSubscription, async (req, res) => {
+  try {
+    const item = req.body;
+    if (!item?.route?.origin || !item?.route?.destination) {
+      return res.status(400).json({ error: "Brak origin/destination" });
+    }
+
+    const existingDraftId = await findDraftForRoute(
+      req.userId,
+      item.route.origin,
+      item.route.destination,
+      item.route.stops
+    );
+
+    if (existingDraftId) {
+      // UPDATE istniejącego draftu - nadpisz parametry kalkulacji
+      const row = buildQuoteRow({ ...item, id: existingDraftId }, req.userId, { isDraft: true });
+      const patchRow = { ...row, id: undefined };
+      await sbFetch("quotes", "PATCH", patchRow,
+        `?id=eq.${existingDraftId}&auth_user_id=eq.${req.userId}&is_draft=eq.true`);
+      res.json({ ok: true, id: existingDraftId, mode: "updated" });
+    } else {
+      // INSERT nowego draftu
+      if (!item.id) return res.status(400).json({ error: "Brak id dla nowego draftu" });
+      const row = buildQuoteRow(item, req.userId, { isDraft: true });
+      await sbFetch("quotes", "POST", row);
+      res.json({ ok: true, id: item.id, mode: "inserted" });
+    }
+  } catch(e) {
+    // Autosave nie powinien blokować UI - loguj ale zwracaj 200 z błędem w body
+    console.warn("autosave failed:", e.message);
+    res.status(200).json({ ok: false, error: e.message });
+  }
 });
 
 app.delete("/api/history/:id", requireAuth, async (req, res) => {

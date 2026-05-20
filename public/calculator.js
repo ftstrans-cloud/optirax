@@ -157,7 +157,11 @@ console.log("RUN CLICK");
   result.distance_km = round2(total);
 
   window.lastCalc = result;
-  
+
+  // FIX: nowa kalkulacja = zerujemy powiązanie z poprzednim ręcznym zapisem,
+  // żeby PDF nie ciągnął nazwy/klienta ze starej trasy z historii.
+  window.lastHistoryId = null;
+
   const evalData = evaluateRoute(result);
 	window.lastEvaluation = evalData;
   

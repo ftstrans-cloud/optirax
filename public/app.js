@@ -527,7 +527,12 @@ async function renderHistory(){
   const el = document.getElementById("historyList");
   if (!el) return;
 
-  const items = await hLoad();
+  let items = await hLoad();
+
+  // Filtruj drafty (AUTO_LAST lokalny + ewentualne drafty z Supabase które
+  // przeleciały przez API z is_draft=true). UI historii pokazuje tylko stałe wpisy.
+  items = items.filter(it => it.id !== HISTORY_AUTO_ID && it.is_draft !== true);
+
   if (!items.length) {
     el.innerHTML = `<div style="opacity:.75;font-size:13px;">Brak zapisów. Kliknij "+ Zapisz do historii".</div>`;
     return;
