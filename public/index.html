@@ -1622,6 +1622,34 @@ body.dark .eval-line{ color:#ddd; }
           </div>
         </div>
 
+        <details id="fixedCostsSection" style="margin:12px 0; border:1px solid var(--line,#c7d2fe); border-radius:12px; padding:10px 14px;">
+          <summary style="cursor:pointer; font-weight:600;">💶 Koszty stałe zestawu (leasing, ZUS…)</summary>
+          <div style="margin-top:10px;">
+            <label class="chk">
+              <input id="fixed_enabled" type="checkbox">
+              Dolicz koszty stałe do tej trasy
+            </label>
+            <div class="small" style="margin:6px 0;">Twój miesięczny koszt utrzymania — apka rozłoży go na dni trasy.</div>
+
+            <div class="row2">
+              <div><label>Leasing (€/mc)</label><input id="fx_leasing" type="number" value="2000" min="0"></div>
+              <div><label>ZUS pracodawcy (€/mc)</label><input id="fx_zus" type="number" value="500" min="0"></div>
+            </div>
+            <div class="row2">
+              <div><label>Ubezp. OC/AC/Cargo (€/mc)</label><input id="fx_ubezp" type="number" value="575" min="0"></div>
+              <div><label>Serwis/opony (€/mc)</label><input id="fx_serwis" type="number" value="150" min="0"></div>
+            </div>
+            <div class="small" style="margin:4px 0 8px;">Puste = 0. Możesz tu wrzucić amortyzację albo odłożenie na wykup.</div>
+
+            <div class="row2">
+              <div><label>Dni robocze auta / mc</label><input id="fx_work_days" type="number" value="20" min="1" max="31"></div>
+              <div><label>Dni tej trasy <span style="font-size:10px;opacity:.5;">auto</span></label><input id="fx_trip_days" type="number" value="0" min="0"></div>
+            </div>
+
+            <div class="small" id="fxNote" style="margin-top:8px; opacity:.8;"></div>
+          </div>
+        </details>
+
         <h2 style="margin-top:14px;">Automaty</h2>
 
         <div class="autoBox">

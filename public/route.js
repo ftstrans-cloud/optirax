@@ -95,6 +95,15 @@ function autoSaveNow(){
 
   hSave(items.slice(0, 60));
   renderHistory();
+
+  // ⬇️ AUTOSAVE DO SUPABASE (draft) — token dokleja interceptor z auth.js
+  try {
+    fetch("/api/history/autosave", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(autoItem),
+    }).catch(() => {}); // cichy — autosave nie może wywalić apki
+  } catch (e) { /* ignore */ }
 }
 
 // Normalizuje nazwę kraju → kod 2-literowy

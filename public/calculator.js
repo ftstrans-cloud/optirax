@@ -1,6 +1,33 @@
 /* =========================
    KALKULACJE (Twoje)
 ========================= */
+
+// ===== KOSZTY STAŁE ZESTAWU (leasing/ZUS/ubezp./serwis rozłożone na dni trasy) =====
+function computeFixedCostEur(driverDays){
+  const on = document.getElementById("fixed_enabled")?.checked;
+  if (!on) return { eur: 0, note: "" };
+
+  const leasing = +document.getElementById("fx_leasing")?.value || 0;
+  const zus     = +document.getElementById("fx_zus")?.value || 0;
+  const ubezp   = +document.getElementById("fx_ubezp")?.value || 0;
+  const serwis  = +document.getElementById("fx_serwis")?.value || 0;
+  const monthly = leasing + zus + ubezp + serwis;
+
+  const workDays = +document.getElementById("fx_work_days")?.value || 20;
+
+  // dni trasy: pole fx_trip_days; jeśli 0/puste → bierz dni kierowcy (driverDays)
+  let tripDays = +document.getElementById("fx_trip_days")?.value || 0;
+  if (tripDays <= 0) tripDays = driverDays || 1;
+
+  const daily = workDays > 0 ? monthly / workDays : 0;
+  const eur = daily * tripDays;
+
+  const note = monthly > 0
+    ? `${Math.round(monthly)} € \u00f7 ${workDays} dni \u00d7 ${tripDays} dni trasy = ${Math.round(eur)} \u20ac`
+    : "";
+  return { eur: Math.round(eur * 100) / 100, note };
+}
+
 function updateTotalDistance(){
   const base = Number(document.getElementById("base_distance_km")?.value || 0);
   const empty = Number(document.getElementById("empty_km")?.value || 0);
@@ -76,12 +103,15 @@ function calculateCosts(data){
 
   // NOTE: tolls_eur already includes vignettes (NL/GB) — set by app.js before run()
   // Do NOT re-calculate vignettes here to avoid double-counting
+  const fixed = computeFixedCostEur(data.driver_days);
+
   const total_cost_eur =
     fuel_cost_eur
     + data.tolls_eur
     + data.ferries_eur
     + driver_cost_eur
-    + data.other_costs_eur;
+    + data.other_costs_eur
+    + fixed.eur;
 
 	let price_eur = 0;
 	let offer_price_eur = 0;
@@ -103,6 +133,8 @@ function calculateCosts(data){
     tolls_eur: round2(data.tolls_eur),
     ferries_eur: round2(data.ferries_eur),
     other_costs_eur: round2(data.other_costs_eur),
+
+    fixed_costs_eur: round2(fixed.eur),
 
     fuel_l: round2(fuel_l),
     fuel_cost_pln: round2(fuel_cost_pln),
@@ -168,7 +200,18 @@ console.log("RUN CLICK");
   window.lastInput = data;
 
   renderResult(data, result);
-  
+
+  // pokaż wzór kosztów stałych pod sekcją + podpowiedź auto dla dni trasy
+  try {
+    const fxn = document.getElementById("fxNote");
+    if (fxn) {
+      const f = computeFixedCostEur(data.driver_days);
+      fxn.textContent = f.note || "";
+      const tripEl = document.getElementById("fx_trip_days");
+      if (tripEl && (+tripEl.value || 0) <= 0) tripEl.placeholder = "auto: " + (data.driver_days || 1);
+    }
+  } catch(e){}
+
   autoSaveAfterRun();
 
 	const isOffer = (result.calc_mode === "offer" && result.offer_price_eur > 0);
