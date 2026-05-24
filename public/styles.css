@@ -190,6 +190,62 @@ html[data-theme="dark"] .kpi:last-child{ background:#243660; border-color:#3a508
 /* drobiazgi */
 ::selection{ background:var(--signal); color:#fff; }
 
+/* ============================================================
+   NOWY UI: openery, modale, zwijane punkty (jak w demo)
+   ============================================================ */
+
+/* --- OPENERY (dwuwierszowe z podglądem wartości) --- */
+.opener{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+  border:1px solid var(--panel-edge); border-radius:var(--r-sharp); padding:11px 13px;
+  cursor:pointer; background:var(--panel); transition:.15s; margin-bottom:9px; width:100%; text-align:left; font-family:inherit; }
+html[data-theme="dark"] .opener{ background:#222d48; border-color:#3b4a70; }
+.opener:hover{ border-color:var(--signal); background:var(--signal-soft); }
+.opener .o-left{ display:flex; align-items:center; gap:10px; min-width:0; }
+.opener .o-ico{ font-size:18px; flex:0 0 auto; }
+.opener .o-txt{ min-width:0; }
+.opener .o-name{ font-family:'Sora',sans-serif; font-weight:600; font-size:14px; line-height:1.2; color:var(--ink); }
+.opener .o-peek{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink-faint); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.opener .o-peek b{ color:var(--signal); font-weight:600; }
+.opener .o-chev{ color:var(--ink-faint); flex:0 0 auto; font-size:13px; }
+.opener.primary{ border-color:var(--navy); }
+html[data-theme="dark"] .opener.primary{ border-color:#5b7bd6; }
+.opener.primary .o-ico{ color:var(--navy); }
+
+/* --- MODALE (popup) --- */
+.uiModal{ position:fixed; inset:0; background:rgba(16,22,38,.55); backdrop-filter:blur(3px);
+  display:none; align-items:center; justify-content:center; z-index:2000; }
+.uiModal.open{ display:flex; animation:ovFade .2s ease; }
+@keyframes ovFade{ from{opacity:0;} to{opacity:1;} }
+.uiModal-box{ width:480px; max-width:92vw; max-height:88vh; overflow:auto;
+  background:var(--panel); border:1px solid var(--panel-edge); border-radius:var(--r-modal);
+  box-shadow:var(--shadow-pop); animation:boxIn .26s cubic-bezier(.2,.8,.25,1); }
+@keyframes boxIn{ from{opacity:0; transform:translateY(18px) scale(.97);} to{opacity:1; transform:none;} }
+.uiModal-head{ padding:16px 19px; background:var(--navy); color:#fff;
+  display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; }
+.uiModal-head .h-t{ font-family:'Sora',sans-serif; font-weight:700; font-size:16px; display:flex; gap:9px; align-items:center; }
+.uiModal-x{ background:rgba(255,255,255,.12); border:none; color:#fff; width:30px; height:30px;
+  border-radius:6px; cursor:pointer; font-size:18px; line-height:1; }
+.uiModal-x:hover{ background:rgba(255,255,255,.25); }
+.uiModal-body{ padding:19px; }
+.uiModal-body label{ display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px; margin-top:11px; }
+.uiModal-body label:first-child{ margin-top:0; }
+.uiModal-foot{ padding:14px 19px; border-top:1px solid var(--panel-edge); display:flex; gap:9px; justify-content:flex-end; }
+.uiModal-foot .btn{ width:auto; }
+.modal-note{ font-size:12px; color:var(--ink-faint); line-height:1.4; margin-top:8px; }
+
+/* --- ZWIJANE PUNKTY TRASY (hover/pin) --- */
+.stopsWrap{ border:1px solid var(--panel-edge); border-radius:var(--r-sharp); background:var(--panel); overflow:hidden; margin-bottom:12px; }
+html[data-theme="dark"] .stopsWrap{ background:#222d48; border-color:#3b4a70; }
+.stopsBar{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; cursor:pointer; user-select:none; }
+.stopsBar .s-count{ font-family:'Sora',sans-serif; font-weight:600; font-size:14px; display:flex; align-items:center; gap:7px; }
+.stopsBar .s-count::before{ content:''; width:8px; height:8px; border-radius:50%; background:var(--signal); flex:0 0 auto; }
+.stopsBar .s-hint{ font-size:11px; color:var(--ink-faint); }
+.stopsInner{ max-height:0; opacity:0; overflow:hidden; transition:max-height .3s cubic-bezier(.2,.8,.25,1), opacity .2s, padding .3s; padding:0 12px; }
+.stopsWrap:hover .stopsInner, .stopsWrap.pinned .stopsInner{ max-height:1000px; opacity:1; padding:4px 12px 12px; }
+.stopsWrap:hover .s-peek, .stopsWrap.pinned .s-peek{ display:none; }
+.s-peek{ padding:0 12px 11px; font-size:12.5px; color:var(--ink-soft); }
+.s-peek b{ color:var(--ink); font-weight:600; }
+
 /* ---------- WZMOCNIENIA specyficzności (nadpisanie starego CSS) ---------- */
 html[data-theme="light"] .modeBtn.active,
 .modeSwitch .modeBtn.active{ background:var(--signal-soft) !important; border-color:var(--signal) !important; }

@@ -1482,11 +1482,19 @@ body.dark .eval-line{ color:#ddd; }
           <button type="button" class="btn" style="width:100%;margin-top:6px;" onclick="parseNlpStops()">🤖 Wyciągnij trasę (AI)</button>
         </div>
 
-        <div id="routeList" class="routeList"></div>
-
-        <div class="stopsActions">
-          <button type="button" class="btn secondary" onclick="addRoutePoint()">+ Dodaj punkt</button>
-          <button type="button" class="btn secondary" onclick="clearRouteMiddle()">Wyczyść punkty</button>
+        <div class="stopsWrap" id="stopsWrap">
+          <div class="stopsBar" id="stopsBar">
+            <span class="s-count" id="stopsCount">Punkty trasy</span>
+            <span class="s-hint">najedź, by rozwinąć</span>
+          </div>
+          <div class="stopsInner">
+            <div id="routeList" class="routeList"></div>
+            <div class="stopsActions">
+              <button type="button" class="btn secondary" onclick="addRoutePoint()">+ Dodaj punkt</button>
+              <button type="button" class="btn secondary" onclick="clearRouteMiddle()">Wyczyść punkty</button>
+            </div>
+          </div>
+          <div class="s-peek" id="stopsPeek">Dodaj punkty trasy…</div>
         </div>
 
         <div class="row2" style="margin-top:10px;">
@@ -1585,9 +1593,50 @@ body.dark .eval-line{ color:#ddd; }
         <label>Dystans do kalkulacji (km)</label>
         <input id="distance_km" type="number" value="0" readonly />
 
-        <div class="small" style="margin-top:6px;">
+        <div class="small" style="margin-top:6px; margin-bottom:12px;">
           Dystans do kalkulacji = trasa z mapy + pusty dolot
         </div>
+
+        <div class="modeLabel" style="margin-bottom:9px;">Opcje kalkulacji</div>
+
+        <!-- OPENER 1: Parametry kalkulacji -->
+        <button type="button" class="opener primary" onclick="openUiModal('uiParams')">
+          <span class="o-left">
+            <span class="o-ico">⚙️</span>
+            <span class="o-txt">
+              <span class="o-name">Parametry kalkulacji</span>
+              <span class="o-peek" id="peekParams">spalanie, paliwo, kursy, kierowca, marża</span>
+            </span>
+          </span>
+          <span class="o-chev">›</span>
+        </button>
+
+        <!-- OPENER 2: Inne koszty + koszty stałe -->
+        <button type="button" class="opener" onclick="openUiModal('uiOther')">
+          <span class="o-left">
+            <span class="o-ico">📄</span>
+            <span class="o-txt">
+              <span class="o-name">Inne koszty</span>
+              <span class="o-peek" id="peekOther">koszty stałe, dodatkowe</span>
+            </span>
+          </span>
+          <span class="o-chev">›</span>
+        </button>
+
+        <!-- OPENER 3: Prom -->
+        <button type="button" class="opener" onclick="openUiModal('uiFerry')">
+          <span class="o-left">
+            <span class="o-ico">⛴</span>
+            <span class="o-txt">
+              <span class="o-name">Prom / przeprawy</span>
+              <span class="o-peek" id="peekFerry">koszt promu / tunelu</span>
+            </span>
+          </span>
+          <span class="o-chev">›</span>
+        </button>
+
+        <!-- ===== POLA UKRYTE: przeniesione do modali przez JS (zostają w DOM z tymi samymi ID) ===== -->
+        <div id="uiHiddenFields" style="display:none;">
 
         <div class="row2">
           <div>
@@ -1615,7 +1664,7 @@ body.dark .eval-line{ color:#ddd; }
             <label>Myto (EUR) <span style="font-size:10px;opacity:.5;">← HERE auto</span></label>
             <input id="tolls_eur" type="number" value="0" title="Wypełniane automatycznie przez HERE. Możesz skorygować ręcznie."/>
             </div>
-          <div>
+          <div id="ferryFieldWrap">
             <label>Promy/Tunel (EUR) <span style="font-size:10px;opacity:.5;">↳ ręcznie</span></label>
             <input id="ferries_eur" type="number" value="0" title="Wpisz koszt promu lub tunelu Channel Tunnel ręcznie."/>
           </div>
@@ -1655,6 +1704,9 @@ body.dark .eval-line{ color:#ddd; }
             <div class="small" id="fxNote" style="margin-top:8px; opacity:.8;"></div>
           </div>
         </details>
+
+        </div>
+        <!-- ===== KONIEC pól ukrytych ===== -->
 
         <h2 style="margin-top:14px;">Automaty</h2>
 
@@ -3284,6 +3336,139 @@ function calcCargo(){
 })();
 </script>
 
+<!-- ============================================================
+     NOWY UI: modale (popup) + logika
+     ============================================================ -->
+<div class="uiModal" id="uiParams">
+  <div class="uiModal-box">
+    <div class="uiModal-head"><span class="h-t">⚙️ Parametry kalkulacji</span><button type="button" class="uiModal-x" onclick="closeUiModal('uiParams')">×</button></div>
+    <div class="uiModal-body" id="uiParamsBody"></div>
+    <div class="uiModal-foot"><button type="button" class="btn" onclick="closeUiModal('uiParams')">✓ Gotowe</button></div>
+  </div>
+</div>
+<div class="uiModal" id="uiOther">
+  <div class="uiModal-box">
+    <div class="uiModal-head"><span class="h-t">📄 Inne koszty</span><button type="button" class="uiModal-x" onclick="closeUiModal('uiOther')">×</button></div>
+    <div class="uiModal-body" id="uiOtherBody"></div>
+    <div class="uiModal-foot"><button type="button" class="btn" onclick="closeUiModal('uiOther')">✓ Gotowe</button></div>
+  </div>
+</div>
+<div class="uiModal" id="uiFerry">
+  <div class="uiModal-box">
+    <div class="uiModal-head"><span class="h-t">⛴ Prom / przeprawy</span><button type="button" class="uiModal-x" onclick="closeUiModal('uiFerry')">×</button></div>
+    <div class="uiModal-body" id="uiFerryBody"></div>
+    <div class="uiModal-foot"><button type="button" class="btn" onclick="closeUiModal('uiFerry')">✓ Gotowe</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Pomocnik: przenieś element o danym ID (z jego rodzicem-wrapperem) do kontenera modala
+  function moveField(id, target){
+    var el = document.getElementById(id);
+    if(!el) return;
+    // znajdź najbliższy wrapper .row2 lub bezpośredni rodzic jeśli to label+input
+    var wrap = el.closest('.row2') || el.parentElement;
+    target.appendChild(wrap);
+  }
+
+  function buildModals(){
+    var pBody = document.getElementById('uiParamsBody');
+    var oBody = document.getElementById('uiOtherBody');
+    var fBody = document.getElementById('uiFerryBody');
+    if(!pBody) return;
+
+    // --- PARAMETRY KALKULACJI ---
+    // spalanie+paliwo (row2), kursy (row2), kierowca dni+stawka (row2), marża, automaty
+    moveField('fuel_l_per_100km', pBody);     // bierze cały row2 (spalanie+paliwo)
+    moveField('eur_pln', pBody);               // row2 kursy
+    // automaty (dni kierowcy / inne koszty) - przenieś autoBox
+    var autoBox = document.querySelector('.autoBox');
+    if(autoBox){ pBody.appendChild(autoBox); }
+    var autoNote = document.getElementById('autoNote'); if(autoNote) pBody.appendChild(autoNote);
+    moveField('driver_days', pBody);           // row2 dni kierowcy+stawka
+    // marża docelowa (label+input luzem)
+    var mEl = document.getElementById('target_margin_pct');
+    if(mEl){ var ml=document.createElement('label'); ml.textContent='Marża docelowa (%)'; pBody.appendChild(ml); pBody.appendChild(mEl); }
+    // myto+prom są w jednym row2: przenieś row2 do Parametrów, potem prom wyjmij do modala Prom
+    var tEl = document.getElementById('tolls_eur');
+    var tollRow = tEl ? tEl.closest('.row2') : null;
+    if(tollRow) pBody.appendChild(tollRow);
+
+    // --- INNE KOSZTY ---
+    var oEl = document.getElementById('other_costs_eur');
+    if(oEl){ var ol=document.createElement('label'); ol.textContent='Inne koszty (EUR)'; oBody.appendChild(ol); oBody.appendChild(oEl); }
+    var fixedSec = document.getElementById('fixedCostsSection');
+    if(fixedSec){ fixedSec.open=true; oBody.appendChild(fixedSec); }
+    var payEl = document.getElementById('payment_terms');
+    if(payEl){ oBody.appendChild(payEl.closest('.row2')||payEl); }
+
+    // --- PROM --- (wyjmij ferryFieldWrap z row2 myto)
+    var fWrap = document.getElementById('ferryFieldWrap');
+    if(fWrap){
+      fBody.appendChild(fWrap);
+      var note=document.createElement('div'); note.className='modal-note';
+      note.textContent='Winiety i myto liczy automatycznie HERE — znajdziesz je w wynikach (Myto wg kraju).';
+      fBody.appendChild(note);
+    }
+    // ukryj kontener resztek
+    var hidden=document.getElementById('uiHiddenFields'); if(hidden) hidden.style.display='none';
+
+    updatePeeks();
+  }
+
+  // Podgląd wartości pod openerami
+  window.updatePeeks = function(){
+    function v(id){ var e=document.getElementById(id); return e? (e.value||'0') : '0'; }
+    var pk;
+    pk=document.getElementById('peekParams');
+    if(pk) pk.innerHTML='<b>'+v('fuel_l_per_100km')+'</b> l/100 · '+v('fuel_price_pln_per_l')+' zł/l · marża <b>'+v('target_margin_pct')+'%</b>';
+    pk=document.getElementById('peekOther');
+    if(pk){ var oc=v('other_costs_eur'); var fx=document.getElementById('fixed_enabled'); var fxOn=fx&&fx.checked; pk.innerHTML='inne <b>'+oc+' €</b>'+(fxOn?' · koszty stałe ON':''); }
+    pk=document.getElementById('peekFerry');
+    if(pk){ var fv=v('ferries_eur'); pk.innerHTML='koszt promu <b>'+fv+' €</b>'; }
+  };
+
+  window.openUiModal = function(id){ document.getElementById(id).classList.add('open'); };
+  window.closeUiModal = function(id){ document.getElementById(id).classList.remove('open'); updatePeeks(); };
+
+  // zwijane punkty: klik przypina
+  function initStops(){
+    var bar=document.getElementById('stopsBar');
+    if(bar) bar.addEventListener('click', function(){ document.getElementById('stopsWrap').classList.toggle('pinned'); });
+    // licznik + peek aktualizowany gdy zmienia się routeList
+    var rl=document.getElementById('routeList');
+    if(rl){
+      var obs=new MutationObserver(updateStops);
+      obs.observe(rl,{childList:true,subtree:true});
+      updateStops();
+    }
+  }
+  function updateStops(){
+    var rl=document.getElementById('routeList'); if(!rl) return;
+    var inputs=rl.querySelectorAll('input[type="text"], input:not([type])');
+    var n=inputs.length;
+    var cnt=document.getElementById('stopsCount');
+    if(cnt) cnt.textContent = n>0 ? (n+' '+(n===1?'punkt trasy':(n<5?'punkty trasy':'punktów trasy'))) : 'Punkty trasy';
+    var peek=document.getElementById('stopsPeek');
+    if(peek){
+      if(n>=2){ var a=inputs[0].value||'start'; var b=inputs[n-1].value||'koniec'; var mid=n>2?(' → ⋯'+(n-2)+' →'):' →'; peek.innerHTML='<b>'+a+'</b>'+mid+' <b>'+b+'</b>'; }
+      else if(n===1){ peek.innerHTML='<b>'+(inputs[0].value||'1 punkt')+'</b>'; }
+      else peek.textContent='Dodaj punkty trasy…';
+    }
+  }
+
+  // zamknij modal klikiem w tło / ESC
+  document.addEventListener('click', function(e){ if(e.target.classList && e.target.classList.contains('uiModal')) e.target.classList.remove('open'); });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') document.querySelectorAll('.uiModal.open').forEach(function(m){ m.classList.remove('open'); }); });
+  // aktualizuj peeki na zmianę pól
+  document.addEventListener('input', function(e){ if(e.target.closest('.uiModal')) updatePeeks(); });
+
+  function init(){ buildModals(); initStops(); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
 </body>
 </html>
 
