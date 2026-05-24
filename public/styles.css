@@ -1,0 +1,233 @@
+/* ============================================================
+   OPTIRAX — styles.css  (reskin: pomarańcz/granat, Sora+IBM Plex)
+   Mapowane na istniejące klasy. NIE zmienia struktury ani ID.
+   ============================================================ */
+
+/* ---------- ZMIENNE / MOTYW ---------- */
+:root{
+  --paper:#eceae3; --panel:#f7f6f2; --panel-edge:#d9d6cc;
+  --ink:#1a1d24; --ink-soft:#5b6170; --ink-faint:#8b8f9c; --line:#e2dfd6;
+  --signal:#e8590c; --signal-2:#cf4d05; --signal-soft:#fdece1;
+  --navy:#16233f; --navy-2:#243650;
+  --good:#1a7f4b; --good-soft:#e3f3ea;
+  --r-sharp:6px; --r-card:12px; --r-modal:14px;
+  --shadow-card:0 1px 0 rgba(0,0,0,.02),0 2px 10px rgba(20,30,50,.06);
+  --shadow-pop:0 20px 60px rgba(20,30,50,.28);
+}
+html[data-theme="dark"]{
+  --paper:#0c1322; --panel:#19233a; --panel-edge:#36446a;
+  --ink:#f4f6fb; --ink-soft:#b7c1da; --ink-faint:#8b97b8; --line:#2c3957;
+  --signal:#ff7a33; --signal-2:#e8590c; --signal-soft:#3a1c0c;
+  --navy:#0a1120; --navy-2:#1a2950;
+  --good:#4ade80; --good-soft:#13321f;
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  font-family:'IBM Plex Sans',system-ui,sans-serif;
+  background:var(--paper);
+  background-image:
+    linear-gradient(var(--panel-edge) .5px,transparent .5px),
+    linear-gradient(90deg,var(--panel-edge) .5px,transparent .5px);
+  background-size:28px 28px; background-position:-1px -1px;
+  color:var(--ink); font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+html[data-theme="dark"] body{
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) .5px,transparent .5px),
+    linear-gradient(90deg,rgba(255,255,255,.03) .5px,transparent .5px);
+}
+.num,[id^="kpi_"],#perKm,#eurKmValue{ font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
+
+h1{ font-family:'Sora',sans-serif; font-weight:800; font-size:20px; letter-spacing:-.3px; margin:0 0 14px; color:var(--ink); }
+h2{ font-family:'Sora',sans-serif; font-weight:700; font-size:16px; margin:0 0 10px; color:var(--ink); }
+h3{ font-family:'Sora',sans-serif; font-weight:600; font-size:14px; }
+label,.small,.modeSub,.label,.modeLabel{ color:var(--ink-soft); }
+.small{ font-size:12px; color:var(--ink-faint); }
+
+/* ---------- LAYOUT ---------- */
+.app{ padding:14px; }
+.layout{ display:grid; grid-template-columns:340px 1fr 380px; gap:14px; align-items:start; }
+@media (max-width:1200px){ .layout{ grid-template-columns:1fr; } }
+.col,.left,.right,.main{ min-width:0; }
+
+/* ---------- KARTY ---------- */
+.card{
+  background:var(--panel); border:1px solid var(--panel-edge);
+  border-radius:var(--r-card); box-shadow:var(--shadow-card);
+  padding:17px; margin-bottom:0;
+}
+.mapCard{ padding:0; overflow:hidden; }
+.historyPanel{ padding:0; }
+
+/* ---------- TRYB PRACY (modeSwitch) ---------- */
+.modeBox{ margin-bottom:16px; }
+.modeLabel{ font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--signal); margin-bottom:9px; }
+.modeSwitch{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.modeBtn{
+  border:1.5px solid var(--panel-edge); background:var(--panel); color:var(--ink);
+  border-radius:var(--r-sharp); padding:11px 12px; cursor:pointer; text-align:left;
+  font-family:'Sora',sans-serif; font-weight:600; font-size:14px; transition:.15s;
+  display:flex; flex-direction:column; gap:2px;
+}
+html[data-theme="dark"] .modeBtn{ background:#222d48; border-color:#3b4a70; }
+.modeBtn .modeSub{ font-family:'IBM Plex Sans'; font-weight:400; font-size:11px; color:var(--ink-soft); }
+.modeBtn.active{ border-color:var(--signal); background:var(--signal-soft); }
+.modeBtn.active,.modeBtn.active .modeSub{ color:var(--signal); }
+html[data-theme="dark"] .modeBtn.active{ background:var(--signal-soft); }
+html[data-theme="dark"] .modeBtn.active *{ color:var(--signal); }
+.modeOfferRow{ margin-top:10px; }
+.modeInlineLabel{ font-size:12px; color:var(--ink-soft); }
+
+/* ---------- PRZYCISKI ---------- */
+.btn{
+  font-family:'Sora',sans-serif; font-weight:600; font-size:14px;
+  padding:10px 15px; border-radius:var(--r-sharp); cursor:pointer;
+  border:1px solid transparent; transition:.15s;
+  display:inline-flex; align-items:center; gap:7px; justify-content:center;
+  background:var(--signal); color:#fff;
+}
+.btn:hover{ background:var(--signal-2); }
+.btn.secondary{ background:var(--panel); border-color:var(--panel-edge); color:var(--ink); }
+.btn.secondary:hover{ border-color:var(--signal); color:var(--signal); background:var(--panel); }
+html[data-theme="dark"] .btn.secondary{ background:#222d48; border-color:#3b4a70; }
+.iconBtn{ background:none; border:none; cursor:pointer; color:var(--ink-soft); font-size:18px; }
+
+/* presety pojazdów */
+.vehicleBtn{ font-size:13px; padding:8px 11px; }
+.vehicleBtn.active{ background:var(--navy); color:#fff; border-color:var(--navy); }
+html[data-theme="dark"] .vehicleBtn.active{ background:var(--signal); border-color:var(--signal); color:#fff; }
+
+/* ---------- POLA ---------- */
+input,select,textarea{
+  width:100%; padding:9px 11px; font-family:'IBM Plex Sans',sans-serif; font-size:14px;
+  border:1px solid var(--panel-edge); border-radius:var(--r-sharp);
+  background:#fff; color:var(--ink); transition:.15s;
+}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{ background:#222d48; border-color:#3b4a70; color:var(--ink); }
+input:focus,select:focus,textarea:focus{ outline:none; border-color:var(--signal); box-shadow:0 0 0 3px var(--signal-soft); }
+input[type="checkbox"]{ width:auto; }
+.row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.col{ display:flex; flex-direction:column; gap:4px; }
+.chk{ display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+.chk input{ width:auto; }
+.stopsActions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0; }
+
+/* sekcje rozwijane (details) */
+details#truckProfileSection,details#fixedCostsSection{
+  border:1px solid var(--panel-edge) !important; border-radius:var(--r-sharp) !important;
+  background:var(--panel);
+}
+details summary{ font-family:'Sora',sans-serif; }
+.autoBox{ background:var(--signal-soft); border:1px solid var(--panel-edge); border-radius:var(--r-sharp); padding:12px; }
+html[data-theme="dark"] .autoBox{ background:#222d48; }
+.ft-divider{ height:1px; background:var(--line); }
+
+/* kraje do omijania */
+.avoidCountryChk{ display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:4px 8px; border:1px solid var(--panel-edge); border-radius:20px; margin:2px; cursor:pointer; }
+
+/* ---------- MAPA ---------- */
+.mapHead{ display:flex; align-items:center; justify-content:space-between; padding:13px 15px; border-bottom:1px solid var(--panel-edge); flex-wrap:wrap; gap:8px; }
+.mapStyleBtn{ font-size:12px; font-weight:600; background:var(--panel); border:1px solid var(--panel-edge); color:var(--ink-soft); padding:6px 11px; border-radius:20px; cursor:pointer; transition:.15s; }
+.mapStyleBtn.active{ background:var(--navy); color:#fff; border-color:var(--navy); }
+html[data-theme="dark"] .mapStyleBtn{ background:#222d48; border-color:#3b4a70; }
+html[data-theme="dark"] .mapStyleBtn.active{ background:var(--signal); border-color:var(--signal); }
+.mapFill,.mapBig{ width:100%; }
+#map{ width:100%; height:560px; min-height:420px; }
+@media (max-width:1200px){ #map{ height:380px; } }
+
+/* ---------- WYNIKI / KPI ---------- */
+.kpis{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:14px; }
+.kpi{ border:1px solid var(--panel-edge); border-radius:var(--r-sharp); padding:13px; background:#fff; position:relative; overflow:hidden; }
+html[data-theme="dark"] .kpi{ background:#222d48; border-color:#3b4a70; }
+.kpi::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--signal); }
+.kpi:last-child{ background:var(--navy); border-color:var(--navy); }
+.kpi:last-child::before{ display:none; }
+html[data-theme="dark"] .kpi:last-child{ background:#243660; border-color:#3a5088; }
+.kpi .label{ font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; color:var(--ink-faint); }
+.kpi:last-child .label{ color:#9fb2d4; }
+.kpi .value{ font-family:'Sora',sans-serif; font-weight:800; font-size:22px; margin-top:5px; letter-spacing:-.5px; color:var(--ink); }
+.kpi:last-child .value{ color:#fff; }
+
+#perKm{ font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px; color:var(--signal); }
+
+/* ocena trasy */
+.route-evaluation,#routeScore{ display:inline-flex; align-items:center; gap:8px; padding:8px 13px; border-radius:var(--r-sharp); background:var(--good-soft); border:1px solid var(--good); color:var(--good); font-family:'Sora'; font-weight:700; font-size:14px; margin:6px 0; }
+
+/* ---------- TABELE (costTable, tollsTable) ---------- */
+#costTable,#tollsTable{ width:100%; border-collapse:collapse; font-size:13.5px; }
+#costTable td,#tollsTable td,#tollsTable th{ padding:8px 6px; border-bottom:1px solid var(--line); }
+#costTable td:last-child,#tollsTable td:last-child{ text-align:right; font-family:'IBM Plex Mono',monospace; font-weight:600; }
+#tollsTable th{ text-align:left; font-size:10px; letter-spacing:.5px; text-transform:uppercase; color:var(--ink-faint); border-bottom:1.5px solid var(--line); }
+#costTable tr:last-child td{ font-weight:700; border-top:1.5px solid var(--ink); border-bottom:none; }
+
+/* ---------- HISTORIA ---------- */
+.historyPanelHead{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; cursor:pointer; }
+.historyPanelActions{ display:flex; gap:8px; flex-wrap:wrap; padding:0 16px 12px; }
+.historyPanelBody{ padding:0 16px 14px; }
+#historyList{ display:flex; flex-direction:column; gap:8px; }
+
+/* ---------- MODALE (cargo/fleet/fuel/history) ---------- */
+.modal,#cargoModal,#fleetModal,#fuelModal,#historyModal{
+  position:fixed; inset:0; background:rgba(16,22,38,.55); backdrop-filter:blur(3px);
+  z-index:1000; display:none; align-items:center; justify-content:center;
+}
+.modal[style*="flex"],.modal.open{ display:flex; }
+.modalPanel,.fuelPanel,.fleetPanel,.cargoPanel,#fuelPanel,#fleetPanel,#cargoPanel,#historyPanelBody.modalish{
+  background:var(--panel); border-radius:var(--r-modal); border:1px solid var(--panel-edge);
+  box-shadow:var(--shadow-pop); max-width:92vw; max-height:88vh; overflow:auto; padding:20px;
+}
+/* taby w modalach fuel/fleet */
+[id^="ft-"],[id^="fl-"]{ }
+.tabBtn,[data-tab]{ font-family:'Sora'; }
+
+/* ---------- ZAKŁADKI / NAWIGACJA SPÓJNOŚĆ ---------- */
+#out,#summary,#summaryView{ }
+#aiReport{ background:var(--panel); border:1px solid var(--panel-edge); border-radius:var(--r-sharp); padding:14px; }
+
+/* drobiazgi */
+::selection{ background:var(--signal); color:#fff; }
+
+/* ---------- WZMOCNIENIA specyficzności (nadpisanie starego CSS) ---------- */
+html[data-theme="light"] .modeBtn.active,
+.modeSwitch .modeBtn.active{ background:var(--signal-soft) !important; border-color:var(--signal) !important; }
+.modeSwitch .modeBtn.active,
+.modeSwitch .modeBtn.active .modeSub{ color:var(--signal) !important; }
+
+/* KPI: 3. karta (Marża) zawsze hero granat */
+.kpis .kpi:nth-child(3){ background:var(--navy) !important; border-color:var(--navy) !important; }
+.kpis .kpi:nth-child(3) .label{ color:#9fb2d4 !important; }
+.kpis .kpi:nth-child(3) .value{ color:#fff !important; }
+.kpis .kpi:nth-child(3)::before{ display:none; }
+
+/* przycisk Policz w dolnym barze — dominujący pomarańcz */
+button[onclick*="run"],button[onclick*="calculate"],button[onclick*="policz"],
+.btn:not(.secondary){ background:var(--signal); color:#fff; }
+
+/* raport AI / generuj — pomarańcz */
+#btnReportAI{ background:var(--signal) !important; color:#fff !important; border-color:var(--signal) !important; }
+
+/* ocena trasy — usuń dziwny środkowy box, spójny badge */
+#routeScore,.route-evaluation{ background:var(--good-soft) !important; border:1px solid var(--good) !important; }
+
+/* ---------- DOLNY PASEK AKCJI (actionBar) ---------- */
+.actionBar{
+  position:fixed; bottom:0; left:0; right:0; z-index:50;
+  display:grid; gap:9px; padding:11px 14px;
+  background:var(--panel); border-top:1px solid var(--panel-edge);
+  box-shadow:0 -4px 20px rgba(20,30,50,.06);
+}
+.actionBar .btn{ height:44px; }
+/* pierwszy przycisk (Policz) — dominujący pomarańcz */
+.actionBar .btn:first-child{
+  background:var(--signal) !important; color:#fff !important; border:none !important;
+  font-size:15px; box-shadow:0 3px 10px rgba(232,89,12,.3);
+}
+.actionBar .btn:first-child:hover{ background:var(--signal-2) !important; }
+/* żeby dolny bar nie zasłaniał treści */
+body{ padding-bottom:70px; }
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-thumb{ background:var(--panel-edge); border-radius:10px; }
+::-webkit-scrollbar-track{ background:transparent; }
