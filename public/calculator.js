@@ -79,7 +79,10 @@ function applyAutoFields(){
 
   if (autoOther) {
     const el = document.getElementById("other_costs_eur");
-    if (el) el.value = String(Math.round(days * dailyExtra * 100) / 100);
+    if (el) { el.value = String(Math.round(days * dailyExtra * 100) / 100); el.readOnly = true; }
+  } else {
+    const el = document.getElementById("other_costs_eur");
+    if (el) el.readOnly = false;
   }
 
   const note = document.getElementById("autoNote");

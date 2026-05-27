@@ -39,8 +39,8 @@ body{ font-family:'IBM Plex Sans',sans-serif; background:var(--paper);
 .panel-pad{ padding:17px; }
 .panel-h{ font-family:'Sora'; font-weight:700; font-size:17px; display:flex; align-items:center; gap:8px; }
 .panel-sub{ font-size:12px; color:var(--ink-faint); margin-bottom:13px; }
-.section-label{ font-family:'IBM Plex Mono'; font-size:11px; font-weight:600; letter-spacing:1.5px; color:var(--signal); text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
-.section-label svg{ width:13px; height:13px; }
+.section-label{ font-family:'IBM Plex Mono'; font-size:13px; font-weight:700; letter-spacing:1.2px; color:var(--signal); text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:7px; }
+.section-label svg{ width:15px; height:15px; }
 
 .modeswitch{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:18px; }
 .mode{ border:1.5px solid var(--panel-edge); background:#fff; border-radius:var(--r-sharp); padding:12px; cursor:pointer; transition:.15s; text-align:left; }
@@ -87,7 +87,7 @@ select.input{ cursor:pointer; }
 
 /* MODE-SWITCH (Wycena / Marża) — id="modeSwitch", .modeBtn[data-mode] */
 .modeBox{ margin-bottom:18px; }
-.modeLabel{ font-family:'IBM Plex Mono'; font-size:11px; font-weight:600; letter-spacing:1.5px; color:var(--signal); text-transform:uppercase; margin-bottom:9px; }
+.modeLabel{ font-family:'IBM Plex Mono'; font-size:13px; font-weight:700; letter-spacing:1.2px; color:var(--signal); text-transform:uppercase; margin-bottom:9px; }
 .modeSwitch{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .modeBtn{ border:1.5px solid var(--panel-edge); background:#fff; border-radius:var(--r-sharp); padding:11px 12px; cursor:pointer; transition:.15s; text-align:left; font-family:'Sora'; font-weight:600; font-size:14px; color:var(--ink); line-height:1.2; }
 .modeBtn:hover{ border-color:var(--signal); }
@@ -237,7 +237,7 @@ table.data tr:hover td{ background:rgba(232,89,12,.03); }
 .modal-wide{ width:600px; }
 .modal-wide .modal-body{ max-height:74vh; }
 .modal .num{ font-family:'IBM Plex Mono'; }
-.sub-label{ font-family:'IBM Plex Mono'; font-size:11px; font-weight:600; letter-spacing:1px; color:var(--signal); text-transform:uppercase; margin-bottom:9px; }
+.sub-label{ font-family:'IBM Plex Mono'; font-size:12px; font-weight:700; letter-spacing:1px; color:var(--signal); text-transform:uppercase; margin-bottom:9px; }
 .divider{ font-family:'IBM Plex Mono'; font-size:11px; font-weight:600; letter-spacing:1px; color:var(--ink-faint); text-transform:uppercase; text-align:center; margin:16px 0 12px; display:flex; align-items:center; gap:10px; }
 .divider::before, .divider::after{ content:''; flex:1; height:1px; background:var(--line); }
 .chk{ display:flex; align-items:center; gap:9px; font-size:13.5px; font-weight:600; color:var(--ink-soft); cursor:pointer; user-select:none; }
@@ -396,3 +396,7 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 .opt-drop .dd-sep{ height:1px; background:var(--panel-edge); margin:4px 0; }
 .opt-drop .dd-logout{ width:100%; text-align:left; padding:11px 15px; font-size:13px; font-weight:600; background:none; border:none; cursor:pointer; color:#f87171; }
 .opt-drop .dd-logout:hover{ background:rgba(248,113,113,.1); }
+
+/* ===== Raport AI ===== */
+.ai-report{ margin-top:12px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; line-height:1.6; color:var(--ink-soft); white-space:pre-wrap; word-wrap:break-word; max-height:340px; overflow-y:auto; }
+.ai-report:empty{ display:none; }
