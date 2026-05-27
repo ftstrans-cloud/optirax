@@ -213,6 +213,12 @@ function renderResult(input, result) {
     tbody.innerHTML += row("Myto (EUR)", result.tolls_eur ?? "—");
     tbody.innerHTML += row("Promy (EUR)", result.ferries_eur ?? "—");
     tbody.innerHTML += row("Inne koszty (EUR)", result.other_costs_eur ?? "—");
+    if (Number(result.reefer_eur) > 0) {
+      tbody.innerHTML += row("Chłodnia / agregat (EUR)", result.reefer_eur);
+    }
+    if (Number(result.fixed_costs_eur) > 0) {
+      tbody.innerHTML += row("Koszty stałe zestawu (EUR)", result.fixed_costs_eur);
+    }
     tbody.innerHTML += row("<b>Koszt całkowity (EUR)</b>", `<b>${result.total_cost_eur ?? "—"}</b>`);
 
     if (isOffer) {
@@ -225,12 +231,27 @@ function renderResult(input, result) {
     }
   }
 
-  // === Koszt / km ===
+  // === Koszt / km + Stawka oczekiwana / km ===
   const perKmEl = document.getElementById("perKm");
   if (perKmEl) {
     const km = Number(result.distance_km || 0);
     const total = Number(result.total_cost_eur || 0);
-    perKmEl.textContent = (km > 0) ? `Koszt / km: ${(total / km).toFixed(2)} EUR/km` : "";
+    const price = Number(result.price_eur || result.suggested_price_eur || result.offer_price_eur || 0);
+    if (km > 0) {
+      const costKm = (total / km).toFixed(2);
+      const rateKm = price > 0 ? (price / km).toFixed(2) : null;
+      perKmEl.textContent = rateKm
+        ? `Koszt: ${costKm} €/km · Stawka oczekiwana: ${rateKm} €/km`
+        : `Koszt / km: ${costKm} €/km`;
+    } else perKmEl.textContent = "";
+  }
+  // wiersz stawki oczekiwanej w tabeli (price ÷ km)
+  if (tbody) {
+    const km = Number(result.distance_km || 0);
+    const price = Number(result.price_eur || result.suggested_price_eur || result.offer_price_eur || 0);
+    if (km > 0 && price > 0) {
+      tbody.innerHTML += `<tr><td><b>Stawka oczekiwana (€/km)</b></td><td style="text-align:right;"><b>${(price/km).toFixed(2)}</b></td></tr>`;
+    }
   }
 
   // === Myto per kraj ===
@@ -928,11 +949,11 @@ window.renderAlternativeRoutes = renderAlternativeRoutes;
 // PRESETY POJAZDÓW
 // ============================================================
 const VEHICLE_PRESETS = {
-  tir40:  { label:"TIR 40t",       transportMode:"truck", grossWeightKg:40000, axleWeightKg:11500, heightCm:400, widthCm:255, lengthCm:1360, axleCount:5, info:"40 000 kg, 5 osi, 400×255×1360 cm" },
-  tir24:  { label:"TIR 24t",       transportMode:"truck", grossWeightKg:24000, axleWeightKg:11500, heightCm:400, widthCm:255, lengthCm:1200, axleCount:4, info:"24 000 kg, 4 osie, 400×255×1200 cm" },
-  bus:    { label:"Bus",            transportMode:"bus",   grossWeightKg:18000, axleWeightKg:9000,  heightCm:380, widthCm:255, lengthCm:1200, axleCount:3, info:"18 000 kg, 3 osie — tryb: bus (inne stawki myto)" },
-  van:    { label:"Van/Dostawczy",  transportMode:"truck", grossWeightKg:3500,  axleWeightKg:1800,  heightCm:250, widthCm:210, lengthCm:550,  axleCount:2, info:"3 500 kg, 2 osie, 250×210×550 cm" },
-  solo:   { label:"Ciągnik solo",   transportMode:"truck", grossWeightKg:18000, axleWeightKg:11500, heightCm:380, widthCm:255, lengthCm:600,  axleCount:3, info:"18 000 kg, 3 osie, 380×255×600 cm" },
+  tir40:  { label:"TIR 40t",        transportMode:"truck", grossWeightKg:40000, axleWeightKg:11500, heightCm:400, widthCm:255, lengthCm:1360, axleCount:5, info:"ciągnik 2 osie + naczepa 3 osie · 40 000 kg · 400×255×1360 cm" },
+  jumbo:  { label:"Tandem Jumbo 120m³", transportMode:"truck", grossWeightKg:22000, axleWeightKg:10000, heightCm:300, widthCm:248, lengthCm:1500, axleCount:5, info:"solo 3 osie + przyczepa 2 osie · do 22 000 kg · 120 m³" },
+  solo:   { label:"Solo (firanka)", transportMode:"truck", grossWeightKg:12000, axleWeightKg:7500,  heightCm:340, widthCm:248, lengthCm:720,  axleCount:3, info:"skrzynia/firanka solo · 3 osie · do 12 000 kg · 340×248×720 cm" },
+  bus35:  { label:"Bus do 3,5t",    transportMode:"truck", grossWeightKg:3500,  axleWeightKg:1800,  heightCm:270, widthCm:210, lengthCm:600,  axleCount:2, info:"do 3 500 kg · 2 osie · 270×210×600 cm" },
+  busBig: { label:"Bus pow. 3,5t",  transportMode:"truck", grossWeightKg:7500,  axleWeightKg:3500,  heightCm:330, widthCm:240, lengthCm:850,  axleCount:2, info:"3,5–7,5 t · 2 osie · 330×240×850 cm" },
   custom: { label:"Własne",         transportMode:"truck", grossWeightKg:null, info:"Wprowadź własne parametry" },
 };
 

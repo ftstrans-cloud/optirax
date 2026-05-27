@@ -376,6 +376,10 @@ async function pasteGoogleMaps() {
 function toggleGmapsPaste() {
   const box = document.getElementById("gmapsPasteBox");
   if (!box) return;
+  // Zamknij NLP box jeśli otwarty (tylko jedno źródło na raz)
+  const nlpBox = document.getElementById("nlpPasteBox");
+  if (nlpBox) nlpBox.style.display = "none";
+
   const isOpen = box.style.display !== "none";
   box.style.display = isOpen ? "none" : "block";
   if (!isOpen) setTimeout(() => document.getElementById("gmapsInput")?.focus(), 50);

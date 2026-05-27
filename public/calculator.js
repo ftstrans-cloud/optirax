@@ -11,13 +11,20 @@ function computeFixedCostEur(driverDays){
   const zus     = +document.getElementById("fx_zus")?.value || 0;
   const ubezp   = +document.getElementById("fx_ubezp")?.value || 0;
   const serwis  = +document.getElementById("fx_serwis")?.value || 0;
-  const monthly = leasing + zus + ubezp + serwis;
+  const office  = +document.getElementById("fx_office")?.value || 0;
+  const vehicle = +document.getElementById("fx_vehicle")?.value || 0;
+  // lump (łączny koszt/mc) nadpisuje rozbicie, jeśli wpisany > 0
+  const lump    = +document.getElementById("fx_lump")?.value || 0;
+  const monthly = lump > 0 ? lump : (leasing + zus + ubezp + serwis + office + vehicle);
 
   const workDays = +document.getElementById("fx_work_days")?.value || 20;
 
   // dni trasy: pole fx_trip_days; jeśli 0/puste → bierz dni kierowcy (driverDays)
   let tripDays = +document.getElementById("fx_trip_days")?.value || 0;
   if (tripDays <= 0) tripDays = driverDays || 1;
+  // pusty dolot/powrót: dolicz dni powrotu jeśli włączony suwak
+  const incReturn = document.getElementById("fx_inc_return")?.checked;
+  if (incReturn) tripDays += (+document.getElementById("fx_return_days")?.value || 0);
 
   const daily = workDays > 0 ? monthly / workDays : 0;
   const eur = daily * tripDays;
@@ -101,6 +108,10 @@ function calculateCosts(data){
 
   const driver_cost_eur = data.driver_days * data.driver_eur_per_day;
 
+  // CHŁODNIA: spalanie agregatu (l/h) × h/dzień × dni trasy × cena paliwa
+  const reefer_l = (data.reefer_l_per_h || 0) * (data.reefer_h_per_day || 0) * (data.driver_days || 0);
+  const reefer_eur = reefer_l * data.fuel_price_pln_per_l / data.eur_pln;
+
   // NOTE: tolls_eur already includes vignettes (NL/GB) — set by app.js before run()
   // Do NOT re-calculate vignettes here to avoid double-counting
   const fixed = computeFixedCostEur(data.driver_days);
@@ -111,6 +122,7 @@ function calculateCosts(data){
     + data.ferries_eur
     + driver_cost_eur
     + data.other_costs_eur
+    + reefer_eur
     + fixed.eur;
 
 	let price_eur = 0;
@@ -133,6 +145,8 @@ function calculateCosts(data){
     tolls_eur: round2(data.tolls_eur),
     ferries_eur: round2(data.ferries_eur),
     other_costs_eur: round2(data.other_costs_eur),
+    reefer_eur: round2(reefer_eur),
+    reefer_l: round2(reefer_l),
 
     fixed_costs_eur: round2(fixed.eur),
 
@@ -170,6 +184,8 @@ console.log("RUN CLICK");
     driver_days: +document.getElementById("driver_days").value,
     driver_eur_per_day: +document.getElementById("driver_eur_per_day").value,
     other_costs_eur: +document.getElementById("other_costs_eur").value,
+    reefer_l_per_h: +document.getElementById("reefer_l_per_h")?.value || 0,
+    reefer_h_per_day: +document.getElementById("reefer_h_per_day")?.value || 0,
     target_margin_pct: +document.getElementById("target_margin_pct").value,
 	
 	calc_mode: document.getElementById("calc_mode")?.value || "suggest",
