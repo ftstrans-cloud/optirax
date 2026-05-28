@@ -192,9 +192,15 @@
 
       <!-- log/podsumowanie + alternatywne trasy (wypełnia app.js) -->
       <pre id="routeInfo"></pre>
-      <div id="altRoutesPanel" style="display:none;">
-        <div style="font-family:'Sora';font-weight:600;font-size:13px;margin-bottom:6px;">Wybierz trasę:</div>
-        <div id="altRoutesList"></div>
+      <div id="altRoutesPanel" class="collap" data-collap="trasy" style="display:none;">
+        <div class="collap-head">
+          <svg class="ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+          <span class="ttl"><svg viewBox="0 0 24 24"><use href="#i-route"/></svg> Wybór trasy</span>
+          <button type="button" class="pin" aria-label="Przypnij">📌</button>
+        </div>
+        <div class="collap-body">
+          <div id="altRoutesList"></div>
+        </div>
       </div>
       <div class="small">Dodaj np. załadunki/rozładunki po drodze. Kolejność ma znaczenie.</div>
 
