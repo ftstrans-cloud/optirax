@@ -41,16 +41,32 @@ function buildShortLabel(x) {
 function createDropdown() {
   const el = document.createElement("div");
   el.className = "ac-dropdown";
-  el.style.cssText = `
-    position:absolute; z-index:9999; left:0; right:0; top:100%;
-    background:var(--panel); color:var(--ink);
-    border:1px solid var(--panel-edge);
-    border-radius:10px; margin-top:3px;
-    box-shadow:0 8px 32px rgba(0,0,0,.25);
-    max-height:220px; overflow-y:auto;
-    display:none;
-  `;
+  // position:fixed — ucieka ze wszystkich overflow:hidden/auto rodziców (route-wrap, colLeft)
+  el.style.cssText = [
+    "position:fixed","z-index:99999",
+    "background:var(--panel)","color:var(--ink)",
+    "border:1px solid var(--panel-edge)",
+    "border-radius:10px",
+    "box-shadow:0 8px 32px rgba(0,0,0,.28)",
+    "max-height:240px","overflow-y:auto",
+    "display:none","min-width:200px"
+  ].join(";");
+  // wstaw do body żeby nie dziedziczył overflow rodziców
+  document.body.appendChild(el);
   return el;
+}
+
+function positionDropdown(dropdown, input) {
+  const rect = input.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const dropH = Math.min(dropdown.scrollHeight || 220, 240);
+  dropdown.style.width  = rect.width + "px";
+  dropdown.style.left   = rect.left  + "px";
+  if (spaceBelow < dropH + 8 && rect.top > dropH + 8) {
+    dropdown.style.top = (rect.top - dropH - 4) + "px";
+  } else {
+    dropdown.style.top = (rect.bottom + 3) + "px";
+  }
 }
 
 function showDropdown(dropdown, items, input) {
@@ -60,11 +76,11 @@ function showDropdown(dropdown, items, input) {
   items.forEach(item => {
     const row = document.createElement("div");
     row.className = "ac-item";
-    row.style.cssText = `
-      padding:9px 12px; cursor:pointer;
-      border-bottom:1px solid var(--panel-edge);
-      font-size:13px; line-height:1.35; color:var(--ink);
-    `;
+    row.style.cssText = [
+      "padding:10px 13px","cursor:pointer",
+      "border-bottom:1px solid var(--panel-edge)",
+      "font-size:13px","line-height:1.35","color:var(--ink)"
+    ].join(";");
     row.innerHTML = `
       <div style="font-weight:600;">${escapeHtml(item.short)}</div>
       <div style="font-size:11px;opacity:.55;margin-top:2px;">${escapeHtml(item.label)}</div>
@@ -74,43 +90,23 @@ function showDropdown(dropdown, items, input) {
       input.value = item.short;
       dropdown.style.display = "none";
     });
-    row.addEventListener("mouseover", () => row.style.background = "var(--signal-soft, rgba(232,89,12,.10))");
+    row.addEventListener("mouseover", () => row.style.background = "var(--signal-soft,rgba(232,89,12,.10))");
     row.addEventListener("mouseout",  () => row.style.background = "");
     dropdown.appendChild(row);
   });
 
   dropdown.style.display = "block";
-
-  // Flip-up: jeśli poniżej inputu jest mało miejsca, otwórz nad inputem
-  requestAnimationFrame(() => {
-    const rect = input.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const dropH = dropdown.offsetHeight || 220;
-    if (spaceBelow < dropH + 8 && rect.top > dropH + 8) {
-      dropdown.style.top = "auto";
-      dropdown.style.bottom = "100%";
-      dropdown.style.marginTop = "0";
-      dropdown.style.marginBottom = "3px";
-    } else {
-      dropdown.style.top = "100%";
-      dropdown.style.bottom = "auto";
-      dropdown.style.marginTop = "3px";
-      dropdown.style.marginBottom = "0";
-    }
-  });
+  requestAnimationFrame(() => positionDropdown(dropdown, input));
 }
 
 function attachAutocomplete(input) {
   if (input._acAttached) return;
   input._acAttached = true;
 
-  // wrapper musi mieć position:relative
-  const wrapper = input.closest(".routeRow") || input.parentElement;
-  wrapper.style.position = "relative";
-
+  // dropdown jest wstawiany do body przez createDropdown (position:fixed)
   const dropdown = createDropdown();
-  // wstawiamy po input wewnątrz wrappera
-  input.insertAdjacentElement("afterend", dropdown);
+  // zapisz referencję żeby można go usunąć przy cleanup
+  input._acDropdown = dropdown;
 
   input.addEventListener("input", () => {
     clearTimeout(acDebounceTimer);

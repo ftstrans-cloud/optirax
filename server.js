@@ -1691,7 +1691,7 @@ Zwróć TYLKO obiekt JSON (bez markdown, bez \`\`\`), format:
 }
 Zasady:
 - ORIGIN/STOPS/DESTINATION: akceptuj KAŻDY format adresu (miasto, kod+miasto, pełny adres). Skróty krajów (PL, DE, FR...) to część adresu. Kolejność w tekście = kolejność trasy. Ignoruj słowa nie-adresowe (załadunek, rozładunek, loading, via). Jeśli tylko 2 lokalizacje: origin+destination, stops=[].
-- OFFER_PRICE_EUR: stawka/cena za transport. Szukaj kwot przy słowach: stawka, cena, fracht, freight, rate, EUR, €. Przelicz na EUR jeśli podana w innej walucie (PLN/4.3, GBP*1.17). Tylko liczba, bez waluty. null jeśli brak.
+- OFFER_PRICE_EUR: stawka/cena NETTO za transport (bez VAT). Szukaj kwot przy słowach: stawka, cena, fracht, freight, rate, EUR, €. IGNORUJ kwoty przy słowach: VAT, podatek, brutto, gross, total z VAT — szukaj wartości netto. Przelicz na EUR jeśli podana w innej walucie (PLN÷4.3, GBP×1.17, CHF×1.02). Tylko liczba, bez waluty. null jeśli brak.
 - VEHICLE_TYPE: dobierz po opisie pojazdu/ładunku: "tir40" (naczepa, ciągnik, 40t, standard, plandeka, firanka 13.6m), "jumbo" (jumbo, tandem, 120m3), "solo" (solo, 12t, krótki), "bus35" (bus, do 3.5t, blaszak), "busBig" (bus 7.5t, powyżej 3.5t). null jeśli nie wiadomo.
 - IS_REEFER: true jeśli wzmianka o chłodni, agregacie, temperaturze, reefer, frigo, mrożonki, temp. kontrolowana. Inaczej false.
 - ADR: true jeśli wzmianka o ADR, materiały niebezpieczne, dangerous goods. Inaczej false.

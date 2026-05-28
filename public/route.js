@@ -800,8 +800,8 @@ function initRouteBuilder(){
   if (!list) return;
   list.innerHTML = "";
 
-  addRouteRow("Skąd", "Warszawa", { fixed: true });
-  addRouteRow("Dokąd", "Leeds", { fixed: true });
+  addRouteRow("Skąd", "", { fixed: true });
+  addRouteRow("Dokąd", "", { fixed: true });
   updateRouteButtons();
 }
 

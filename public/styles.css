@@ -60,7 +60,7 @@ body{ font-family:'IBM Plex Sans',sans-serif; background:var(--paper);
 .btn-navy:hover{ background:var(--navy-2); color:#fff; }
 
 /* PUNKTY TRASY */
-.route-stops{ margin-bottom:14px; border:1px solid var(--panel-edge); border-radius:var(--r-sharp); background:#fff; overflow:hidden; }
+.route-stops{ margin-bottom:14px; border:1px solid var(--panel-edge); border-radius:var(--r-sharp); background:#fff; }
 .stops-head{ display:flex; align-items:center; justify-content:space-between; padding:10px 12px; cursor:pointer; user-select:none; }
 .stops-count{ font-family:'Sora'; font-weight:600; font-size:14px; display:flex; align-items:center; gap:7px; }
 .stops-count::before{ content:''; width:8px; height:8px; border-radius:50%; background:var(--signal); }
@@ -111,7 +111,7 @@ select.input{ cursor:pointer; }
 #nlpStatus{ font-size:11px; color:var(--ink-faint); margin-bottom:6px; }
 
 /* PUNKTY TRASY — kontener-wrapper (estetyka z final.html, zwijany na hover) */
-.route-wrap{ margin-bottom:12px; border:1px solid var(--panel-edge); border-radius:var(--r-sharp); background:#fff; overflow:hidden; }
+.route-wrap{ margin-bottom:12px; border:1px solid var(--panel-edge); border-radius:var(--r-sharp); background:#fff; }
 .route-wrap .stops-head{ display:flex; align-items:center; gap:8px; padding:10px 12px; user-select:none; cursor:pointer; }
 .route-wrap .stops-count{ font-family:'Sora'; font-weight:600; font-size:14px; display:flex; align-items:center; gap:7px; flex:0 0 auto; }
 .route-wrap .stops-count::before{ content:''; width:8px; height:8px; border-radius:50%; background:var(--signal); }
@@ -443,10 +443,10 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
   background: var(--bg, #0f172a);
   border-radius: 16px;
   width: 92%;
-  max-width: 520px;
+  max-width: 680px;
   max-height: 86vh;
   overflow-y: auto;
-  padding: 22px;
+  padding: 24px;
   color: var(--text, #f8fafc);
 }
 :root[data-theme="light"] #cargoPanel { background: #f8fafc; color: #0f172a; }
@@ -494,30 +494,37 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 
 .cargo-row{
   display: grid;
-  grid-template-columns: repeat(4, 1fr) auto;
-  gap: 8px;
-  margin-bottom: 8px;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: 10px;
+  margin-bottom: 10px;
   align-items: end;
 }
 .cargo-row label{
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--muted, #d1d9ff);
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   display: block;
 }
 .cargo-row input, .cargo-row select{
   width: 100%;
-  padding: 8px 10px;
+  padding: 9px 11px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.15);
-  background: rgba(0,0,0,.2);
-  color: inherit;
+  border: 1px solid var(--panel-edge, rgba(255,255,255,.15));
+  background: var(--panel, rgba(0,0,0,.2));
+  color: var(--ink, inherit);
   font-size: 14px;
+  box-sizing: border-box;
+}
+.cargo-row input:focus, .cargo-row select:focus{
+  outline: none;
+  border-color: var(--signal, #e8590c);
 }
 :root[data-theme="light"] .cargo-row input,
 :root[data-theme="light"] .cargo-row select{
-  background: #f1f5f9;
-  border-color: #cbd5e1;
+  background: #f7f6f2;
+  border-color: #d9d6cc;
+  color: #1a1d24;
 }
 .cargo-row .del-btn{
   background: rgba(239,68,68,0.15);
@@ -700,3 +707,39 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 }
 
 .historyForm input{ width:100%; padding:9px 11px; border-radius:8px; border:1px solid var(--panel-edge); background:var(--panel); color:var(--ink); font-size:13px; }
+
+/* ===== Inputy w modalach Paliwo i Flota — dostosowane do motywu ===== */
+#fuelPanel input[type="text"],
+#fuelPanel input[type="number"],
+#fuelPanel select,
+#fleetPanel input[type="text"],
+#fleetPanel input[type="number"],
+#fleetPanel select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color .15s;
+}
+#fuelPanel input:focus,
+#fuelPanel select:focus,
+#fleetPanel input:focus,
+#fleetPanel select:focus {
+  outline: none;
+  border-color: var(--signal);
+}
+/* Kolory zmiennych fuel/fleet (używają var(--color-*)) — mapowanie na nasze */
+#fuelPanel, #fleetPanel {
+  --color-text-primary: var(--ink);
+  --color-text-secondary: var(--ink-soft);
+  --color-text-tertiary: var(--ink-faint);
+  --color-background-primary: var(--panel);
+  --color-background-secondary: var(--panel-edge);
+  --color-text-success: var(--good);
+  --line: var(--panel-edge);
+}
