@@ -581,10 +581,6 @@ function buildTileLayers(apiKey) {
       ? L.tileLayer(hereTileUrl("satellite", "day", apiKey, "base"),  { attribution: attr_here, maxZoom: 20 })
       : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
 
-    "here-sat-night": apiKey
-      ? L.tileLayer(hereTileUrl("satellite", "night", apiKey, "base"), { attribution: attr_here, maxZoom: 20 })
-      : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
-
     "osm": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm, maxZoom: 19 }),
   };
 }

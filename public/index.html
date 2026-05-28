@@ -150,7 +150,7 @@
       <!-- LINK MAPS / WKLEJ TEKST: onclick wymagane przez autocomplete.js -->
       <div class="btn-row" style="margin-bottom:12px;">
         <button type="button" class="btn" onclick="toggleGmapsPaste()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-link"/></svg> Link Maps</button>
-        <button type="button" class="btn" onclick="toggleNlpPaste()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-clipboard"/></svg> Wklej tekst</button>
+        <button type="button" class="btn" onclick="toggleNlpPaste()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-clipboard"/></svg> Wklej zlecenie z maila</button>
       </div>
 
       <!-- BOX: link Google Maps (id wymagane przez toggleGmapsPaste/pasteGoogleMaps) -->
@@ -160,12 +160,12 @@
         <button type="button" class="btn btn-navy" style="width:100%;" onclick="pasteGoogleMaps()"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Wczytaj trasę</button>
       </div>
 
-      <!-- BOX: wklej tekst → AI (id wymagane przez toggleNlpPaste/parseNlpStops) -->
+      <!-- BOX: wklej zlecenie z maila → AI (id wymagane przez toggleNlpPaste/parseNlpStops) -->
       <div id="nlpPasteBox" style="display:none;">
-        <div style="font-size:12px;color:var(--ink-faint);margin-bottom:6px;">Wklej tekst z adresami — AI wyciągnie punkty trasy automatycznie.</div>
-        <textarea id="nlpInput" rows="5" placeholder="Wklej adresy w kolejności, np:&#10;59114 Steenvoorde, France&#10;8520 Kuurne, Belgium&#10;21-400 Łuków, PL"></textarea>
+        <div style="font-size:12px;color:var(--ink-faint);margin-bottom:6px;">Wklej całe zlecenie z maila — AI wyciągnie trasę, cenę, pojazd, chłodnię, ADR i datę.</div>
+        <textarea id="nlpInput" rows="6" placeholder="Wklej treść maila ze zleceniem, np:&#10;Załadunek 12.06 Steenvoorde FR&#10;Rozładunek Łuków PL&#10;Naczepa chłodnia, mrożonki&#10;Stawka 1850 EUR"></textarea>
         <div id="nlpStatus"></div>
-        <button type="button" class="btn btn-navy" style="width:100%;" onclick="parseNlpStops()"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-play"/></svg> Wyciągnij trasę (AI)</button>
+        <button type="button" class="btn btn-navy" style="width:100%;" onclick="parseNlpStops()"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-sparkles"/></svg> Wyciągnij dane (AI)</button>
       </div>
 
       <!-- PUNKTY TRASY: #routeList wypełnia route.js (initRouteBuilder na load) -->
@@ -256,7 +256,6 @@
           <button type="button" class="mapStyleBtn active" data-style="here-road-day"   title="HERE drogowa jasna">🗺 Drogowa</button>
           <button type="button" class="mapStyleBtn"        data-style="here-road-night" title="HERE drogowa ciemna">🌙 Noc</button>
           <button type="button" class="mapStyleBtn"        data-style="here-satellite"  title="HERE satelita">🛰 Satelita</button>
-          <button type="button" class="mapStyleBtn"        data-style="here-sat-night"  title="HERE satelita ciemna">🌑 Sat+Noc</button>
           <button type="button" class="mapStyleBtn"        data-style="osm"             title="OpenStreetMap">🌐 OSM</button>
         </div>
       </div>
@@ -265,60 +264,95 @@
   </div>
 
   <div class="col" id="colRight" style="overflow-y:auto; overflow-x:hidden;">
-    <div class="panel panel-pad">
-      <div class="section-label"><svg viewBox="0 0 24 24"><use href="#i-gauge"/></svg> Wyniki</div>
-
-      <!-- KPI poziomo: Koszt + Cena (accentbar) + Marża (hero granat).
-           renderResult wpisuje wartość z jednostką inline (np. "2282 EUR"). -->
-      <div class="kpis">
-        <div class="kpi"><span class="accentbar"></span><div class="k">Koszt</div><div class="v num" id="kpi_total">— EUR</div></div>
-        <div class="kpi"><span class="accentbar"></span><div class="k">Cena</div><div class="v num" id="kpi_price">— EUR</div></div>
-        <div class="kpi hero"><div class="k">Marża</div><div class="v num" id="kpi_margin">— EUR</div></div>
+    <div class="collap" data-collap="wynik">
+      <div class="collap-head">
+        <svg class="ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+        <span class="ttl"><svg viewBox="0 0 24 24"><use href="#i-gauge"/></svg> Wynik kalkulacji</span>
+        <button type="button" class="pin" aria-label="Przypnij">📌</button>
       </div>
-
-      <!-- Verdict: zielony badge + meta (ocena trasy) -->
-      <div class="verdict route-evaluation" id="verdictBox">
-        <span class="badge" id="routeScore"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg> —</span>
-        <span class="meta">Punkty <b class="num" id="scoreValue">—</b> · <b class="num" id="eurKmValue">—</b> €/km <span id="perKm"></span></span>
-      </div>
-
-      <!-- Rozbicie kosztów -->
-      <table class="data"><thead><tr><th>Pozycja</th><th>Wartość</th></tr></thead>
-        <tbody id="costTable">
-          <tr><td colspan="2" style="opacity:.6;">Kliknij „Pobierz km", aby przeliczyć trasę.</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Osobny panel: Myto wg kraju -->
-    <div class="panel panel-pad">
-      <div class="section-label"><svg viewBox="0 0 24 24"><use href="#i-map"/></svg> Myto — wg kraju</div>
-      <div class="panel-sub" style="margin-bottom:8px;">Źródło: HERE Routing API</div>
-      <table class="data tolls"><thead><tr><th>Kraj</th><th>km</th><th>€/km</th><th>Koszt</th></tr></thead>
-        <tbody id="tollsTable">
-          <tr><td colspan="4" style="opacity:.6;">Brak danych myta.</td></tr>
-        </tbody>
-      </table>
-      <div class="small" id="tollsTotal" style="margin-top:8px;"></div>
-      <div class="small" id="vignetteTotal" style="margin-top:2px;"></div>
-      <details class="res-summary" style="margin-top:10px;">
-        <summary>Szczegółowe podsumowanie</summary>
-        <pre id="summary"></pre>
-      </details>
-    </div>
-
-    <!-- ===== RAPORT AI ===== -->
-    <div class="panel panel-pad" style="margin-top:12px;">
-      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:4px;">
-        <div>
-          <div class="section-label" style="margin-bottom:4px;"><svg viewBox="0 0 24 24"><use href="#i-sparkles"/></svg> Raport AI</div>
-          <div class="panel-sub" style="margin-bottom:0;">Opis trasy, ryzyka i rekomendacja</div>
+      <div class="collap-body">
+        <!-- KPI poziomo (wiersze): label po lewej, wartość po prawej — cyfry się nie ucinają.
+             renderResult wpisuje wartość z jednostką inline (np. "2282 EUR"). -->
+        <div class="kpis">
+          <div class="kpi"><span class="accentbar"></span><div class="k">Koszt całkowity</div><div class="v num" id="kpi_total">— EUR</div></div>
+          <div class="kpi"><span class="accentbar"></span><div class="k">Cena zlecenia</div><div class="v num" id="kpi_price">— EUR</div></div>
+          <div class="kpi hero"><div class="k">Marża</div><div class="v num" id="kpi_margin">— EUR</div></div>
         </div>
-        <button class="btn btn-navy" type="button" id="btnReportAI" style="flex-shrink:0;">
-          <svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-sparkles"/></svg> Wygeneruj
-        </button>
+
+        <!-- Verdict: zielony badge + meta (ocena trasy) -->
+        <div class="verdict route-evaluation" id="verdictBox">
+          <span class="badge" id="routeScore"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg> —</span>
+          <span class="meta">Punkty <b class="num" id="scoreValue">—</b> · <b class="num" id="eurKmValue">—</b> €/km <span id="perKm"></span></span>
+        </div>
+
+        <!-- Rozbicie kosztów -->
+        <table class="data"><thead><tr><th>Pozycja</th><th>Wartość</th></tr></thead>
+          <tbody id="costTable">
+            <tr><td colspan="2" style="opacity:.6;">Kliknij „Pobierz km", aby przeliczyć trasę.</td></tr>
+          </tbody>
+        </table>
       </div>
-      <pre id="aiReport" class="ai-report"></pre>
+    </div>
+
+    <!-- Osobny panel: Myto wg kraju (zwijany) -->
+    <div class="collap" data-collap="myto">
+      <div class="collap-head">
+        <svg class="ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+        <span class="ttl"><svg viewBox="0 0 24 24"><use href="#i-map"/></svg> Myto — wg kraju</span>
+        <button type="button" class="pin" aria-label="Przypnij">📌</button>
+      </div>
+      <div class="collap-body">
+        <div class="panel-sub" style="margin-bottom:8px;">Źródło: HERE Routing API</div>
+        <table class="data tolls"><thead><tr><th>Kraj</th><th>km</th><th>€/km</th><th>Koszt</th></tr></thead>
+          <tbody id="tollsTable">
+            <tr><td colspan="4" style="opacity:.6;">Brak danych myta.</td></tr>
+          </tbody>
+        </table>
+        <div class="small" id="tollsTotal" style="margin-top:8px;"></div>
+        <div class="small" id="vignetteTotal" style="margin-top:2px;"></div>
+        <details class="res-summary" style="margin-top:10px;">
+          <summary>Szczegółowe podsumowanie</summary>
+          <pre id="summary"></pre>
+        </details>
+      </div>
+    </div>
+
+    <!-- ===== RAPORT AI (zwijany) ===== -->
+    <div class="collap" data-collap="ai">
+      <div class="collap-head">
+        <svg class="ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+        <span class="ttl"><svg viewBox="0 0 24 24"><use href="#i-sparkles"/></svg> Raport AI</span>
+        <button type="button" class="pin" aria-label="Przypnij">📌</button>
+      </div>
+      <div class="collap-body">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:8px;">
+          <div class="panel-sub" style="margin-bottom:0;">Opis trasy, ryzyka i rekomendacja</div>
+          <button class="btn btn-navy" type="button" id="btnReportAI" style="flex-shrink:0;">
+            <svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-sparkles"/></svg> Wygeneruj
+          </button>
+        </div>
+        <pre id="aiReport" class="ai-report"></pre>
+      </div>
+    </div>
+
+    <!-- ===== HISTORIA WYCEN (zwijana) ===== -->
+    <div class="collap closed" data-collap="historia">
+      <div class="collap-head">
+        <svg class="ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+        <span class="ttl"><svg viewBox="0 0 24 24"><use href="#i-history"/></svg> Historia wycen</span>
+        <button type="button" class="pin" aria-label="Przypnij">📌</button>
+      </div>
+      <div class="collap-body" id="historyPanelBody">
+        <div class="panel-sub" style="margin-bottom:8px;">Wczytaj / duplikuj / usuń zapisane wyceny</div>
+        <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+          <button type="button" class="btn" onclick="openSaveHistoryModal && openSaveHistoryModal()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg> Zapisz bieżącą</button>
+          <button type="button" class="btn" onclick="clearHistoryConfirm && clearHistoryConfirm()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-x"/></svg> Wyczyść</button>
+        </div>
+        <div id="historyList" class="historyList"></div>
+        <span id="historyChevron" style="display:none;"></span>
+        <div id="summaryView" style="display:none;"></div>
+        <pre id="out" style="display:none;"></pre>
+      </div>
     </div>
   </div>
 </div>
@@ -494,11 +528,23 @@
     html.setAttribute('data-theme', t);
     if(label) label.textContent = (t === 'dark') ? 'Ciemny' : 'Jasny';
     try { localStorage.setItem('optirax_theme', t); } catch(e){}
+    // Sync stylu mapy z motywem: jasny->mapa drogowa jasna, ciemny->drogowa noc.
+    // Tylko gdy mapa już istnieje i aktualny styl to wariant DROGOWY
+    // (nie nadpisujemy gdy user wybrał satelitę/OSM ręcznie).
+    if (window.__themeReady && typeof window.switchMapStyle === 'function') {
+      var active = document.querySelector('.mapStyleBtn.active');
+      var cur = active ? active.dataset.style : null;
+      if (cur === 'here-road-day' || cur === 'here-road-night') {
+        window.switchMapStyle(t === 'light' ? 'here-road-day' : 'here-road-night');
+      }
+    }
   }
   // wczytaj zapisany motyw albo domyślny dark
   var saved = null;
   try { saved = localStorage.getItem('optirax_theme'); } catch(e){}
   applyTheme(saved || 'dark');
+  // od teraz przełączanie motywu może synchronizować mapę
+  window.__themeReady = true;
 
   if(toggle){
     toggle.addEventListener('click', function(){
@@ -673,6 +719,1260 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
       }
     }, 150);
   });
+})();
+</script>
+
+<!-- ===== MODAL: Zapisz wycenę (historia) ===== -->
+<div id="historyModal" class="historyModal" style="display:none;">
+  <div class="historyModalCard">
+    <div class="historyModalTitle">Zapisz wycenę</div>
+
+    <div class="historyForm">
+      <label>Nazwa (np. Klient / relacja)</label>
+      <input id="h_name" type="text" placeholder="np. Optirax | Warszawa → Piacenza" />
+
+      <label>Klient / zleceniodawca</label>
+      <input id="h_client" type="text" placeholder="np. ACME Sp. z o.o." />
+
+      <label>Notatka</label>
+      <input id="h_note" type="text" placeholder="np. termin 2 dni, płatność 14 dni" />
+    </div>
+
+    <div class="historyModalBtns">
+      <button type="button" class="btn secondary" onclick="closeSaveHistoryModal()">Anuluj</button>
+      <button type="button" class="btn" onclick="saveCurrentToHistory()">Zapisz</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===== MODAL: Paliwo (fuel tracker) ===== -->
+<style>
+#fuelModal{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center}
+#fuelModal.open{display:flex}
+#fuelPanel{background:var(--bg,#0f172a);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:16px 16px 100px}
+:root[data-theme="light"] #fuelPanel{background:#f8fafc}
+.ft-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
+.ft-tabs{display:flex;gap:6px;margin:12px 0}
+.ft-tab{flex:1;padding:8px;font-size:13px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.ft-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:500}
+.ft-sec{display:none}.ft-sec.active{display:block}
+.ft-card{border:1px solid var(--line,#334155);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--color-background-primary)}
+.ft-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.ft-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.ft-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
+.ft-hint{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+.ft-metric{background:var(--color-background-secondary);border-radius:8px;padding:10px}
+.ft-metric .v{font-size:20px;font-weight:500}
+.ft-metric .l{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.ft-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.ft-result{border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px;display:none}
+.ft-trip{border:1px solid var(--line,#334155);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.ft-trip-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.ft-badge{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.ft-ok{background:var(--color-background-success);color:var(--color-text-success)}
+.ft-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
+.ft-bad{background:var(--color-background-danger);color:var(--color-text-danger)}
+.ft-del{background:none;border:none;color:var(--color-text-tertiary);cursor:pointer;font-size:13px}
+.ft-del:hover{color:var(--color-text-danger)}
+.ft-empty{text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:2rem 0}
+.ft-divider{height:1px;background:var(--line,#334155);margin:10px 0}
+.ft-formula{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+</style>
+
+<div id="fuelModal">
+  <div id="fuelPanel">
+    <button class="ft-close" onclick="closeFuelTracker()">✕</button>
+    <div style="font-size:16px;font-weight:500;color:var(--color-text-primary);">⛽ Tracker spalania</div>
+
+    <div class="ft-tabs">
+      <button class="ft-tab active" onclick="ftTab('new')">Nowy przejazd</button>
+      <button class="ft-tab" onclick="ftTab('history')">Historia</button>
+      <button class="ft-tab" onclick="ftTab('stats')">Statystyki</button>
+    </div>
+
+    <!-- NOWY PRZEJAZD -->
+    <div id="ft-new" class="ft-sec active">
+      <div class="ft-card">
+        <div style="font-size:13px;font-weight:500;margin-bottom:10px;">Dane przejazdu</div>
+        <div class="ft-row">
+          <div>
+            <div class="ft-label">Pojazd</div>
+            <select id="ftVehicleSelect" style="width:100%" onchange="ftFillFromVehicle(this.value)">
+              <option value="">— wybierz lub wpisz poniżej —</option>
+            </select>
+          </div>
+          <div>
+            <div class="ft-label">Naczepa</div>
+            <select id="ftTrailerSelect" style="width:100%">
+              <option value="">— wybierz naczepę —</option>
+            </select>
+          </div>
+        </div>
+        <div class="ft-row">
+          <div><div class="ft-label">Nr rejestracyjny / auto</div><input type="text" id="ftReg" placeholder="np. WA 12345" style="width:100%"/></div>
+          <div><div class="ft-label">Kierowca</div><input type="text" id="ftDriver" placeholder="Imię nazwisko" style="width:100%"/></div>
+        </div>
+        <div class="ft-row">
+          <div><div class="ft-label">Data wyjazdu</div><input type="text" id="ftDateOut" placeholder="np. 28.04.2026" style="width:100%"/></div>
+          <div><div class="ft-label">Data powrotu</div><input type="text" id="ftDateIn" placeholder="np. 30.04.2026" style="width:100%"/></div>
+        </div>
+        <div class="ft-row">
+          <div><div class="ft-label">Drogomierz wyjazd (km)</div><input type="number" id="ftKmOut" placeholder="np. 124500" style="width:100%"/></div>
+          <div><div class="ft-label">Drogomierz powrót (km)</div><input type="number" id="ftKmIn" placeholder="np. 126460" style="width:100%"/></div>
+        </div>
+      </div>
+
+      <div class="ft-card">
+        <div style="font-size:13px;font-weight:500;margin-bottom:6px;">Paliwo</div>
+        <div class="ft-formula">Razem = baza wyjazd + karty w trasie + baza powrót</div>
+        <div class="ft-row">
+          <div>
+            <div class="ft-label">Baza — tankowanie WYJAZD (l)</div>
+            <input type="number" id="ftBase1" placeholder="np. 250" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Do pełna przed wyjazdem</div>
+          </div>
+          <div>
+            <div class="ft-label">Baza — tankowanie POWRÓT (l)</div>
+            <input type="number" id="ftBase2" placeholder="np. 180" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Do pełna po powrocie</div>
+          </div>
+        </div>
+        <div class="ft-row">
+          <div>
+            <div class="ft-label">Karty paliwowe w trasie (l)</div>
+            <input type="number" id="ftCards" placeholder="np. 320" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Suma z kart paliwowych</div>
+          </div>
+          <div>
+            <div class="ft-label">Komputer pokładowy (l/100)</div>
+            <input type="number" id="ftComputer" placeholder="np. 28.5" step="0.1" style="width:100%"/>
+            <div class="ft-hint">Odczyt po powrocie</div>
+          </div>
+        </div>
+        <div class="ft-divider"></div>
+        <button class="btn" style="width:100%;" onclick="ftCalculate()">Oblicz i zapisz</button>
+        <div id="ftResult" class="ft-result"></div>
+      </div>
+    </div>
+
+    <!-- HISTORIA -->
+    <div id="ft-history" class="ft-sec">
+      <div id="ftList"><div class="ft-empty">Brak zapisanych przejazdów</div></div>
+    </div>
+
+    <!-- STATYSTYKI -->
+    <div id="ft-stats" class="ft-sec">
+      <div class="ft-metrics">
+        <div class="ft-metric"><div class="v" id="ftSTripCount">0</div><div class="l">Przejazdów</div></div>
+        <div class="ft-metric"><div class="v" id="ftSTotalKm">0</div><div class="l">Łączne km</div></div>
+        <div class="ft-metric"><div class="v" id="ftSTotalFuel">0</div><div class="l">Paliwo razem (l)</div></div>
+        <div class="ft-metric"><div class="v" id="ftSAvgBurn">—</div><div class="l">Śr. spalanie (l/100)</div></div>
+      </div>
+      <div id="ftStatsDetail"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const KEY = 'optirax_fuel_v1';
+  const DB_USER = 'default';
+  let trips = [];
+
+  async function ftLoad(){
+    try{
+      const r = await fetch('/api/fuel?user_id='+DB_USER);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const rows = await r.json();
+      trips = rows.map(row=>({
+        id: row.id, reg: row.reg, driver: row.driver,
+        dateOut: row.date_out, dateIn: row.date_in,
+        km: row.km, b1: row.fuel_base1, cards: row.fuel_cards, b2: row.fuel_base2,
+        total: row.fuel_total, real: row.burn_real, comp: row.burn_computer,
+        diff: row.diff_l100, diffL: row.diff_liters, badge: row.badge||'ft-ok'
+      }));
+    }catch(e){
+      console.warn('Supabase fuel fallback localStorage:',e.message);
+      try{ trips = JSON.parse(localStorage.getItem(KEY)||'[]'); }catch{ trips=[]; }
+    }
+  }
+
+  async function ftSaveItem(trip){
+    try{
+      await fetch('/api/fuel',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...trip, user_id:DB_USER})});
+    }catch(e){ console.warn('Supabase fuel save failed:',e.message); }
+    try{
+      const local = JSON.parse(localStorage.getItem(KEY)||'[]');
+      local.unshift(trip);
+      localStorage.setItem(KEY, JSON.stringify(local.slice(0,500)));
+    }catch{}
+  }
+
+  async function ftDeleteItem(id){
+    try{
+      await fetch('/api/fuel/'+id+'?user_id='+DB_USER,{method:'DELETE'});
+    }catch(e){ console.warn('Supabase fuel delete:',e.message); }
+    try{
+      const local = JSON.parse(localStorage.getItem(KEY)||'[]');
+      localStorage.setItem(KEY,JSON.stringify(local.filter(t=>t.id!==id)));
+    }catch{}
+  }
+  function fv(id){ return parseFloat(document.getElementById(id).value)||0; }
+  function fs(id){ return (document.getElementById(id).value||'').trim(); }
+
+  window.ftFillFromVehicle = function(id){
+    if(!id) return;
+    const v = (window.fleetData?.vehicles||[]).find(x=>x.id===id);
+    if(!v) return;
+    document.getElementById('ftReg').value = v.reg||'';
+    const driver = (window.fleetData?.drivers||[]).find(d=>d.id===v.driver_id);
+    if(driver) document.getElementById('ftDriver').value = driver.name||'';
+  };
+
+  window.openFuelTracker = async function(){
+    await ftLoad();
+    document.getElementById('fuelModal').classList.add('open');
+    ftRenderStats();
+  };
+  window.closeFuelTracker = function(){
+    document.getElementById('fuelModal').classList.remove('open');
+  };
+  document.getElementById('fuelModal').addEventListener('click', function(e){
+    if(e.target === this) window.closeFuelTracker();
+  });
+
+  window.ftTab = async function(t){
+    document.querySelectorAll('.ft-tab').forEach((b,i)=> b.classList.toggle('active',['new','history','stats'][i]===t));
+    document.querySelectorAll('.ft-sec').forEach(s=> s.classList.remove('active'));
+    document.getElementById('ft-'+t).classList.add('active');
+    if(t==='history'){ await ftLoad(); ftRenderHistory(); }
+    if(t==='stats'){ await ftLoad(); ftRenderStats(); }
+  };
+
+  window.ftCalculate = async function(){
+    const kmOut = fv('ftKmOut'), kmIn = fv('ftKmIn');
+    const b1 = fv('ftBase1'), cards = fv('ftCards'), b2 = fv('ftBase2');
+    const comp = fv('ftComputer');
+    const res = document.getElementById('ftResult');
+
+    if(!kmOut||!kmIn||kmIn<=kmOut){
+      res.className='ft-result ft-bad'; res.style.display='block';
+      res.textContent='Uzupełnij km wyjazdu i powrotu (powrót musi być większy).'; return;
+    }
+    const km = kmIn - kmOut;
+    const total = b1 + cards + b2;
+    if(total<=0){
+      res.className='ft-result ft-bad'; res.style.display='block';
+      res.textContent='Uzupełnij dane paliwa.'; return;
+    }
+
+    const real = (total/km)*100;
+    const diff = comp>0 ? real-comp : null;
+    const MARGIN = 0.5;
+
+    let cls, badge, msg;
+    if(diff===null){
+      cls='ft-ok'; badge='ft-ok';
+      msg=`Spalanie: ${real.toFixed(2)} l/100km — brak odczytu komputera`;
+    } else {
+      const diffL = (diff/100)*km; // różnica w litrach bezwzględnych
+      const diffLStr = `${diffL>0?'+':''}${diffL.toFixed(1)} l (${diff>0?'+':''}${diff.toFixed(2)} l/100)`;
+      if(Math.abs(diff)<=MARGIN){
+        cls='ft-ok'; badge='ft-ok';
+        msg=`OK — rzeczywiste ${real.toFixed(2)} l/100, komputer ${comp.toFixed(1)} l/100<br>Różnica: <strong>${diffLStr}</strong> — w normie ±${MARGIN} l/100`;
+      } else if(Math.abs(diff)<=2){
+        cls='ft-warn'; badge='ft-warn';
+        msg=`Uwaga — rzeczywiste ${real.toFixed(2)} l/100, komputer ${comp.toFixed(1)} l/100<br>Różnica: <strong>${diffLStr}</strong> — przekracza ±${MARGIN} l/100`;
+      } else {
+        cls='ft-bad'; badge='ft-bad';
+        const kto = diffL>0 ? 'kierowca tankował poza kartami lub komputer zaniża' : 'komputer zawyża lub błąd danych';
+        msg=`Duże odchylenie — rzeczywiste ${real.toFixed(2)} l/100, komputer ${comp.toFixed(1)} l/100<br>Różnica: <strong>${diffLStr}</strong> — wymaga wyjaśnienia (${kto})`;
+      }
+    }
+
+    res.className='ft-result '+cls; res.style.display='block';
+    res.innerHTML=`<strong>${real.toFixed(2)} l/100km</strong> (${total.toFixed(0)} l / ${km} km)<br>${msg}`;
+
+    const trip={id:Date.now(),reg:fs('ftReg'),driver:fs('ftDriver'),
+      dateOut:fs('ftDateOut'),dateIn:fs('ftDateIn'),km,b1,cards,b2,total,real,comp,
+      diff, diffL: diff!==null ? (diff/100)*km : null, badge};
+    await ftSaveItem(trip); trips.unshift(trip); ftRenderStats();
+  };
+
+  function ftRenderHistory(){
+    const el=document.getElementById('ftList');
+    if(!trips.length){ el.innerHTML='<div class="ft-empty">Brak zapisanych przejazdów</div>'; return; }
+    el.innerHTML=trips.map(t=>`
+      <div class="ft-trip">
+        <div class="ft-trip-head">
+          <span style="font-weight:500;font-size:13px;">${t.reg||'—'}${t.driver?' · '+t.driver:''}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="ft-badge ${t.badge}">${t.real.toFixed(1)} l/100</span>
+            <button class="ft-del" onclick="ftDelete(${t.id})">✕</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--color-text-secondary);display:flex;gap:12px;flex-wrap:wrap;">
+          ${t.dateOut?`<span>${t.dateOut}${t.dateIn?' → '+t.dateIn:''}</span>`:''}
+          <span>${t.km.toLocaleString()} km</span>
+          <span>${t.total.toFixed(0)} l łącznie</span>
+          ${t.diff!==null?`<span>${t.diffL!=null?(t.diffL>0?'+':'')+t.diffL.toFixed(1)+' l':''} (${t.diff>0?'+':''}${t.diff.toFixed(2)} l/100) vs komputer</span>`:''}
+        </div>
+      </div>`).join('');
+  }
+
+  window.ftDelete = async function(id){
+    await ftDeleteItem(id); trips=trips.filter(t=>t.id!==id); ftRenderHistory(); ftRenderStats();
+  };
+
+  function ftRenderStats(){
+    ftLoad();
+    const n=trips.length;
+    document.getElementById('ftSTripCount').textContent=n;
+    if(!n){
+      document.getElementById('ftSTotalKm').textContent='0';
+      document.getElementById('ftSTotalFuel').textContent='0';
+      document.getElementById('ftSAvgBurn').textContent='—';
+      document.getElementById('ftStatsDetail').innerHTML=''; return;
+    }
+    const totKm=trips.reduce((s,t)=>s+t.km,0);
+    const totFuel=trips.reduce((s,t)=>s+t.total,0);
+    document.getElementById('ftSTotalKm').textContent=totKm.toLocaleString();
+    document.getElementById('ftSTotalFuel').textContent=totFuel.toFixed(0);
+    document.getElementById('ftSAvgBurn').textContent=((totFuel/totKm)*100).toFixed(2);
+
+    const byReg={};
+    trips.forEach(t=>{
+      const k=t.reg||'(bez nr rej.)';
+      if(!byReg[k]) byReg[k]={km:0,fuel:0,n:0,diffs:[]};
+      byReg[k].km+=t.km; byReg[k].fuel+=t.total; byReg[k].n++;
+      if(t.diff!==null) byReg[k].diffs.push(t.diff);
+    });
+    document.getElementById('ftStatsDetail').innerHTML=Object.entries(byReg).map(([reg,d])=>{
+      const burn=(d.fuel/d.km)*100;
+      const avgD=d.diffs.length?d.diffs.reduce((a,b)=>a+b,0)/d.diffs.length:null;
+      return `<div class="ft-card">
+        <div style="font-weight:500;font-size:13px;margin-bottom:8px;">${reg}</div>
+        <div class="ft-row3">
+          <div><div class="ft-label">Przejazdów</div><div style="font-size:16px;font-weight:500;">${d.n}</div></div>
+          <div><div class="ft-label">Łącznie km</div><div style="font-size:16px;font-weight:500;">${d.km.toLocaleString()}</div></div>
+          <div><div class="ft-label">Śr. spalanie</div><div style="font-size:16px;font-weight:500;">${burn.toFixed(2)} l/100</div></div>
+        </div>
+        ${avgD!==null?`<div style="font-size:11px;color:var(--color-text-secondary);">Śr. odchylenie vs komputer: ${avgD>0?'+':''}${avgD.toFixed(2)} l/100</div>`:''}
+      </div>`;
+    }).join('');
+  }
+})();
+</script>
+
+<!-- ===== MODAL: Flota ===== -->
+<style>
+#fleetModal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.65);display:none;align-items:flex-end;justify-content:center}
+#fleetModal.open{display:flex}
+#fleetPanel{background:var(--bg,#0f172a);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;padding:16px 16px 100px}
+:root[data-theme="light"] #fleetPanel{background:#f8fafc}
+.fl-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
+.fl-tabs{display:flex;gap:6px;margin:12px 0}
+.fl-tab{flex:1;padding:8px;font-size:12px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fl-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:600}
+.fl-sec{display:none}.fl-sec.active{display:block}
+.fl-card{border:1px solid var(--line,#334155);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--color-background-primary)}
+.fl-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.fl-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.fl-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
+.fl-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--line,#334155);border-radius:8px;margin-bottom:6px;font-size:12px}
+.fl-item-info{display:flex;flex-direction:column;gap:2px}
+.fl-item-reg{font-weight:700;font-size:13px;color:var(--color-text-primary)}
+.fl-item-sub{font-size:11px;color:var(--color-text-secondary)}
+.fl-item-actions{display:flex;gap:6px}
+.fl-btn-sm{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--line,#334155);background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fl-btn-sm:hover{background:var(--color-background-secondary)}
+.fl-btn-sm.danger:hover{color:var(--color-text-danger)}
+.fl-empty{text-align:center;color:var(--color-text-tertiary);font-size:12px;padding:1.5rem 0}
+.fl-type-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-left:6px}
+.fl-select-hint{font-size:10px;color:var(--color-text-tertiary);margin-top:4px}
+</style>
+
+<div id="fleetModal">
+  <div id="fleetPanel">
+    <button class="fl-close" onclick="closeFleetManager()">✕</button>
+    <div style="font-size:16px;font-weight:600;color:var(--color-text-primary);">🚛 Zarządzanie flotą</div>
+
+    <div class="fl-tabs">
+      <button class="fl-tab active" onclick="flTab('vehicles')">Pojazdy</button>
+      <button class="fl-tab" onclick="flTab('trailers')">Naczepy</button>
+      <button class="fl-tab" onclick="flTab('drivers')">Kierowcy</button>
+    </div>
+
+    <!-- POJAZDY -->
+    <div id="fl-vehicles" class="fl-sec active">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;" id="flVehicleFormTitle">Dodaj pojazd</div>
+        <input type="hidden" id="flVehicleId">
+        <div class="fl-row">
+          <div><div class="fl-label">Nr rejestracyjny *</div><input type="text" id="flVReg" placeholder="np. WA 12345" style="width:100%;text-transform:uppercase"/></div>
+          <div><div class="fl-label">Marka</div><input type="text" id="flVBrand" placeholder="np. Volvo" style="width:100%"/></div>
+        </div>
+        <div class="fl-row">
+          <div><div class="fl-label">Model</div><input type="text" id="flVModel" placeholder="np. FH16" style="width:100%"/></div>
+          <div><div class="fl-label">Rok produkcji</div><input type="number" id="flVYear" placeholder="np. 2020" style="width:100%"/></div>
+        </div>
+        <div class="fl-row3">
+          <div><div class="fl-label">Masa całk. (kg)</div><input type="number" id="flVGross" value="18000" style="width:100%"/></div>
+          <div><div class="fl-label">Nacisk/oś (kg)</div><input type="number" id="flVAxleW" value="11500" style="width:100%"/></div>
+          <div><div class="fl-label">Liczba osi</div><input type="number" id="flVAxles" value="3" style="width:100%"/></div>
+        </div>
+        <div class="fl-row3">
+          <div><div class="fl-label">Wysokość (cm)</div><input type="number" id="flVHeight" value="380" style="width:100%"/></div>
+          <div><div class="fl-label">Szerokość (cm)</div><input type="number" id="flVWidth" value="255" style="width:100%"/></div>
+          <div><div class="fl-label">Długość (cm)</div><input type="number" id="flVLength" value="600" style="width:100%"/></div>
+        </div>
+        <div class="fl-row">
+          <div>
+            <div class="fl-label">Klasa EURO</div>
+            <select id="flVEuro" style="width:100%">
+              <option>EURO6</option><option>EURO5</option><option>EURO4</option>
+              <option>EURO3</option><option>EURO2</option>
+            </select>
+          </div>
+          <div>
+            <div class="fl-label">Kierowca (opcjonalnie)</div>
+            <select id="flVDriver" style="width:100%">
+              <option value="">— brak —</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Uwagi</div>
+          <input type="text" id="flVNotes" placeholder="np. ADR, winda, klimatyzacja..." style="width:100%"/>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;" onclick="flSaveVehicle()">Zapisz pojazd</button>
+          <button class="btn secondary" onclick="flClearVehicleForm()">Wyczyść</button>
+        </div>
+      </div>
+      <div id="flVehicleList"><div class="fl-empty">Brak pojazdów. Dodaj pierwszy pojazd powyżej.</div></div>
+    </div>
+
+    <!-- NACZEPY -->
+    <div id="fl-trailers" class="fl-sec">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;" id="flTrailerFormTitle">Dodaj naczepę</div>
+        <input type="hidden" id="flTrailerId">
+        <div class="fl-row">
+          <div><div class="fl-label">Nr rejestracyjny *</div><input type="text" id="flTReg" placeholder="np. WA 9999X" style="width:100%;text-transform:uppercase"/></div>
+          <div>
+            <div class="fl-label">Typ naczepy</div>
+            <select id="flTType" style="width:100%">
+              <option value="plandeka">🟦 Plandeka</option>
+              <option value="firanka">🟩 Firanka</option>
+              <option value="chłodnia">🟦 Chłodnia</option>
+              <option value="cysterna">🟡 Cysterna</option>
+              <option value="kontener">⬛ Kontener</option>
+              <option value="niskopodłogowa">🟫 Niskopodłogowa</option>
+              <option value="wywrotka">🟧 Wywrotka</option>
+              <option value="silos">⬜ Silos</option>
+            </select>
+          </div>
+        </div>
+        <div class="fl-row">
+          <div><div class="fl-label">Marka</div><input type="text" id="flTBrand" placeholder="np. Schmitz" style="width:100%"/></div>
+          <div><div class="fl-label">Rok produkcji</div><input type="number" id="flTYear" placeholder="np. 2019" style="width:100%"/></div>
+        </div>
+        <div class="fl-row3">
+          <div><div class="fl-label">Długość (cm)</div><input type="number" id="flTLength" value="1360" style="width:100%"/></div>
+          <div><div class="fl-label">Ładowność (kg)</div><input type="number" id="flTPayload" value="24000" style="width:100%"/></div>
+          <div><div class="fl-label">Wysokość (cm)</div><input type="number" id="flTHeight" value="300" style="width:100%"/></div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+            <input type="checkbox" id="flTAdr"> Certyfikat ADR
+          </label>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Uwagi</div>
+          <input type="text" id="flTNotes" placeholder="np. GPS, chłodnia ATP, Multi-temp..." style="width:100%"/>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;" onclick="flSaveTrailer()">Zapisz naczepę</button>
+          <button class="btn secondary" onclick="flClearTrailerForm()">Wyczyść</button>
+        </div>
+      </div>
+      <div id="flTrailerList"><div class="fl-empty">Brak naczep. Dodaj pierwszą naczepę powyżej.</div></div>
+    </div>
+
+    <!-- KIEROWCY -->
+    <div id="fl-drivers" class="fl-sec">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px;">Dodaj kierowcę</div>
+        <input type="hidden" id="flDriverId">
+        <div class="fl-row">
+          <div><div class="fl-label">Imię i nazwisko *</div><input type="text" id="flDName" placeholder="np. Jan Kowalski" style="width:100%"/></div>
+          <div><div class="fl-label">Telefon</div><input type="text" id="flDPhone" placeholder="np. +48 600 123 456" style="width:100%"/></div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Nr prawa jazdy</div>
+          <input type="text" id="flDLicense" placeholder="np. ABC123456" style="width:100%"/>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" style="flex:1;" onclick="flSaveDriver()">Zapisz kierowcę</button>
+          <button class="btn secondary" onclick="flClearDriverForm()">Wyczyść</button>
+        </div>
+      </div>
+      <div id="flDriverList"><div class="fl-empty">Brak kierowców. Dodaj pierwszego kierowcę powyżej.</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const DB_USER = 'default';
+  let fleetData = { vehicles:[], trailers:[], drivers:[] };
+
+  // ── API helpers ──────────────────────────────────────────
+  async function flGet(entity){
+    try{
+      const url = `/api/fleet/${entity}?user_id=${DB_USER}`;
+      const r = await fetch(url);
+      const text = await r.text();
+      console.log(`flGet ${entity} status:`, r.status, 'body:', text.slice(0,200));
+      const data = JSON.parse(text);
+      return Array.isArray(data) ? data : [];
+    }catch(e){
+      console.warn(`flGet ${entity} error:`, e.message);
+      return [];
+    }
+  }
+  async function flPost(entity, body){
+    try{
+      const r = await fetch(`/api/fleet/${entity}`,{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({...body, user_id: DB_USER})
+      });
+      return r.ok ? await r.json() : null;
+    }catch(e){ console.warn(e); return null; }
+  }
+  async function flDelete(entity, id){
+    try{ await fetch(`/api/fleet/${entity}/${id}?user_id=${DB_USER}`,{method:'DELETE'}); }
+    catch(e){ console.warn(e); }
+  }
+
+  // ── Open/Close ────────────────────────────────────────────
+  window.openFleetManager = async function(){
+    document.getElementById('fleetModal').classList.add('open');
+    await flLoadAll();
+    flRenderAll();
+  };
+  window.closeFleetManager = function(){
+    document.getElementById('fleetModal').classList.remove('open');
+  };
+  document.getElementById('fleetModal').addEventListener('click', function(e){
+    if(e.target===this) window.closeFleetManager();
+  });
+
+  // ── Tabs ──────────────────────────────────────────────────
+  window.flTab = function(t){
+    document.querySelectorAll('.fl-tab').forEach((b,i)=>
+      b.classList.toggle('active',['vehicles','trailers','drivers'][i]===t));
+    document.querySelectorAll('.fl-sec').forEach(s=>s.classList.remove('active'));
+    document.getElementById('fl-'+t).classList.add('active');
+  };
+
+  // ── Load all ─────────────────────────────────────────────
+  async function flLoadAll(){
+    const [v,t,d] = await Promise.all([
+      flGet('vehicles'), flGet('trailers'), flGet('drivers')
+    ]);
+    fleetData.vehicles = v;
+    fleetData.trailers = t;
+    fleetData.drivers  = d;
+    // Zapisz w window żeby inne moduły miały dostęp
+    window.fleetData = fleetData;
+  }
+
+  function flRenderAll(){
+    flRenderVehicles();
+    flRenderTrailers();
+    flRenderDrivers();
+    flUpdateDriverSelect();
+    flUpdateVehicleSelects();
+  }
+
+  // ── VEHICLES ─────────────────────────────────────────────
+  window.flSaveVehicle = async function(){
+    const reg = document.getElementById('flVReg').value.trim().toUpperCase();
+    if(!reg){ alert('Podaj numer rejestracyjny.'); return; }
+    const body = {
+      id:             document.getElementById('flVehicleId').value || undefined,
+      reg,
+      brand:          document.getElementById('flVBrand').value.trim(),
+      model:          document.getElementById('flVModel').value.trim(),
+      year:           +document.getElementById('flVYear').value || null,
+      gross_weight_kg:+document.getElementById('flVGross').value || 18000,
+      axle_weight_kg: +document.getElementById('flVAxleW').value || 11500,
+      axle_count:     +document.getElementById('flVAxles').value || 3,
+      height_cm:      +document.getElementById('flVHeight').value || 380,
+      width_cm:       +document.getElementById('flVWidth').value  || 255,
+      length_cm:      +document.getElementById('flVLength').value || 600,
+      euro_class:     document.getElementById('flVEuro').value,
+      driver_id:      document.getElementById('flVDriver').value || null,
+      notes:          document.getElementById('flVNotes').value.trim(),
+      active:         true,
+    };
+    await flPost('vehicles', body);
+    flClearVehicleForm();
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flEditVehicle = function(id){
+    const v = fleetData.vehicles.find(x=>x.id===id); if(!v) return;
+    document.getElementById('flVehicleId').value = v.id;
+    document.getElementById('flVehicleFormTitle').textContent = 'Edytuj pojazd';
+    document.getElementById('flVReg').value    = v.reg||'';
+    document.getElementById('flVBrand').value  = v.brand||'';
+    document.getElementById('flVModel').value  = v.model||'';
+    document.getElementById('flVYear').value   = v.year||'';
+    document.getElementById('flVGross').value  = v.gross_weight_kg||18000;
+    document.getElementById('flVAxleW').value  = v.axle_weight_kg||11500;
+    document.getElementById('flVAxles').value  = v.axle_count||3;
+    document.getElementById('flVHeight').value = v.height_cm||380;
+    document.getElementById('flVWidth').value  = v.width_cm||255;
+    document.getElementById('flVLength').value = v.length_cm||600;
+    document.getElementById('flVEuro').value   = v.euro_class||'EURO6';
+    document.getElementById('flVDriver').value = v.driver_id||'';
+    document.getElementById('flVNotes').value  = v.notes||'';
+    document.getElementById('fl-vehicles').scrollTop = 0;
+  };
+
+  window.flDeleteVehicle = async function(id){
+    if(!confirm('Usunąć pojazd?')) return;
+    await flDelete('vehicles', id);
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flClearVehicleForm = function(){
+    document.getElementById('flVehicleId').value = '';
+    document.getElementById('flVehicleFormTitle').textContent = 'Dodaj pojazd';
+    ['flVReg','flVBrand','flVModel','flVYear','flVNotes'].forEach(id=>
+      document.getElementById(id).value='');
+    document.getElementById('flVGross').value=18000;
+    document.getElementById('flVAxleW').value=11500;
+    document.getElementById('flVAxles').value=3;
+    document.getElementById('flVHeight').value=380;
+    document.getElementById('flVWidth').value=255;
+    document.getElementById('flVLength').value=600;
+    document.getElementById('flVDriver').value='';
+  };
+
+  function flRenderVehicles(){
+    const el = document.getElementById('flVehicleList');
+    if(!fleetData.vehicles.length){
+      el.innerHTML='<div class="fl-empty">Brak pojazdów.</div>'; return;
+    }
+    el.innerHTML = fleetData.vehicles.map(v=>{
+      const driver = fleetData.drivers.find(d=>d.id===v.driver_id);
+      return `<div class="fl-item">
+        <div class="fl-item-info">
+          <div class="fl-item-reg">${v.reg||'—'}</div>
+          <div class="fl-item-sub">${[v.brand,v.model,v.year].filter(Boolean).join(' ')}
+            ${v.euro_class?`<span class="fl-type-badge">${v.euro_class}</span>`:''}
+            ${driver?`· 👤 ${driver.name}`:''}
+          </div>
+          <div class="fl-item-sub" style="opacity:.6;">
+            ${v.gross_weight_kg||'?'} kg · ${v.axle_count||'?'} osie
+            · ${v.height_cm||'?'}×${v.width_cm||'?'}×${v.length_cm||'?'} cm
+            ${v.notes?`· ${v.notes}`:''}
+          </div>
+        </div>
+        <div class="fl-item-actions">
+          <button class="fl-btn-sm" onclick="flUseVehicleInCalc('${v.id}')">📋 Użyj</button>
+          <button class="fl-btn-sm" onclick="flEditVehicle('${v.id}')">✏️</button>
+          <button class="fl-btn-sm danger" onclick="flDeleteVehicle('${v.id}')">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── TRAILERS ──────────────────────────────────────────────
+  const TRAILER_ICONS = {
+    plandeka:'🟦',firanka:'🟩',chłodnia:'🔵',cysterna:'🟡',
+    kontener:'⬛',niskopodłogowa:'🟫',wywrotka:'🟧',silos:'⬜'
+  };
+
+  window.flSaveTrailer = async function(){
+    const reg = document.getElementById('flTReg').value.trim().toUpperCase();
+    if(!reg){ alert('Podaj numer rejestracyjny naczepy.'); return; }
+    const body = {
+      id:         document.getElementById('flTrailerId').value || undefined,
+      reg,
+      type:       document.getElementById('flTType').value,
+      brand:      document.getElementById('flTBrand').value.trim(),
+      year:       +document.getElementById('flTYear').value || null,
+      length_cm:  +document.getElementById('flTLength').value || 1360,
+      payload_kg: +document.getElementById('flTPayload').value || 24000,
+      height_cm:  +document.getElementById('flTHeight').value || 300,
+      adr:        document.getElementById('flTAdr').checked,
+      notes:      document.getElementById('flTNotes').value.trim(),
+      active:     true,
+    };
+    await flPost('trailers', body);
+    flClearTrailerForm();
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flDeleteTrailer = async function(id){
+    if(!confirm('Usunąć naczepę?')) return;
+    await flDelete('trailers', id);
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flEditTrailer = function(id){
+    const t = fleetData.trailers.find(x=>x.id===id); if(!t) return;
+    document.getElementById('flTrailerId').value = t.id;
+    document.getElementById('flTrailerFormTitle').textContent = 'Edytuj naczepę';
+    document.getElementById('flTReg').value     = t.reg||'';
+    document.getElementById('flTType').value    = t.type||'plandeka';
+    document.getElementById('flTBrand').value   = t.brand||'';
+    document.getElementById('flTYear').value    = t.year||'';
+    document.getElementById('flTLength').value  = t.length_cm||1360;
+    document.getElementById('flTPayload').value = t.payload_kg||24000;
+    document.getElementById('flTHeight').value  = t.height_cm||300;
+    document.getElementById('flTAdr').checked   = !!t.adr;
+    document.getElementById('flTNotes').value   = t.notes||'';
+  };
+
+  window.flClearTrailerForm = function(){
+    document.getElementById('flTrailerId').value='';
+    document.getElementById('flTrailerFormTitle').textContent='Dodaj naczepę';
+    ['flTReg','flTBrand','flTYear','flTNotes'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('flTLength').value=1360;
+    document.getElementById('flTPayload').value=24000;
+    document.getElementById('flTHeight').value=300;
+    document.getElementById('flTAdr').checked=false;
+    document.getElementById('flTType').value='plandeka';
+  };
+
+  function flRenderTrailers(){
+    const el = document.getElementById('flTrailerList');
+    if(!fleetData.trailers.length){
+      el.innerHTML='<div class="fl-empty">Brak naczep.</div>'; return;
+    }
+    el.innerHTML = fleetData.trailers.map(t=>`
+      <div class="fl-item">
+        <div class="fl-item-info">
+          <div class="fl-item-reg">${t.reg||'—'} <span class="fl-type-badge">${TRAILER_ICONS[t.type]||''} ${t.type||'?'}</span></div>
+          <div class="fl-item-sub">${[t.brand,t.year].filter(Boolean).join(' ')}
+            ${t.adr?'· <span class="fl-type-badge">ADR</span>':''}
+          </div>
+          <div class="fl-item-sub" style="opacity:.6;">
+            ${t.payload_kg||'?'} kg · ${t.length_cm||'?'}×${t.height_cm||'?'} cm
+            ${t.notes?`· ${t.notes}`:''}
+          </div>
+        </div>
+        <div class="fl-item-actions">
+          <button class="fl-btn-sm" onclick="flEditTrailer('${t.id}')">✏️</button>
+          <button class="fl-btn-sm danger" onclick="flDeleteTrailer('${t.id}')">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── DRIVERS ───────────────────────────────────────────────
+  window.flSaveDriver = async function(){
+    const name = document.getElementById('flDName').value.trim();
+    if(!name){ alert('Podaj imię i nazwisko.'); return; }
+    const body = {
+      id:         document.getElementById('flDriverId').value || undefined,
+      name,
+      phone:      document.getElementById('flDPhone').value.trim(),
+      license_no: document.getElementById('flDLicense').value.trim(),
+      active:     true,
+    };
+    await flPost('drivers', body);
+    flClearDriverForm();
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flDeleteDriver = async function(id){
+    if(!confirm('Usunąć kierowcę?')) return;
+    await flDelete('drivers', id);
+    await flLoadAll(); flRenderAll();
+  };
+
+  window.flClearDriverForm = function(){
+    document.getElementById('flDriverId').value='';
+    ['flDName','flDPhone','flDLicense'].forEach(id=>document.getElementById(id).value='');
+  };
+
+  function flRenderDrivers(){
+    const el = document.getElementById('flDriverList');
+    if(!fleetData.drivers.length){
+      el.innerHTML='<div class="fl-empty">Brak kierowców.</div>'; return;
+    }
+    el.innerHTML = fleetData.drivers.map(d=>`
+      <div class="fl-item">
+        <div class="fl-item-info">
+          <div class="fl-item-reg">👤 ${d.name||'—'}</div>
+          <div class="fl-item-sub">
+            ${d.phone?`📞 ${d.phone}`:''}
+            ${d.license_no?`· 🪪 ${d.license_no}`:''}
+          </div>
+        </div>
+        <div class="fl-item-actions">
+          <button class="fl-btn-sm danger" onclick="flDeleteDriver('${d.id}')">✕</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── Selects synchronizacja ────────────────────────────────
+  function flUpdateDriverSelect(){
+    const sel = document.getElementById('flVDriver');
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— brak —</option>'
+      + fleetData.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('');
+    sel.value = cur;
+  }
+
+  function flUpdateVehicleSelects(){
+    // Aktualizuj selecty pojazdu w trackerze paliwa i w kalkulatorze
+    ['ftVehicleSelect','calcVehicleSelect'].forEach(id=>{
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— wybierz pojazd —</option>'
+        + fleetData.vehicles.map(v=>`<option value="${v.id}">${v.reg}${v.brand?' – '+v.brand:''}</option>`).join('');
+      sel.value = cur;
+    });
+    ['ftTrailerSelect','calcTrailerSelect'].forEach(id=>{
+      const sel = document.getElementById(id);
+      if(!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">— wybierz naczepę —</option>'
+        + fleetData.trailers.map(t=>`<option value="${t.id}">${t.reg} (${t.type})</option>`).join('');
+      sel.value = cur;
+    });
+  }
+
+  // ── "Użyj" pojazdu w kalkulatorze ─────────────────────────
+  window.flUseVehicleInCalc = function(id){
+    const v = fleetData.vehicles.find(x=>x.id===id); if(!v) return;
+    // Ustaw pola truck profile
+    const setF = (fid, val) => { const el=document.getElementById(fid); if(el) el.value=val; };
+    setF('truck_grossWeight', v.gross_weight_kg);
+    setF('truck_axleWeight',  v.axle_weight_kg);
+    setF('truck_height',      v.height_cm);
+    setF('truck_width',       v.width_cm);
+    setF('truck_length',      v.length_cm);
+    setF('truck_axleCount',   v.axle_count);
+    // Zaznacz preset "Własne"
+    document.querySelectorAll('.vehicleBtn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.preset==='custom');
+      b.style.fontWeight = b.dataset.preset==='custom' ? '700' : '';
+      b.style.borderColor = b.dataset.preset==='custom' ? 'var(--accent,#6d7cff)' : '';
+    });
+    const fields = document.getElementById('truckCustomFields');
+    if(fields) fields.style.display='grid';
+    const info = document.getElementById('vehiclePresetInfo');
+    if(info) info.textContent = `${v.reg} – ${v.brand||''} ${v.model||''}`.trim();
+    // Zamknij modal
+    window.closeFleetManager();
+    // Przewiń do sekcji parametrów
+    document.getElementById('truckProfileSection')?.scrollIntoView({behavior:'smooth',block:'center'});
+  };
+
+  // Załaduj fleetData przy starcie (dla selectów w trackerze paliwa)
+  window.addEventListener('load', async ()=>{
+    await flLoadAll();
+    flUpdateVehicleSelects();
+  });
+})();
+</script>
+
+<!-- ===== MODAL: Powierzchnia (cargo) ===== -->
+<div id="cargoModal">
+  <div id="cargoPanel">
+    <div class="cargo-header">
+      <h3>📐 Kalkulator powierzchni ładunkowej</h3>
+      <button class="cargo-close" onclick="closeCargoCalc()">×</button>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Szybkie ustawienia palet</h4>
+      <div class="cargo-presets">
+        <button class="cargo-preset" onclick="addCargoPreset('euro')">+ Paleta EURO 120×80</button>
+        <button class="cargo-preset" onclick="addCargoPreset('industrial')">+ Paleta przemysłowa 120×100</button>
+        <button class="cargo-preset" onclick="addCargoPreset('halfeuro')">+ Pół-paleta 80×60</button>
+        <button class="cargo-preset" onclick="addCargoPreset('custom')">+ Inne wymiary</button>
+      </div>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Lista ładunku</h4>
+      <div id="cargoItems">
+        <div class="cargo-empty">
+          Dodaj pierwszy element klikając przyciski powyżej
+        </div>
+      </div>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Podsumowanie</h4>
+      <div class="cargo-summary">
+        <div class="cargo-summary-item">
+          <div class="val" id="cargoSumArea">0,00</div>
+          <div class="lbl">Powierzchnia (m²)</div>
+        </div>
+        <div class="cargo-summary-item">
+          <div class="val" id="cargoSumVol">0,00</div>
+          <div class="lbl">Objętość (m³)</div>
+        </div>
+        <div class="cargo-summary-item">
+          <div class="val" id="cargoSumLdm">0,00</div>
+          <div class="lbl">Metry ładunkowe (LDM)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cargo-section">
+      <h4>Dobór zabudowy</h4>
+      <div id="cargoVehicles">
+        <div class="cargo-vehicle" data-key="bus">
+          <div>
+            <div class="v-name">🚐 Bus</div>
+            <div class="v-specs">3,5t • ~15-20 m³ • 4,2×2,1×1,8</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="solo">
+          <div>
+            <div class="v-name">🚛 Solo</div>
+            <div class="v-specs">12t • ~50 m³ • 7,2×2,45×2,7</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="standard">
+          <div>
+            <div class="v-name">🚚 Standard 13,6</div>
+            <div class="v-specs">24t • 90 m³ • 13,6×2,45×2,7</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="mega">
+          <div>
+            <div class="v-name">🚛 Mega</div>
+            <div class="v-specs">24t • 105 m³ • 13,6×2,45×3,0</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+        <div class="cargo-vehicle" data-key="jumbo">
+          <div>
+            <div class="v-name">🚛 Jumbo</div>
+            <div class="v-specs">24t • 120 m³ • 7,7+7,7×2,48×3,0</div>
+          </div>
+          <div>
+            <div class="v-bar"><div class="v-fill" style="width:0%"></div></div>
+          </div>
+          <div class="v-pct">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="cargo-btn-calc" onclick="calcCargo()">Przelicz dobór zabudowy</button>
+  </div>
+</div>
+
+<script>
+// Konfiguracja zabudów: pojemność m³, LDM (metry ładunkowe), pow. podłogi m²
+const CARGO_VEHICLES = {
+  bus:      { vol: 18,  ldm: 4.0,  area: 8.8,  name: 'Bus' },
+  solo:     { vol: 50,  ldm: 7.2,  area: 17.6, name: 'Solo' },
+  standard: { vol: 90,  ldm: 13.6, area: 33.3, name: 'Standard 13,6' },
+  mega:     { vol: 105, ldm: 13.6, area: 33.3, name: 'Mega' },
+  jumbo:    { vol: 120, ldm: 15.4, area: 38.2, name: 'Jumbo' }
+};
+
+const CARGO_PRESETS = {
+  euro:       { len: 120, wid: 80,  hei: 120, name: 'EURO' },
+  industrial: { len: 120, wid: 100, hei: 120, name: 'Przemysłowa' },
+  halfeuro:   { len: 80,  wid: 60,  hei: 100, name: 'Pół-paleta' },
+  custom:     { len: 100, wid: 80,  hei: 100, name: 'Własne' }
+};
+
+let cargoItems = [];
+
+function openCargoCalc(){
+  document.getElementById('cargoModal').classList.add('open');
+  renderCargoItems();
+  calcCargo();
+}
+function closeCargoCalc(){
+  document.getElementById('cargoModal').classList.remove('open');
+}
+
+document.getElementById('cargoModal').addEventListener('click', function(e){
+  if(e.target.id === 'cargoModal') closeCargoCalc();
+});
+
+function addCargoPreset(type){
+  const p = CARGO_PRESETS[type];
+  cargoItems.push({
+    name: p.name,
+    len: p.len,
+    wid: p.wid,
+    hei: p.hei,
+    qty: 1
+  });
+  renderCargoItems();
+  calcCargo();
+}
+
+function removeCargoItem(idx){
+  cargoItems.splice(idx, 1);
+  renderCargoItems();
+  calcCargo();
+}
+
+function updateCargoItem(idx, field, val){
+  cargoItems[idx][field] = parseFloat(val) || 0;
+  calcCargo();
+}
+
+function renderCargoItems(){
+  const wrap = document.getElementById('cargoItems');
+  if(cargoItems.length === 0){
+    wrap.innerHTML = '<div class="cargo-empty">Dodaj pierwszy element klikając przyciski powyżej</div>';
+    return;
+  }
+  wrap.innerHTML = cargoItems.map((it, idx) => `
+    <div class="cargo-row">
+      <div>
+        <label>Nazwa</label>
+        <input type="text" value="${it.name}" onchange="cargoItems[${idx}].name=this.value">
+      </div>
+      <div>
+        <label>Dł. (cm)</label>
+        <input type="number" value="${it.len}" min="1" onchange="updateCargoItem(${idx},'len',this.value)">
+      </div>
+      <div>
+        <label>Szer. (cm)</label>
+        <input type="number" value="${it.wid}" min="1" onchange="updateCargoItem(${idx},'wid',this.value)">
+      </div>
+      <div>
+        <label>Wys. (cm)</label>
+        <input type="number" value="${it.hei}" min="1" onchange="updateCargoItem(${idx},'hei',this.value)">
+      </div>
+      <button class="del-btn" onclick="removeCargoItem(${idx})">×</button>
+    </div>
+    <div class="cargo-row" style="grid-template-columns: 1fr; margin-bottom: 14px;">
+      <div>
+        <label>Ilość sztuk</label>
+        <input type="number" value="${it.qty}" min="1" onchange="updateCargoItem(${idx},'qty',this.value)">
+      </div>
+    </div>
+  `).join('');
+}
+
+function calcCargo(){
+  let totalArea = 0;
+  let totalVol = 0;
+
+  cargoItems.forEach(it => {
+    const a = (it.len/100) * (it.wid/100);
+    const v = a * (it.hei/100);
+    totalArea += a * it.qty;
+    totalVol  += v * it.qty;
+  });
+
+  const ldm = totalArea / 2.4;
+
+  document.getElementById('cargoSumArea').textContent = totalArea.toFixed(2).replace('.', ',');
+  document.getElementById('cargoSumVol').textContent  = totalVol.toFixed(2).replace('.', ',');
+  document.getElementById('cargoSumLdm').textContent  = ldm.toFixed(2).replace('.', ',');
+
+  let bestKey = null;
+  let bestScore = Infinity;
+
+  Object.entries(CARGO_VEHICLES).forEach(([key, veh]) => {
+    const volFill = (totalVol / veh.vol) * 100;
+    const ldmFill = (ldm / veh.ldm) * 100;
+    const fill = Math.max(volFill, ldmFill);
+
+    const row = document.querySelector(`.cargo-vehicle[data-key="${key}"]`);
+    const fillEl = row.querySelector('.v-fill');
+    const pctEl  = row.querySelector('.v-pct');
+
+    fillEl.style.width = Math.min(fill, 100) + '%';
+    pctEl.textContent  = fill.toFixed(0) + '%';
+
+    row.classList.remove('best', 'overflow');
+    fillEl.classList.remove('overfill');
+
+    if(fill > 100){
+      row.classList.add('overflow');
+      fillEl.classList.add('overfill');
+    } else if(fill > 0 && fill < bestScore){
+      bestScore = fill;
+      bestKey = key;
+    }
+  });
+
+  if(bestKey){
+    document.querySelector(`.cargo-vehicle[data-key="${bestKey}"]`).classList.add('best');
+  }
+}
+
+// ===== UATRAKCYJNIENIE: zamiana surowego <pre id="summary"> na ładny widok =====
+(function(){
+  const summaryEl = document.getElementById('summary');
+  const viewEl = document.getElementById('summaryView');
+  if (!summaryEl || !viewEl) return;
+
+  function parseLineToParts(line){
+    return line.split('|').map(s => s.trim()).filter(Boolean).map(part => {
+      const ix = part.indexOf(':');
+      if (ix < 0) return { lbl: part, val: '' };
+      return { lbl: part.slice(0, ix).trim(), val: part.slice(ix+1).trim() };
+    });
+  }
+
+  function formatValue(val){
+    const m = val.match(/^(-?[\d\s,.]+)\s*(.*)$/);
+    if (!m) return { num: val, unit: '' };
+    return { num: m[1].trim(), unit: m[2].trim() };
+  }
+
+  const ICONS = {
+    'Koszt całkowity': '💰',
+    'Dystans': '📏',
+    'Paliwo': '⛽',
+    'Kierowca': '👤',
+    'Myto': '🛣️',
+    'Promy': '⛴️',
+    'Inne': '📦',
+    'Cena zlecenia': '💵',
+    'Proponowana cena': '💵',
+    'Marża': '📈',
+  };
+
+  function renderEmpty(){
+    viewEl.innerHTML = `
+      <div class="summary-empty">
+        <div class="summary-empty-icon">📊</div>
+        <div class="summary-empty-title">Brak danych</div>
+        <div class="summary-empty-text">Wypełnij trasę po lewej i kliknij <b>Policz</b> aby zobaczyć szczegóły kalkulacji.</div>
+      </div>`;
+  }
+
+  function renderRich(text){
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) { renderEmpty(); return; }
+
+    const html = [];
+    const sections = {
+      meta: ['Koszt całkowity', 'Dystans'],
+      costs: ['Paliwo', 'Kierowca', 'Myto', 'Promy', 'Inne'],
+      result: ['Cena zlecenia', 'Proponowana cena', 'Marża'],
+    };
+    const sectionTitles = {
+      meta: 'Trasa',
+      costs: 'Rozbicie kosztów',
+      result: 'Wycena',
+    };
+    const buckets = { meta: [], costs: [], result: [] };
+
+    lines.forEach(line => {
+      const parts = parseLineToParts(line);
+      parts.forEach(p => {
+        if (!p.lbl) return;
+        let bucket = 'meta';
+        for (const key in sections){
+          if (sections[key].some(k => p.lbl.startsWith(k))) { bucket = key; break; }
+        }
+        const icon = ICONS[p.lbl.replace(/:.*$/, '').split(' ')[0]] || ICONS[p.lbl] || '•';
+        const valFmt = formatValue(p.val);
+        const isHighlight = (bucket === 'result' && p.lbl.startsWith('Marża'));
+        buckets[bucket].push(`
+          <div class="summary-row${isHighlight ? ' highlight' : ''}">
+            <div class="summary-row-label">
+              <span class="summary-row-icon">${icon}</span>
+              <span>${p.lbl}</span>
+            </div>
+            <div class="summary-row-value">${valFmt.num}${valFmt.unit ? `<span class="unit">${valFmt.unit}</span>` : ''}</div>
+          </div>`);
+      });
+    });
+
+    ['meta', 'costs', 'result'].forEach(key => {
+      if (buckets[key].length){
+        html.push(`<div class="summary-section-title">${sectionTitles[key]}</div>`);
+        html.push(buckets[key].join(''));
+      }
+    });
+
+    viewEl.innerHTML = html.join('');
+  }
+
+  const obs = new MutationObserver(() => {
+    const txt = (summaryEl.textContent || '').trim();
+    if (!txt){ renderEmpty(); return; }
+    renderRich(txt);
+  });
+  obs.observe(summaryEl, { childList: true, characterData: true, subtree: true });
+
+  if (!(summaryEl.textContent || '').trim()) renderEmpty();
+})();
+</script>
+
+<script>
+// ===== Zwijane sekcje z pinezką =====
+(function(){
+  function initCollapsibles(){
+    var sections = document.querySelectorAll('.collap');
+    sections.forEach(function(sec){
+      var key = sec.getAttribute('data-collap');
+      var head = sec.querySelector('.collap-head');
+      var pin = sec.querySelector('.pin');
+      if(!head) return;
+      // wczytaj stan przypięcia
+      var pinned = false;
+      try { pinned = localStorage.getItem('collap_pin_'+key) === '1'; } catch(e){}
+      if(pinned){ sec.classList.add('pinned'); sec.classList.remove('closed'); if(pin) pin.classList.add('pinned'); }
+      // klik nagłówka -> zwiń/rozwiń (chyba że przypięte)
+      head.addEventListener('click', function(e){
+        if(e.target.closest('.pin')) return; // pinezka ma własny handler
+        if(sec.classList.contains('pinned')) return; // przypięte = zawsze otwarte
+        sec.classList.toggle('closed');
+      });
+      // klik pinezki -> przypnij/odepnij
+      if(pin){
+        pin.addEventListener('click', function(e){
+          e.stopPropagation();
+          var now = !sec.classList.contains('pinned');
+          sec.classList.toggle('pinned', now);
+          pin.classList.toggle('pinned', now);
+          if(now){ sec.classList.remove('closed'); } // przypięcie rozwija
+          try { localStorage.setItem('collap_pin_'+key, now ? '1' : '0'); } catch(e){}
+          pin.title = now ? 'Odepnij' : 'Przypnij (zablokuj otwarte)';
+        });
+        pin.title = pinned ? 'Odepnij' : 'Przypnij (zablokuj otwarte)';
+      }
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initCollapsibles);
+  else initCollapsibles();
 })();
 </script>
 </body>

@@ -442,9 +442,50 @@ async function parseNlpStops() {
       });
     }
 
+    // === Dodatkowe dane ze zlecenia ===
+    const extras = [];
+
+    // Cena zlecenia -> ustaw + przełącz tryb na "Marża ze zlecenia"
+    if (data.offer_price_eur != null && !isNaN(Number(data.offer_price_eur))) {
+      const priceEl = document.getElementById("offer_price_eur");
+      if (priceEl) priceEl.value = Number(data.offer_price_eur);
+      // przełącz tryb na offer (setCalcMode ustawia hidden, pokazuje pole, podświetla przycisk, przelicza)
+      if (typeof setCalcMode === "function") { try { setCalcMode("offer"); } catch(e){} }
+      else { const modeEl = document.getElementById("calc_mode"); if (modeEl) modeEl.value = "offer"; }
+      extras.push(`💶 cena ${Number(data.offer_price_eur)} €`);
+    }
+
+    // Typ pojazdu -> preset
+    if (data.vehicle_type && typeof applyVehiclePreset === "function") {
+      const valid = ["tir40","jumbo","solo","bus35","busBig"];
+      if (valid.includes(data.vehicle_type)) {
+        try { applyVehiclePreset(data.vehicle_type); } catch(e){}
+        const names = {tir40:"TIR 40t", jumbo:"Tandem Jumbo", solo:"Solo", bus35:"Bus do 3,5t", busBig:"Bus pow. 3,5t"};
+        extras.push(`🚛 ${names[data.vehicle_type]}`);
+      }
+    }
+
+    // Chłodnia -> ustaw spalanie agregatu (domyślne 4 l/h jeśli wykryta)
+    if (data.is_reefer === true) {
+      const reeferEl = document.getElementById("reefer_l_per_h");
+      if (reeferEl && (!reeferEl.value || Number(reeferEl.value) === 0)) {
+        reeferEl.value = 4;
+        if (typeof updateReeferPreview === "function") { try { updateReeferPreview(); } catch(e){} }
+      }
+      extras.push("❄️ chłodnia");
+    }
+
+    if (data.adr === true) extras.push("⚠️ ADR");
+    if (data.load_date) extras.push("📅 " + data.load_date);
+    if (data.cargo) extras.push("📦 " + data.cargo);
+
     // Podsumowanie
     const pts = [data.origin, ...(data.stops||[]), data.destination].filter(Boolean);
-    if (status) status.textContent = `✅ Wczytano ${pts.length} punkt${pts.length === 1 ? "" : pts.length < 5 ? "y" : "ów"}: ${pts.join(" → ")}`;
+    if (status) {
+      let msg = `✅ Wczytano ${pts.length} punkt${pts.length === 1 ? "" : pts.length < 5 ? "y" : "ów"}`;
+      if (extras.length) msg += " · " + extras.join(" · ");
+      status.textContent = msg;
+    }
 
     // Zamknij box
     document.getElementById("nlpPasteBox").style.display = "none";
@@ -452,7 +493,15 @@ async function parseNlpStops() {
 
     // Pokaż info w routeInfo
     const info = document.getElementById("routeInfo");
-    if (info) info.textContent = `✅ Trasa z AI:\n${pts.join(" → ")}\n\nKliknij 'Pobierz km' żeby pobrać trasę.`;
+    if (info) {
+      let txt = `✅ Zlecenie z AI:\n${pts.join(" → ")}`;
+      if (extras.length) txt += `\n\nWykryto: ${extras.join("  ·  ")}`;
+      txt += `\n\nKliknij 'Pobierz km' żeby pobrać trasę.`;
+      info.textContent = txt;
+    }
+
+    // odśwież peeki (cena/pojazd/chłodnia mogły się zmienić)
+    if (typeof refreshPeeks === "function") { try { refreshPeeks(); } catch(e){} }
 
   } catch(err) {
     if (status) status.textContent = "❌ Błąd sieci: " + err.message;

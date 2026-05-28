@@ -199,34 +199,39 @@ function renderResult(input, result) {
   // === TABELA Pozycja / Wartość ===
   const tbody = document.getElementById("costTable");
   if (tbody) {
-    const row = (label, value) => `
+    const row = (label, value, iconId) => {
+      const ic = iconId
+        ? `<svg class="cost-ic" viewBox="0 0 24 24"><use href="#${iconId}"/></svg>`
+        : `<span class="cost-ic-sp"></span>`;
+      return `
       <tr>
-        <td>${label}</td>
+        <td>${ic}${label}</td>
         <td style="text-align:right;">${value}</td>
       </tr>
     `;
+    };
 
     tbody.innerHTML = "";
-    tbody.innerHTML += row("Dystans (km)", result.distance_km ?? "—");
-    tbody.innerHTML += row("Paliwo (EUR)", result.fuel_cost_eur ?? "—");
-    tbody.innerHTML += row("Kierowca (EUR)", result.driver_cost_eur ?? "—");
-    tbody.innerHTML += row("Myto (EUR)", result.tolls_eur ?? "—");
-    tbody.innerHTML += row("Promy (EUR)", result.ferries_eur ?? "—");
-    tbody.innerHTML += row("Inne koszty (EUR)", result.other_costs_eur ?? "—");
+    tbody.innerHTML += row("Dystans (km)", result.distance_km ?? "—", "i-route");
+    tbody.innerHTML += row("Paliwo (EUR)", result.fuel_cost_eur ?? "—", "i-fuel");
+    tbody.innerHTML += row("Kierowca (EUR)", result.driver_cost_eur ?? "—", "i-truck");
+    tbody.innerHTML += row("Myto (EUR)", result.tolls_eur ?? "—", "i-map");
+    tbody.innerHTML += row("Promy (EUR)", result.ferries_eur ?? "—", "i-ship");
+    tbody.innerHTML += row("Inne koszty (EUR)", result.other_costs_eur ?? "—", "i-clipboard");
     if (Number(result.reefer_eur) > 0) {
-      tbody.innerHTML += row("Chłodnia / agregat (EUR)", result.reefer_eur);
+      tbody.innerHTML += row("Chłodnia / agregat (EUR)", result.reefer_eur, "i-leaf");
     }
     if (Number(result.fixed_costs_eur) > 0) {
-      tbody.innerHTML += row("Koszty stałe zestawu (EUR)", result.fixed_costs_eur);
+      tbody.innerHTML += row("Koszty stałe zestawu (EUR)", result.fixed_costs_eur, "i-settings");
     }
-    tbody.innerHTML += row("<b>Koszt całkowity (EUR)</b>", `<b>${result.total_cost_eur ?? "—"}</b>`);
+    tbody.innerHTML += row("<b>Koszt całkowity (EUR)</b>", `<b>${result.total_cost_eur ?? "—"}</b>`, "i-calc");
 
     if (isOffer) {
-      tbody.innerHTML += row("Cena zlecenia (EUR)", result.offer_price_eur ?? "—");
+      tbody.innerHTML += row("Cena zlecenia (EUR)", result.offer_price_eur ?? "—", "i-money");
       tbody.innerHTML += row("<b>Marża (EUR)</b>", `<b>${result.margin_eur ?? "—"}</b>`);
       tbody.innerHTML += row("Marża (%)", (result.margin_pct ?? "—") + "%");
     } else {
-      tbody.innerHTML += row("Cena sugerowana (EUR)", result.suggested_price_eur ?? "—");
+      tbody.innerHTML += row("Cena sugerowana (EUR)", result.suggested_price_eur ?? "—", "i-money");
       tbody.innerHTML += row("Marża (EUR)", result.margin_eur ?? "—");
     }
   }
@@ -476,15 +481,14 @@ document.addEventListener("keydown", (e) => {
 });
 
 function toggleHistoryPanel(forceOpen){
+  const sec = document.querySelector('[data-collap="historia"]');
   const body = document.getElementById("historyPanelBody");
-  const ch = document.getElementById("historyChevron");
-  if (!body) return;
+  if (!sec || !body) return;
 
-  const isOpen = body.style.display !== "none";
+  const isOpen = !sec.classList.contains("closed");
   const next = (forceOpen === true) ? true : (forceOpen === false ? false : !isOpen);
 
-  body.style.display = next ? "block" : "none";
-  if (ch) ch.textContent = next ? "▴" : "▾";
+  sec.classList.toggle("closed", !next);
 
   if (next) renderHistory();
 }

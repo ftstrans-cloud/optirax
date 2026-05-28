@@ -1672,27 +1672,34 @@ app.post("/api/parse-stops", requireAuth, requireActiveSubscription, async (req,
 
     const response = await client.chat.completions.create({
       model: "gpt-4o-mini",
-      max_tokens: 500,
+      max_tokens: 700,
       messages: [
         {
           role: "system",
-          content: `Jesteś asystentem spedytora. Z podanego tekstu wyciągnij wszystkie lokalizacje/adresy w kolejności w jakiej się pojawiają.
+          content: `Jesteś asystentem spedytora. Z podanego tekstu zlecenia transportowego (często e-mail) wyciągnij dane.
 Zwróć TYLKO obiekt JSON (bez markdown, bez \`\`\`), format:
 {
-  "origin": "pierwszy punkt",
-  "stops": ["punkt 2", "punkt 3"],
-  "destination": "ostatni punkt"
+  "origin": "pierwszy punkt trasy",
+  "stops": ["punkt posredni 1", "punkt posredni 2"],
+  "destination": "ostatni punkt trasy",
+  "offer_price_eur": liczba lub null,
+  "vehicle_type": "tir40" | "jumbo" | "solo" | "bus35" | "busBig" | null,
+  "is_reefer": true | false,
+  "adr": true | false,
+  "load_date": "tekst daty zaladunku lub null",
+  "cargo": "krotki opis ladunku lub null"
 }
 Zasady:
-- Akceptuj KAŻDY format adresu: samo miasto, miasto + kraj, kod pocztowy + miasto, pełny adres z ulicą
-- Skróty krajów (PL, DE, FR, GB, IT, ES, BE, NL itd.) traktuj jako część adresu
-- Kolejność w tekście = kolejność trasy
-- Ignoruj słowa nie będące adresami (załadunek, rozładunek, loading, delivery, via, do, +, →)
-- Jeśli jest tylko 2 lokalizacje: origin + destination, stops = []
-- Zachowaj oryginalną pisownię lokalizacji z tekstu
-- Zwróć error TYLKO gdy w tekście nie ma żadnych rozpoznawalnych lokalizacji`
+- ORIGIN/STOPS/DESTINATION: akceptuj KAŻDY format adresu (miasto, kod+miasto, pełny adres). Skróty krajów (PL, DE, FR...) to część adresu. Kolejność w tekście = kolejność trasy. Ignoruj słowa nie-adresowe (załadunek, rozładunek, loading, via). Jeśli tylko 2 lokalizacje: origin+destination, stops=[].
+- OFFER_PRICE_EUR: stawka/cena za transport. Szukaj kwot przy słowach: stawka, cena, fracht, freight, rate, EUR, €. Przelicz na EUR jeśli podana w innej walucie (PLN/4.3, GBP*1.17). Tylko liczba, bez waluty. null jeśli brak.
+- VEHICLE_TYPE: dobierz po opisie pojazdu/ładunku: "tir40" (naczepa, ciągnik, 40t, standard, plandeka, firanka 13.6m), "jumbo" (jumbo, tandem, 120m3), "solo" (solo, 12t, krótki), "bus35" (bus, do 3.5t, blaszak), "busBig" (bus 7.5t, powyżej 3.5t). null jeśli nie wiadomo.
+- IS_REEFER: true jeśli wzmianka o chłodni, agregacie, temperaturze, reefer, frigo, mrożonki, temp. kontrolowana. Inaczej false.
+- ADR: true jeśli wzmianka o ADR, materiały niebezpieczne, dangerous goods. Inaczej false.
+- LOAD_DATE: data/termin załadunku jeśli podany (zachowaj oryginalny zapis). null jeśli brak.
+- CARGO: krótki opis towaru (max 5 słów) jeśli podany. null jeśli brak.
+- Zwróć {"error":"..."} TYLKO gdy w tekście nie ma żadnych rozpoznawalnych lokalizacji.`
         },
-        { role: "user", content: text.slice(0, 2000) }
+        { role: "user", content: text.slice(0, 3000) }
       ],
       response_format: { type: "json_object" },
     });
