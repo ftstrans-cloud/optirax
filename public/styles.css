@@ -34,7 +34,7 @@ body{ font-family:'IBM Plex Sans',sans-serif; background:var(--paper);
 .theme-toggle{ font-size:13px; font-weight:600; background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.18); padding:8px 15px; border-radius:20px; cursor:pointer; transition:.15s; display:flex; align-items:center; gap:7px; }
 .theme-toggle:hover{ background:rgba(255,255,255,.2); }
 
-.app{ display:grid; grid-template-columns:330px 1fr 370px; gap:14px; padding:14px; flex:1 1 auto; min-height:0; overflow:hidden; }
+.app{ display:grid; grid-template-columns:330px 6px 1fr 6px 370px; gap:0; padding:14px; flex:1 1 auto; min-height:0; overflow:hidden; }
 .col{ display:flex; flex-direction:column; gap:14px; min-height:0; }
 /* Boczne kolumny scrollują niezależnie gdy treść dłuższa niż okno */
 #colLeft{ overflow-y:auto; overflow-x:hidden; min-height:0; }
@@ -743,3 +743,22 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
   --color-text-success: var(--good);
   --line: var(--panel-edge);
 }
+
+/* ===== Drag-resize kolumn ===== */
+.col-divider{
+  width:6px; cursor:col-resize; position:relative; z-index:10;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s;
+  flex-shrink:0;
+}
+.col-divider::after{
+  content:''; display:block;
+  width:2px; height:40px; border-radius:2px;
+  background:var(--panel-edge); transition:.15s;
+}
+.col-divider:hover::after,
+.col-divider.dragging::after{ background:var(--signal); height:60px; }
+/* Paddingiem zastępujemy gap */
+#colLeft{ padding-right:8px; }
+#colMid{ padding:0 8px; }
+#colRight{ padding-left:8px; }

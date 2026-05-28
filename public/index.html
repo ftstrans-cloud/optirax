@@ -258,6 +258,8 @@
     </div>
   </div>
 
+  <div class="col-divider" id="dividerLeft" title="Przeciągnij aby zmienić szerokość · dwuklik = reset"></div>
+
   <div class="col" id="colMid">
     <div class="panel mapCard">
       <div class="mapHead">
@@ -275,6 +277,8 @@
       <div id="map" class="mapBig"></div>
     </div>
   </div>
+
+  <div class="col-divider" id="dividerRight" title="Przeciągnij aby zmienić szerokość · dwuklik = reset"></div>
 
   <div class="col" id="colRight" style="overflow-y:auto; overflow-x:hidden;">
     <div class="collap" data-collap="wynik">
@@ -2030,6 +2034,109 @@ function calcCargo(){
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initCollapsibles);
   else initCollapsibles();
+})();
+</script>
+<script>
+// ===== Drag-resize kolumn (colLeft ↔ colMid ↔ colRight) =====
+(function(){
+  var STORAGE_KEY = 'optirax_col_widths';
+  var DEFAULTS = { left: 330, right: 370 };
+  var MIN_LEFT = 240, MAX_LEFT = 520;
+  var MIN_RIGHT = 260, MAX_RIGHT = 520;
+  var MIN_MID = 280;
+
+  function getApp(){ return document.querySelector('.app'); }
+
+  function applyWidths(left, right){
+    var app = getApp(); if(!app) return;
+    app.style.gridTemplateColumns = left+'px 6px 1fr 6px '+right+'px';
+    // Odśwież mapę Leaflet
+    try{ if(window.map) window.map.invalidateSize(); }catch(e){}
+  }
+
+  function saveWidths(left, right){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({left:Math.round(left), right:Math.round(right)})); }catch(e){}
+  }
+
+  function loadWidths(){
+    try{
+      var s=localStorage.getItem(STORAGE_KEY);
+      if(s){ var w=JSON.parse(s); return {left:w.left||DEFAULTS.left, right:w.right||DEFAULTS.right}; }
+    }catch(e){}
+    return {left:DEFAULTS.left, right:DEFAULTS.right};
+  }
+
+  function clamp(v,mn,mx){ return Math.max(mn, Math.min(mx, v)); }
+
+  function makeDraggable(divider, side){
+    var startX, startLeft, startRight, appW;
+
+    divider.addEventListener('pointerdown', function(e){
+      e.preventDefault();
+      divider.setPointerCapture(e.pointerId);
+      divider.classList.add('dragging');
+      startX = e.clientX;
+      var app = getApp();
+      var cols = getComputedStyle(app).gridTemplateColumns.split(' ');
+      // cols: [leftpx, 6px, 1frpx, 6px, rightpx]
+      startLeft  = parseFloat(cols[0]);
+      startRight = parseFloat(cols[4]);
+      appW = app.offsetWidth - 12; // 2 × 6px dividers
+    });
+
+    divider.addEventListener('pointermove', function(e){
+      if(!divider.classList.contains('dragging')) return;
+      var dx = e.clientX - startX;
+      var left = startLeft, right = startRight;
+
+      if(side === 'left'){
+        left  = clamp(startLeft + dx, MIN_LEFT, MAX_LEFT);
+        // sprawdź czy mapa ma min szerokość
+        var mid = appW - left - right;
+        if(mid < MIN_MID){ left = appW - right - MIN_MID; }
+      } else {
+        right = clamp(startRight - dx, MIN_RIGHT, MAX_RIGHT);
+        var mid2 = appW - left - right;
+        if(mid2 < MIN_MID){ right = appW - left - MIN_MID; }
+      }
+
+      applyWidths(left, right);
+    });
+
+    function stopDrag(){
+      if(!divider.classList.contains('dragging')) return;
+      divider.classList.remove('dragging');
+      // zapisz bieżące szerokości
+      var app = getApp();
+      var cols = getComputedStyle(app).gridTemplateColumns.split(' ');
+      var l = parseFloat(cols[0]), r = parseFloat(cols[4]);
+      saveWidths(l, r);
+      // invalidate mapa po przeciągnięciu (z małym opóźnieniem)
+      setTimeout(function(){
+        try{ if(window.map) window.map.invalidateSize(); }catch(e){}
+      }, 50);
+    }
+
+    divider.addEventListener('pointerup', stopDrag);
+    divider.addEventListener('pointercancel', stopDrag);
+
+    // Dwuklik = reset do domyślnych
+    divider.addEventListener('dblclick', function(){
+      applyWidths(DEFAULTS.left, DEFAULTS.right);
+      saveWidths(DEFAULTS.left, DEFAULTS.right);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    // Załaduj zapisane szerokości
+    var w = loadWidths();
+    applyWidths(w.left, w.right);
+
+    var dl = document.getElementById('dividerLeft');
+    var dr = document.getElementById('dividerRight');
+    if(dl) makeDraggable(dl, 'left');
+    if(dr) makeDraggable(dr, 'right');
+  });
 })();
 </script>
 </body>
