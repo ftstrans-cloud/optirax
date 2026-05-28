@@ -35,6 +35,9 @@ body{ font-family:'IBM Plex Sans',sans-serif; background:var(--paper);
 
 .app{ display:grid; grid-template-columns:330px 1fr 370px; gap:14px; padding:14px; height:calc(100vh - 58px - 66px); }
 .col{ display:flex; flex-direction:column; gap:14px; min-height:0; }
+/* Prawa kolumna (wyniki) — musi scrollować gdy treść dłuższa niż okno */
+#colRight{ overflow-y:auto; overflow-x:hidden; min-height:0; }
+#colRight .collap-body{ overflow:visible; }
 .panel{ background:var(--panel); border:1px solid var(--panel-edge); border-radius:var(--r-card); box-shadow:var(--shadow-card); }
 .panel-pad{ padding:17px; }
 .panel-h{ font-family:'Sora'; font-weight:700; font-size:17px; display:flex; align-items:center; gap:8px; }
@@ -402,8 +405,8 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 .ai-report:empty{ display:none; }
 
 /* ===== Zwijane sekcje (collapsible) z pinezką ===== */
-.collap{ border:1px solid var(--panel-edge); border-radius:var(--r-card); overflow:hidden; margin-bottom:12px; background:var(--panel); }
-.collap-head{ display:flex; align-items:center; gap:9px; padding:11px 14px; cursor:pointer; user-select:none; transition:background .12s; }
+.collap{ border:1px solid var(--panel-edge); border-radius:var(--r-card); margin-bottom:12px; background:var(--panel); flex-shrink:0; }
+.collap-head{ display:flex; align-items:center; gap:9px; padding:11px 14px; cursor:pointer; user-select:none; transition:background .12s; border-radius:var(--r-card); }
 .collap-head:hover{ background:var(--hover-soft, rgba(127,150,200,.08)); }
 .collap-head .ch{ width:13px; height:13px; flex-shrink:0; transition:transform .18s; color:var(--ink-soft); }
 .collap.closed .collap-head .ch{ transform:rotate(-90deg); }
