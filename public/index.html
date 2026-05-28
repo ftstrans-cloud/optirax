@@ -164,8 +164,15 @@
       <div id="nlpPasteBox" style="display:none;">
         <div style="font-size:12px;color:var(--ink-faint);margin-bottom:6px;">Wklej całe zlecenie z maila — AI wyciągnie trasę, cenę, pojazd, chłodnię, ADR i datę.</div>
         <textarea id="nlpInput" rows="6" placeholder="Wklej treść maila ze zleceniem, np:&#10;Załadunek 12.06 Steenvoorde FR&#10;Rozładunek Łuków PL&#10;Naczepa chłodnia, mrożonki&#10;Stawka 1850 EUR"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <label class="btn" style="flex:1;justify-content:center;cursor:pointer;" title="Wgraj PDF ze zleceniem">
+            <svg class="ic" viewBox="0 0 24 24"><use href="#i-file"/></svg> Wgraj PDF
+            <input type="file" id="nlpPdfInput" accept=".pdf" style="display:none;" onchange="loadPdfToInput(this)">
+          </label>
+          <div id="nlpPdfStatus" style="font-size:11px;color:var(--ink-faint);display:flex;align-items:center;"></div>
+        </div>
         <div id="nlpStatus"></div>
-        <button type="button" class="btn btn-navy" style="width:100%;" onclick="parseNlpStops()"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-sparkles"/></svg> Wyciągnij dane (AI)</button>
+        <button type="button" class="btn btn-navy" style="width:100%;margin-top:8px;" onclick="parseNlpStops()"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-sparkles"/></svg> Wyciągnij dane (AI)</button>
       </div>
 
       <!-- PUNKTY TRASY: #routeList wypełnia route.js (initRouteBuilder na load) -->
@@ -355,6 +362,7 @@
           <button type="button" class="btn" onclick="clearHistoryConfirm && clearHistoryConfirm()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-x"/></svg> Wyczyść</button>
         </div>
         <div id="historyList" class="historyList"></div>
+        <div id="roundBtnWrap"></div>
         <span id="historyChevron" style="display:none;"></span>
         <div id="summaryView" style="display:none;"></div>
         <pre id="out" style="display:none;"></pre>
@@ -754,42 +762,42 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 
 <!-- ===== MODAL: Paliwo (fuel tracker) ===== -->
 <style>
-#fuelModal{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center}
+#fuelModal{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}
 #fuelModal.open{display:flex}
-#fuelPanel{background:var(--bg,#0f172a);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:16px 16px 100px}
+#fuelPanel{background:var(--bg,#0f172a);border-radius:16px;width:92%;max-width:640px;max-height:88vh;overflow-y:auto;padding:24px}
 :root[data-theme="light"] #fuelPanel{background:#f8fafc}
-.ft-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
-.ft-tabs{display:flex;gap:6px;margin:12px 0}
-.ft-tab{flex:1;padding:8px;font-size:13px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
-.ft-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:500}
+.ft-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
+.ft-tabs{display:flex;gap:6px;margin:14px 0}
+.ft-tab{flex:1;padding:10px;font-size:14px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.ft-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:600}
 .ft-sec{display:none}.ft-sec.active{display:block}
-.ft-card{border:1px solid var(--line,#334155);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--color-background-primary)}
-.ft-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.ft-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
-.ft-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
-.ft-hint{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
-.ft-metric{background:var(--color-background-secondary);border-radius:8px;padding:10px}
-.ft-metric .v{font-size:20px;font-weight:500}
-.ft-metric .l{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
-.ft-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
-.ft-result{border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px;display:none}
-.ft-trip{border:1px solid var(--line,#334155);border-radius:10px;padding:10px 12px;margin-bottom:8px}
-.ft-trip-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-.ft-badge{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:500}
+.ft-card{border:1px solid var(--line,#334155);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--color-background-primary)}
+.ft-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.ft-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+.ft-label{font-size:13px;color:var(--color-text-secondary);margin-bottom:5px;font-weight:500}
+.ft-hint{font-size:12px;color:var(--color-text-tertiary);margin-top:3px}
+.ft-metric{background:var(--color-background-secondary);border-radius:8px;padding:12px}
+.ft-metric .v{font-size:22px;font-weight:600}
+.ft-metric .l{font-size:12px;color:var(--color-text-secondary);margin-top:3px}
+.ft-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.ft-result{border-radius:8px;padding:12px 14px;margin-top:10px;font-size:14px;display:none}
+.ft-trip{border:1px solid var(--line,#334155);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.ft-trip-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.ft-badge{font-size:12px;padding:3px 10px;border-radius:20px;font-weight:500}
 .ft-ok{background:var(--color-background-success);color:var(--color-text-success)}
 .ft-warn{background:var(--color-background-warning);color:var(--color-text-warning)}
 .ft-bad{background:var(--color-background-danger);color:var(--color-text-danger)}
-.ft-del{background:none;border:none;color:var(--color-text-tertiary);cursor:pointer;font-size:13px}
+.ft-del{background:none;border:none;color:var(--color-text-tertiary);cursor:pointer;font-size:14px}
 .ft-del:hover{color:var(--color-text-danger)}
-.ft-empty{text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:2rem 0}
-.ft-divider{height:1px;background:var(--line,#334155);margin:10px 0}
-.ft-formula{font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px}
+.ft-empty{text-align:center;color:var(--color-text-tertiary);font-size:14px;padding:2rem 0}
+.ft-divider{height:1px;background:var(--line,#334155);margin:12px 0}
+.ft-formula{font-size:12px;color:var(--color-text-tertiary);margin-bottom:10px}
 </style>
 
 <div id="fuelModal">
   <div id="fuelPanel">
     <button class="ft-close" onclick="closeFuelTracker()">✕</button>
-    <div style="font-size:16px;font-weight:500;color:var(--color-text-primary);">⛽ Tracker spalania</div>
+    <div style="font-size:17px;font-weight:700;color:var(--color-text-primary);display:flex;align-items:center;gap:9px;margin-bottom:4px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#i-fuel"/></svg> Tracker spalania</div>
 
     <div class="ft-tabs">
       <button class="ft-tab active" onclick="ftTab('new')">Nowy przejazd</button>
@@ -1074,36 +1082,36 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 
 <!-- ===== MODAL: Flota ===== -->
 <style>
-#fleetModal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.65);display:none;align-items:flex-end;justify-content:center}
+#fleetModal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center}
 #fleetModal.open{display:flex}
-#fleetPanel{background:var(--bg,#0f172a);border-radius:20px 20px 0 0;width:100%;max-width:680px;max-height:92vh;overflow-y:auto;padding:16px 16px 100px}
+#fleetPanel{background:var(--bg,#0f172a);border-radius:16px;width:92%;max-width:640px;max-height:88vh;overflow-y:auto;padding:24px}
 :root[data-theme="light"] #fleetPanel{background:#f8fafc}
-.fl-close{float:right;background:none;border:none;font-size:20px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
-.fl-tabs{display:flex;gap:6px;margin:12px 0}
-.fl-tab{flex:1;padding:8px;font-size:12px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fl-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
+.fl-tabs{display:flex;gap:6px;margin:14px 0}
+.fl-tab{flex:1;padding:10px;font-size:14px;border:1px solid var(--line,#334155);border-radius:10px;background:transparent;color:var(--color-text-secondary);cursor:pointer}
 .fl-tab.active{background:var(--color-background-secondary);color:var(--color-text-primary);font-weight:600}
 .fl-sec{display:none}.fl-sec.active{display:block}
-.fl-card{border:1px solid var(--line,#334155);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:var(--color-background-primary)}
-.fl-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.fl-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
-.fl-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
-.fl-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--line,#334155);border-radius:8px;margin-bottom:6px;font-size:12px}
-.fl-item-info{display:flex;flex-direction:column;gap:2px}
-.fl-item-reg{font-weight:700;font-size:13px;color:var(--color-text-primary)}
-.fl-item-sub{font-size:11px;color:var(--color-text-secondary)}
+.fl-card{border:1px solid var(--line,#334155);border-radius:12px;padding:14px 16px;margin-bottom:12px;background:var(--color-background-primary)}
+.fl-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.fl-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px}
+.fl-label{font-size:13px;color:var(--color-text-secondary);margin-bottom:5px;font-weight:500}
+.fl-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid var(--line,#334155);border-radius:8px;margin-bottom:8px;font-size:13px}
+.fl-item-info{display:flex;flex-direction:column;gap:3px}
+.fl-item-reg{font-weight:700;font-size:14px;color:var(--color-text-primary)}
+.fl-item-sub{font-size:12px;color:var(--color-text-secondary)}
 .fl-item-actions{display:flex;gap:6px}
-.fl-btn-sm{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--line,#334155);background:transparent;color:var(--color-text-secondary);cursor:pointer}
+.fl-btn-sm{font-size:12px;padding:4px 10px;border-radius:6px;border:1px solid var(--line,#334155);background:transparent;color:var(--color-text-secondary);cursor:pointer}
 .fl-btn-sm:hover{background:var(--color-background-secondary)}
 .fl-btn-sm.danger:hover{color:var(--color-text-danger)}
-.fl-empty{text-align:center;color:var(--color-text-tertiary);font-size:12px;padding:1.5rem 0}
-.fl-type-badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-left:6px}
-.fl-select-hint{font-size:10px;color:var(--color-text-tertiary);margin-top:4px}
+.fl-empty{text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:1.5rem 0}
+.fl-type-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-left:6px}
+.fl-select-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
 </style>
 
 <div id="fleetModal">
   <div id="fleetPanel">
     <button class="fl-close" onclick="closeFleetManager()">✕</button>
-    <div style="font-size:16px;font-weight:600;color:var(--color-text-primary);">🚛 Zarządzanie flotą</div>
+    <div style="font-size:17px;font-weight:700;color:var(--color-text-primary);display:flex;align-items:center;gap:9px;margin-bottom:4px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#i-truck"/></svg> Zarządzanie flotą</div>
 
     <div class="fl-tabs">
       <button class="fl-tab active" onclick="flTab('vehicles')">Pojazdy</button>
@@ -1599,7 +1607,7 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 <div id="cargoModal">
   <div id="cargoPanel">
     <div class="cargo-header">
-      <h3>📐 Kalkulator powierzchni ładunkowej</h3>
+      <h3 style="display:flex;align-items:center;gap:9px;font-size:17px;font-weight:700;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#i-ldm"/></svg> Kalkulator powierzchni ładunkowej</h3>
       <button class="cargo-close" onclick="closeCargoCalc()">×</button>
     </div>
 
@@ -1939,6 +1947,49 @@ function calcCargo(){
   obs.observe(summaryEl, { childList: true, characterData: true, subtree: true });
 
   if (!(summaryEl.textContent || '').trim()) renderEmpty();
+})();
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+// ===== Wgrywanie PDF do pola wklejania zlecenia =====
+(function(){
+  // Ustaw worker pdf.js
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+
+  window.loadPdfToInput = async function(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const status = document.getElementById('nlpPdfStatus');
+    const ta = document.getElementById('nlpInput');
+    if (status) status.textContent = 'Wczytuję PDF...';
+
+    try {
+      if (!window.pdfjsLib) throw new Error('pdf.js nie załadowany');
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      let text = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+      }
+      text = text.trim();
+      if (!text) {
+        if (status) status.textContent = '⚠ PDF nie zawiera tekstu (skan?) — wklej ręcznie.';
+        return;
+      }
+      if (ta) ta.value = text;
+      if (status) status.textContent = '✓ ' + pdf.numPages + ' str., ' + text.length + ' znaków';
+    } catch(e) {
+      if (status) status.textContent = '✗ Błąd: ' + e.message;
+    }
+    // reset input żeby można wgrać ten sam plik ponownie
+    input.value = '';
+  };
 })();
 </script>
 

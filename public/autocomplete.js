@@ -43,10 +43,10 @@ function createDropdown() {
   el.className = "ac-dropdown";
   el.style.cssText = `
     position:absolute; z-index:9999; left:0; right:0; top:100%;
-    background:var(--panel2, #2b3658);
-    border:1px solid rgba(255,255,255,.18);
+    background:var(--panel); color:var(--ink);
+    border:1px solid var(--panel-edge);
     border-radius:10px; margin-top:3px;
-    box-shadow:0 8px 32px rgba(0,0,0,.45);
+    box-shadow:0 8px 32px rgba(0,0,0,.25);
     max-height:220px; overflow-y:auto;
     display:none;
   `;
@@ -61,24 +61,43 @@ function showDropdown(dropdown, items, input) {
     const row = document.createElement("div");
     row.className = "ac-item";
     row.style.cssText = `
-      padding:9px 12px; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.07);
-      font-size:13px; line-height:1.35;
+      padding:9px 12px; cursor:pointer;
+      border-bottom:1px solid var(--panel-edge);
+      font-size:13px; line-height:1.35; color:var(--ink);
     `;
     row.innerHTML = `
       <div style="font-weight:600;">${escapeHtml(item.short)}</div>
-      <div style="font-size:11px;opacity:.6;margin-top:2px;">${escapeHtml(item.label)}</div>
+      <div style="font-size:11px;opacity:.55;margin-top:2px;">${escapeHtml(item.label)}</div>
     `;
     row.addEventListener("mousedown", (e) => {
       e.preventDefault();
       input.value = item.short;
       dropdown.style.display = "none";
     });
-    row.addEventListener("mouseover", () => row.style.background = "rgba(255,255,255,.09)");
+    row.addEventListener("mouseover", () => row.style.background = "var(--signal-soft, rgba(232,89,12,.10))");
     row.addEventListener("mouseout",  () => row.style.background = "");
     dropdown.appendChild(row);
   });
 
   dropdown.style.display = "block";
+
+  // Flip-up: jeśli poniżej inputu jest mało miejsca, otwórz nad inputem
+  requestAnimationFrame(() => {
+    const rect = input.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const dropH = dropdown.offsetHeight || 220;
+    if (spaceBelow < dropH + 8 && rect.top > dropH + 8) {
+      dropdown.style.top = "auto";
+      dropdown.style.bottom = "100%";
+      dropdown.style.marginTop = "0";
+      dropdown.style.marginBottom = "3px";
+    } else {
+      dropdown.style.top = "100%";
+      dropdown.style.bottom = "auto";
+      dropdown.style.marginTop = "3px";
+      dropdown.style.marginBottom = "0";
+    }
+  });
 }
 
 function attachAutocomplete(input) {

@@ -583,7 +583,10 @@ async function renderHistory(){
 
     card.innerHTML = `
       <div class="historyTop">
-        <div>
+        <label class="history-check" title="Zaznacz do sumowania kółka">
+          <input type="checkbox" class="round-check" data-id="${it.id}" style="margin-right:8px;accent-color:var(--signal);width:15px;height:15px;">
+        </label>
+        <div style="flex:1">
           <div class="historyName">${escapeHtml(it.name)}</div>
           <div class="historyMeta">${dt}${it.client ? " • " + escapeHtml(it.client) : ""}</div>
         </div>
@@ -610,6 +613,25 @@ async function renderHistory(){
     el.appendChild(card);
   });
 
+  // Pasek sumowania kółka
+  let roundBar = document.getElementById("roundSummaryBar");
+  if (!roundBar) {
+    roundBar = document.createElement("div");
+    roundBar.id = "roundSummaryBar";
+    roundBar.style.cssText = "margin-top:12px;padding:14px;background:var(--panel);border:1px solid var(--signal);border-radius:12px;display:none;";
+    el.parentNode.appendChild(roundBar);
+  }
+
+  el.addEventListener("change", function(e) {
+    if (!e.target.classList.contains("round-check")) return;
+    const checked = el.querySelectorAll(".round-check:checked");
+    const btn = document.getElementById("roundSumBtn");
+    if (btn) btn.disabled = checked.length < 2;
+    if (btn) btn.textContent = checked.length >= 2
+      ? `Podsumuj ${checked.length} tras (kółko)`
+      : "Zaznacz min. 2 trasy";
+  });
+
   el.querySelectorAll("button[data-act]").forEach(btn => {
     btn.onclick = () => {
       const act = btn.getAttribute("data-act");
@@ -620,6 +642,80 @@ async function renderHistory(){
       if (act === "duplicate") return hDuplicate(id);
     };
   });
+
+  // Przycisk "Podsumuj kółko"
+  const btnWrap = document.getElementById("roundBtnWrap");
+  if (btnWrap) {
+    btnWrap.innerHTML = `<button id="roundSumBtn" type="button" class="btn btn-navy" style="width:100%;margin-top:10px;" disabled onclick="sumRound()">Zaznacz min. 2 trasy</button>`;
+  }
+}
+
+// ===== SUMOWANIE KÓŁKA / rundy tras =====
+function sumRound() {
+  const el = document.getElementById("historyList");
+  if (!el) return;
+  const checked = [...el.querySelectorAll(".round-check:checked")];
+  if (checked.length < 2) return;
+
+  let sumKm = 0, sumCost = 0, sumPrice = 0, sumMargin = 0;
+  const routes = [];
+
+  checked.forEach(cb => {
+    const id = cb.dataset.id;
+    const it = hFind(id);
+    if (!it) return;
+    const r = it.result || {};
+    sumKm     += Number(r.distance_km   || 0);
+    sumCost   += Number(r.total_cost_eur|| 0);
+    sumMargin += Number(r.margin_eur    || 0);
+    const price = r.calc_mode === "offer"
+      ? Number(r.offer_price_eur     || 0)
+      : Number(r.suggested_price_eur || 0);
+    sumPrice += price;
+    if (it.route?.origin && it.route?.destination)
+      routes.push(`${it.route.origin} → ${it.route.destination}`);
+  });
+
+  const avgEurKm   = sumKm   > 0 ? (sumCost / sumKm).toFixed(2)   : "—";
+  const avgRateKm  = sumKm   > 0 ? (sumPrice/ sumKm).toFixed(2)   : "—";
+  const marginPct  = sumPrice> 0 ? ((sumMargin/sumPrice)*100).toFixed(1) : "—";
+
+  const bar = document.getElementById("roundSummaryBar");
+  if (!bar) return;
+
+  bar.style.display = "block";
+  bar.innerHTML = `
+    <div style="font-family:'IBM Plex Mono';font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--signal);margin-bottom:12px;">
+      📊 Podsumowanie kółka (${checked.length} tras)
+    </div>
+    <div style="font-size:12px;color:var(--ink-faint);margin-bottom:10px;">${routes.join("  ·  ")}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <div style="background:var(--panel-edge);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px;">Łączny dystans</div>
+        <div style="font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;">${Math.round(sumKm).toLocaleString()} km</div>
+      </div>
+      <div style="background:var(--panel-edge);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px;">Łączny koszt</div>
+        <div style="font-size:20px;font-weight:800;">${sumCost.toFixed(0)} €</div>
+      </div>
+      <div style="background:var(--panel-edge);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px;">Łączny przychód</div>
+        <div style="font-size:20px;font-weight:800;">${sumPrice.toFixed(0)} €</div>
+      </div>
+      <div style="background:var(--navy);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:11px;color:#9fb2d4;text-transform:uppercase;letter-spacing:.5px;">Łączna marża</div>
+        <div style="font-size:20px;font-weight:800;color:#fff;">${sumMargin.toFixed(0)} € <span style="font-size:14px;opacity:.8;">(${marginPct}%)</span></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;font-size:13px;color:var(--ink-soft);border-top:1px solid var(--panel-edge);padding-top:10px;">
+      <span>Koszt/km: <b>${avgEurKm} €</b></span>
+      <span>Stawka/km: <b>${avgRateKm} €</b></span>
+      <span>Trasy: <b>${checked.length}</b></span>
+    </div>
+    <button type="button" onclick="document.getElementById('roundSummaryBar').style.display='none';document.querySelectorAll('.round-check').forEach(c=>c.checked=false);"
+      style="margin-top:10px;background:none;border:none;font-size:12px;color:var(--ink-faint);cursor:pointer;">✕ Zamknij podsumowanie</button>
+  `;
+  try { bar.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch(e) {}
 }
 
 function hFind(id){

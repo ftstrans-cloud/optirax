@@ -434,19 +434,19 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
   z-index: 10000;
   background: rgba(0,0,0,.6);
   display: none;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
 }
 #cargoModal.open { display: flex; }
 
 #cargoPanel{
   background: var(--bg, #0f172a);
-  border-radius: 20px 20px 0 0;
-  width: 100%;
-  max-width: 720px;
-  max-height: 92vh;
+  border-radius: 16px;
+  width: 92%;
+  max-width: 520px;
+  max-height: 86vh;
   overflow-y: auto;
-  padding: 16px 16px 100px;
+  padding: 22px;
   color: var(--text, #f8fafc);
 }
 :root[data-theme="light"] #cargoPanel { background: #f8fafc; color: #0f172a; }
