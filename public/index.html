@@ -2048,6 +2048,7 @@ function calcCargo(){
   function getApp(){ return document.querySelector('.app'); }
 
   function applyWidths(left, right){
+    if(window.innerWidth <= 768) return; // na mobile CSS @media rządzi
     var app = getApp(); if(!app) return;
     app.style.gridTemplateColumns = left+'px 6px 1fr 6px '+right+'px';
     // Odśwież mapę Leaflet
@@ -2128,6 +2129,9 @@ function calcCargo(){
   }
 
   document.addEventListener('DOMContentLoaded', function(){
+    // Na mobile (≤768px) — nie ustawiaj inline grid, CSS @media rządzi
+    if(window.innerWidth <= 768) return;
+
     // Załaduj zapisane szerokości
     var w = loadWidths();
     applyWidths(w.left, w.right);
@@ -2136,6 +2140,18 @@ function calcCargo(){
     var dr = document.getElementById('dividerRight');
     if(dl) makeDraggable(dl, 'left');
     if(dr) makeDraggable(dr, 'right');
+  });
+
+  // Przy resize okna — wyczyść inline style gdy przechodzisz na mobile
+  window.addEventListener('resize', function(){
+    var app = getApp();
+    if(!app) return;
+    if(window.innerWidth <= 768){
+      app.style.gridTemplateColumns = '';
+    } else {
+      var w = loadWidths();
+      applyWidths(w.left, w.right);
+    }
   });
 })();
 </script>
