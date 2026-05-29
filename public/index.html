@@ -9,25 +9,52 @@
   .topbar { position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; height: 50px !important; z-index: 100 !important; }
   .app { display: flex !important; flex-direction: column !important; grid-template-columns: unset !important; padding: 0 !important; gap: 0 !important; overflow-y: auto !important; overflow-x: hidden !important; }
   .col-divider { display: none !important; }
-  #colMid { order: 0 !important; flex: 0 0 320px !important; min-height: 320px !important; max-height: 320px !important; width: 100% !important; padding: 0 !important; position: sticky !important; top: 0 !important; z-index: 20 !important; border-bottom: 2px solid #e8590c !important; transition: flex-basis .3s ease, min-height .3s ease, max-height .3s ease !important; }
+
+  /* Mapa sticky + nagłówek ukryty */
+  #colMid { order: 0 !important; flex: 0 0 300px !important; min-height: 300px !important; max-height: 300px !important; width: 100% !important; padding: 0 !important; position: sticky !important; top: 0 !important; z-index: 20 !important; border-bottom: 2px solid #e8590c !important; transition: flex-basis .3s ease, min-height .3s ease, max-height .3s ease !important; }
   #colMid.map-expanded { flex: 0 0 70vh !important; min-height: 70vh !important; max-height: 70vh !important; }
-  #colMid.map-collapsed { flex: 0 0 160px !important; min-height: 160px !important; max-height: 160px !important; }
   .mapCard { border-radius: 0 !important; height: 100% !important; min-height: 0 !important; }
   #map { height: 100% !important; min-height: 0 !important; }
+
+  /* Ukryj nagłówek mapy (tytuł + przyciski stylu) — auto z motywem */
+  .mapHead { display: none !important; }
+
   /* Przycisk toggle mapy */
   #mapToggleBtn { display: flex !important; }
-  #colLeft { order: 1 !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 12px !important; overflow: visible !important; }
-  #colRight { order: 2 !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 12px 12px 80px !important; overflow: visible !important; }
+
+  /* Kolumny — pełna szerokość */
+  #colLeft  { order: 1 !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 !important; overflow: visible !important; }
+  #colRight { order: 2 !important; width: 100% !important; min-width: 0 !important; max-width: 100% !important; padding: 0 0 80px !important; overflow: visible !important; }
+
+  /* Panel rozwijany dla kolumn */
+  .mob-col-panel { background: var(--panel); border-top: 2px solid var(--panel-edge); }
+  .mob-col-handle {
+    display: flex !important;
+    align-items: center; justify-content: space-between;
+    padding: 10px 16px; cursor: pointer;
+    background: var(--panel);
+    position: sticky; top: 0; z-index: 10;
+    border-bottom: 1px solid var(--panel-edge);
+  }
+  .mob-col-handle .mob-label { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--signal); display: flex; align-items: center; gap: 7px; }
+  .mob-col-handle .mob-arrow { font-size: 16px; color: var(--ink-faint); transition: transform .25s; }
+  .mob-col-handle.mob-open .mob-arrow { transform: rotate(180deg); }
+  .mob-col-body { padding: 10px 12px; }
+  .mob-col-body.mob-hidden { display: none !important; }
+
+  /* Wewnątrz panelu — collap bez dodatkowego marginesu */
+  .mob-col-body .collap { margin-bottom: 8px !important; }
+
   .actionbar { position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important; height: auto !important; flex-wrap: nowrap !important; overflow-x: auto !important; padding: 8px 10px !important; z-index: 50 !important; }
   .modal { width: 94vw !important; max-width: 94vw !important; }
 }
 @media (max-width: 480px) {
-  #colMid { flex: 0 0 280px !important; min-height: 280px !important; max-height: 280px !important; }
+  #colMid { flex: 0 0 260px !important; min-height: 260px !important; max-height: 260px !important; }
   #colMid.map-expanded { flex: 0 0 65vh !important; min-height: 65vh !important; max-height: 65vh !important; }
-  #colMid.map-collapsed { flex: 0 0 140px !important; min-height: 140px !important; max-height: 140px !important; }
 }
-/* Przycisk toggle — ukryty na desktopie */
+/* Desktop: handle ukryty */
 #mapToggleBtn { display: none; }
+.mob-col-handle { display: none; }
 </style>
 <title>OPTIRAX - Kalkulator kosztów trasy</title>
 
@@ -2028,28 +2055,48 @@ function calcCargo(){
 </script>
 
 <script>
-// ===== Mobile: toggle rozwijania mapy =====
+// ===== Mobile: toggle mapy + zwijane panele kolumn =====
 window.toggleMobileMap = function() {
   var col = document.getElementById('colMid');
   var icon = document.getElementById('mapToggleIcon');
-  var txt = document.getElementById('mapToggleTxt');
-  if (!col) return;
-  var isExpanded = col.classList.contains('map-expanded');
-  var isCollapsed = col.classList.contains('map-collapsed');
-  col.classList.remove('map-expanded', 'map-collapsed');
-  if (isExpanded) {
-    // rozwinięta → normalna
-    icon.textContent = '▲'; txt.textContent = 'rozwiń mapę';
-  } else if (isCollapsed) {
-    // zwinięta → normalna
-    icon.textContent = '▲'; txt.textContent = 'rozwiń mapę';
-  } else {
-    // normalna → rozwinięta
-    col.classList.add('map-expanded');
-    icon.textContent = '▼'; txt.textContent = 'zwiń mapę';
-  }
+  var txt  = document.getElementById('mapToggleTxt');
+  if(!col) return;
+  var exp = col.classList.contains('map-expanded');
+  col.classList.toggle('map-expanded', !exp);
+  if(icon) icon.textContent = exp ? '▲' : '▼';
+  if(txt)  txt.textContent  = exp ? 'rozwiń mapę' : 'zwiń mapę';
   setTimeout(function(){ try{ if(window.map) window.map.invalidateSize(); }catch(e){} }, 320);
 };
+
+// Zwijane panele kolumn — tylko na mobile
+(function(){
+  if(window.innerWidth > 768) return;
+  function makePanel(colId, label, iconId, open){
+    var col = document.getElementById(colId);
+    if(!col) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'mob-col-panel';
+    col.parentNode.insertBefore(wrap, col);
+    var handle = document.createElement('div');
+    handle.className = 'mob-col-handle' + (open ? ' mob-open' : '');
+    handle.innerHTML = '<div class="mob-label"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#'+iconId+'"/></svg> '+label+'</div><span class="mob-arrow">▾</span>';
+    var body = document.createElement('div');
+    body.className = 'mob-col-body' + (open ? '' : ' mob-hidden');
+    body.appendChild(col);
+    wrap.appendChild(handle);
+    wrap.appendChild(body);
+    handle.addEventListener('click', function(){
+      var isOpen = handle.classList.contains('mob-open');
+      handle.classList.toggle('mob-open', !isOpen);
+      body.classList.toggle('mob-hidden', isOpen);
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    if(window.innerWidth > 768) return;
+    makePanel('colLeft',  'Kalkulator', 'i-calc', true);
+    makePanel('colRight', 'Wyniki', 'i-gauge', true);
+  });
+})();
 </script>
 <script>
 // ===== Zwijane sekcje z pinezką =====
