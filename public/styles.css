@@ -762,3 +762,155 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 #colLeft{ padding-right:8px; }
 #colMid{ padding:0 8px; }
 #colRight{ padding-left:8px; }
+
+/* ================================================================
+   MOBILE (≤768px) — mapa sticky na górze, reszta scrolluje w dół
+   ================================================================ */
+@media (max-width: 768px) {
+
+  /* Body i app — pionowy układ */
+  body{ overflow:hidden; }
+
+  .app{
+    display:flex;
+    flex-direction:column;
+    grid-template-columns:unset;
+    padding:0;
+    gap:0;
+    overflow:hidden;
+  }
+
+  /* Divider drag-resize — ukryty na mobile */
+  .col-divider{ display:none !important; }
+
+  /* ===== MAPA — sticky na górze, stała wysokość ===== */
+  #colMid{
+    order:0;
+    flex:0 0 260px;
+    min-height:260px;
+    max-height:260px;
+    padding:0;
+    overflow:hidden;
+    border-bottom:2px solid var(--signal);
+  }
+  .mapCard{
+    border-radius:0;
+    border:none;
+    height:260px;
+  }
+  #map{ height:260px !important; }
+
+  /* Przyciski stylu mapy — mniejsze na mobile */
+  #mapStyleBtns{
+    top:8px; right:8px;
+    gap:4px;
+  }
+  .mapStyleBtn{
+    font-size:11px;
+    padding:4px 8px;
+  }
+
+  /* ===== SCROLL CONTAINER — lewa + prawa kolumna pod mapą ===== */
+  #colLeft, #colRight{
+    flex:none;
+    width:100%;
+    min-height:unset;
+    overflow-y:visible;
+    overflow-x:hidden;
+    padding:14px 14px 0;
+  }
+
+  /* Wrapper scrollowalny — colLeft + colRight razem */
+  .app::after{
+    display:none;
+  }
+
+  /* Tworzymy scroll wrapper przez flex na app + kolejność */
+  #colLeft{ order:1; }
+  #colRight{ order:2; padding-bottom:80px; /* miejsce na actionbar */ }
+
+  /* App scrolluje jako całość pod mapą */
+  .app{
+    overflow-y:auto;
+    overflow-x:hidden;
+  }
+  #colMid{
+    position:sticky;
+    top:0;
+    z-index:20;
+  }
+
+  /* Body scrolluje od topbara w dół — app jest poniżej topbara */
+  /* Topbar ma 50px na mobile, app zaczyna od 50px */
+  body{ padding-top:50px; }
+  .topbar{ position:fixed; top:0; left:0; right:0; z-index:100; }
+
+  /* ===== TOPBAR — kompaktowy ===== */
+  .topbar{ height:50px; padding:0 12px; }
+  .brand-logo{ height:32px; }
+  #themeLabel{ display:none; }
+
+  /* ===== ACTIONBAR — przyklejony na dole ===== */
+  .actionbar{
+    position:fixed;
+    bottom:0; left:0; right:0;
+    height:auto;
+    min-height:56px;
+    padding:8px 10px;
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    gap:6px;
+    z-index:50;
+  }
+  .actionbar .btn,
+  .actionbar button{
+    flex:0 0 auto;
+    font-size:12px;
+    padding:8px 12px;
+    white-space:nowrap;
+  }
+
+  /* ===== KOLUMNA LEWA — pełna szerokość ===== */
+  .collap{ margin-bottom:8px; }
+  .modeSwitch{ flex-direction:column; gap:8px; }
+  .modeBtn{ min-height:52px; }
+
+  /* Presety pojazdów — 3 kolumny na mobile */
+  #vehiclePresets{
+    grid-template-columns:repeat(3, 1fr);
+    gap:6px;
+  }
+
+  /* ===== KOLUMNA PRAWA — pod lewą ===== */
+  .kpis{ gap:6px; }
+  .kpi{ padding:10px 13px; }
+  .kpi .v{ font-size:18px; }
+
+  /* ===== MODALE — pełna szerokość ===== */
+  .modal{ width:96vw; max-width:96vw; }
+  .modal-wide{ width:96vw; max-width:96vw; }
+  #fuelPanel, #fleetPanel{
+    width:96vw;
+    max-width:96vw;
+    max-height:85vh;
+    padding:18px 16px;
+  }
+  #cargoPanel{
+    width:96vw;
+    max-width:96vw;
+    padding:18px 16px;
+  }
+
+  /* ===== OPT-DROPDOWN hamburger ===== */
+  #optDrop{ left:8px; width:220px; top:54px; }
+
+  /* Autocomplete dropdown — nie wychodzi poza ekran */
+  .ac-dropdown{ max-width:90vw; }
+}
+
+/* Extra small (≤480px) */
+@media (max-width: 480px) {
+  #colMid, .mapCard, #map{ height:220px !important; max-height:220px; flex:0 0 220px; min-height:220px; }
+  .actionbar button span,
+  .actionbar .btn .ic{ display:none; }
+}
