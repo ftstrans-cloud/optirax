@@ -1756,6 +1756,12 @@ app.get("/login", (req, res) =>
 app.get("/register", (req, res) =>
   res.redirect("/login?tab=register"));
 
+app.get("/privacy", (req, res) =>
+  res.sendFile(path.join(process.cwd(), "public", "privacy.html")));
+
+app.get("/terms", (req, res) =>
+  res.sendFile(path.join(process.cwd(), "public", "terms.html")));
+
 app.get("/admin", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "admin.html")));
 
