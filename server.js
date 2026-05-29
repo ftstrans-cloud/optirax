@@ -1753,6 +1753,9 @@ app.use(express.static(path.join(process.cwd(), "public")));
 app.get("/login", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "login.html")));
 
+app.get("/register", (req, res) =>
+  res.redirect("/login?tab=register"));
+
 app.get("/admin", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "admin.html")));
 
