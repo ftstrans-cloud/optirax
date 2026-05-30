@@ -1757,10 +1757,10 @@ app.get("/register", (req, res) =>
   res.redirect("/login?tab=register"));
 
 app.get("/privacy", (req, res) =>
-  res.sendFile(path.join(process.cwd(), "public", "privacy.html")));
+  res.sendFile(path.join(process.cwd(), "public", "polityka-prywatnosci.html")));
 
 app.get("/terms", (req, res) =>
-  res.sendFile(path.join(process.cwd(), "public", "terms.html")));
+  res.sendFile(path.join(process.cwd(), "public", "regulamin.html")));
 
 app.get("/admin", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "admin.html")));
