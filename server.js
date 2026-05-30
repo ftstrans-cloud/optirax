@@ -1747,7 +1747,7 @@ app.post("/api/report", requireAuth, requireActiveSubscription, async (req, res)
 
 // ============================================================
 loadBorders();
-app.use(express.static(path.join(process.cwd(), "public")));
+app.use(express.static(path.join(process.cwd(), "public"), { extensions: ["html"] }));
 
 // Strony
 app.get("/login", (req, res) =>
@@ -1758,8 +1758,12 @@ app.get("/register", (req, res) =>
 
 app.get("/privacy", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "polityka-prywatnosci.html")));
+app.get("/polityka-prywatnosci", (req, res) =>
+  res.sendFile(path.join(process.cwd(), "public", "polityka-prywatnosci.html")));
 
 app.get("/terms", (req, res) =>
+  res.sendFile(path.join(process.cwd(), "public", "regulamin.html")));
+app.get("/regulamin", (req, res) =>
   res.sendFile(path.join(process.cwd(), "public", "regulamin.html")));
 
 app.get("/admin", (req, res) =>
