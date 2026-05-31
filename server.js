@@ -1487,6 +1487,119 @@ fleetRoutes("vehicles");
 fleetRoutes("trailers");
 fleetRoutes("drivers");
 
+// PATCH /api/fleet/vehicles/:id — aktualizacja terminów i innych pól pojazdu
+app.patch("/api/fleet/vehicles/:id", requireAuth, async (req, res) => {
+  try {
+    const uid = req.userId;
+    const body = req.body;
+    delete body.auth_user_id;
+    delete body.user_id;
+    await sbFetch("vehicles", "PATCH", body,
+      `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/fleet/alerts — pojazdy z terminami ≤30 dni
+app.get("/api/fleet/alerts", requireAuth, async (req, res) => {
+  try {
+    const uid = req.userId;
+    const vehicles = await sbFetch("vehicles", "GET", null,
+      `?auth_user_id=eq.${uid}&active=neq.false`);
+    const alerts = buildAlerts(vehicles || []);
+    res.json(alerts);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/alerts/send — ręczne wysłanie emaila z alertami
+app.post("/api/alerts/send", requireAuth, async (req, res) => {
+  try {
+    const uid = req.userId;
+    const vehicles = await sbFetch("vehicles", "GET", null,
+      `?auth_user_id=eq.${uid}&active=neq.false`);
+    const alerts = buildAlerts(vehicles || []);
+    if (!alerts.length) return res.json({ ok: true, sent: false, reason: "Brak alertów" });
+    await sendFleetAlertEmail(alerts);
+    res.json({ ok: true, sent: true, count: alerts.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+function buildAlerts(vehicles) {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const alerts = [];
+  const dateFields = [
+    { key: "oc_date",       label: "OC" },
+    { key: "przeglad_date", label: "Przegląd" },
+    { key: "tacho_date",    label: "Tacho" },
+    { key: "serwis_date",   label: "Serwis" },
+  ];
+  for (const v of vehicles) {
+    for (const { key, label } of dateFields) {
+      if (!v[key]) continue;
+      const d = new Date(v[key]);
+      d.setHours(0,0,0,0);
+      const daysLeft = Math.round((d - today) / 86400000);
+      if (daysLeft <= 30) {
+        alerts.push({ reg: v.reg, field: key, label, date: v[key], daysLeft });
+      }
+    }
+  }
+  return alerts;
+}
+
+async function sendFleetAlertEmail(alerts) {
+  const rows = alerts.map(a => {
+    const color = a.daysLeft < 0 ? "#ef4444" : a.daysLeft <= 7 ? "#ef4444" : "#f59e0b";
+    const status = a.daysLeft < 0
+      ? `PRZETERMINOWANE (${Math.abs(a.daysLeft)} dni temu)`
+      : `za ${a.daysLeft} dni`;
+    return `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #334155;font-weight:600;">${a.reg}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #334155;">${a.label}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #334155;">${a.date}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #334155;color:${color};font-weight:600;">${status}</td>
+    </tr>`;
+  }).join("");
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:24px;border-radius:12px;">
+      <div style="font-size:22px;font-weight:700;color:#e8590c;margin-bottom:4px;">OPTIRAX</div>
+      <div style="font-size:14px;color:#94a3b8;margin-bottom:20px;">Alert terminów floty</div>
+      <p style="margin:0 0 16px;">Pojazdy z terminami wymagającymi uwagi (≤30 dni lub przeterminowane):</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:#1e293b;">
+          <th style="padding:8px 12px;text-align:left;color:#94a3b8;">Rejestracja</th>
+          <th style="padding:8px 12px;text-align:left;color:#94a3b8;">Termin</th>
+          <th style="padding:8px 12px;text-align:left;color:#94a3b8;">Data</th>
+          <th style="padding:8px 12px;text-align:left;color:#94a3b8;">Status</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p style="margin:20px 0 0;font-size:12px;color:#64748b;">Wygenerowano: ${new Date().toLocaleString("pl-PL")}</p>
+    </div>`;
+
+  await notifyOwner(`🚛 OPTIRAX Alert: ${alerts.length} termin(ów) floty wymaga uwagi`, html);
+}
+
+// Cron 24h — sprawdza terminy i wysyła email
+(async function startFleetAlertCron() {
+  async function checkAllFleets() {
+    try {
+      console.log("🔔 Cron floty: sprawdzam terminy...");
+      const vehicles = await sbFetch("vehicles", "GET", null, "?active=neq.false");
+      if (!vehicles || !vehicles.length) return;
+      const alerts = buildAlerts(vehicles);
+      if (!alerts.length) { console.log("🔔 Cron floty: wszystkie terminy OK."); return; }
+      console.log(`🔔 Cron floty: ${alerts.length} alert(ów), wysyłam email...`);
+      await sendFleetAlertEmail(alerts);
+    } catch(e) { console.error("🔔 Cron floty błąd:", e.message); }
+  }
+  setTimeout(checkAllFleets, 5 * 60 * 1000);
+  setInterval(checkAllFleets, 24 * 60 * 60 * 1000);
+  console.log("🔔 Cron alertów floty uruchomiony (co 24h).");
+})();
+
 app.get("/api/fuel", requireAuth, requireActiveSubscription, async (req, res) => {
   try {
     const uid = req.userId;

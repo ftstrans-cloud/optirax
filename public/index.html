@@ -440,7 +440,7 @@
     <button class="action-sec" type="button" onclick="openPdfReport && openPdfReport()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-file"/></svg> PDF oferta</button>
     <button class="action-sec" type="button" onclick="window.openFuelTracker && openFuelTracker()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-fuel"/></svg> Paliwo</button>
     <button class="action-sec" type="button" onclick="window.openCargoCalc && openCargoCalc()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-ldm"/></svg> Powierzchnia</button>
-    <button class="action-sec" type="button" onclick="window.openFleetManager && openFleetManager()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-truck"/></svg> Flota</button>
+    <button class="action-sec" type="button" id="fleetAlertBtn" onclick="window.openFleetManager && openFleetManager()" style="position:relative;"><svg class="ic" viewBox="0 0 24 24"><use href="#i-truck"/></svg> Flota<span id="fleetAlertBadge" style="display:none;position:absolute;top:4px;right:4px;min-width:16px;height:16px;background:#ef4444;color:#fff;border-radius:8px;font-size:10px;font-weight:700;line-height:16px;text-align:center;padding:0 4px;"></span></button>
   </div>
 </div>
 
@@ -1222,6 +1222,19 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
           <div class="fl-label">Uwagi</div>
           <input type="text" id="flVNotes" placeholder="np. ADR, winda, klimatyzacja..." style="width:100%"/>
         </div>
+        <div style="margin-top:10px;margin-bottom:6px;font-size:12px;font-weight:700;color:var(--signal);letter-spacing:.05em;text-transform:uppercase;">Terminy i serwis</div>
+        <div class="fl-row">
+          <div><div class="fl-label">OC do</div><input type="date" id="flVOcDate" style="width:100%"/></div>
+          <div><div class="fl-label">Przegląd do</div><input type="date" id="flVPrzegladDate" style="width:100%"/></div>
+        </div>
+        <div class="fl-row">
+          <div><div class="fl-label">Tacho do</div><input type="date" id="flVTachoDate" style="width:100%"/></div>
+          <div><div class="fl-label">Serwis do</div><input type="date" id="flVSerwisDate" style="width:100%"/></div>
+        </div>
+        <div style="margin-bottom:8px;">
+          <div class="fl-label">Serwis po (km)</div>
+          <input type="number" id="flVSerwisKm" placeholder="np. 150000" style="width:100%"/>
+        </div>
         <div style="display:flex;gap:8px;">
           <button class="btn" style="flex:1;" onclick="flSaveVehicle()">Zapisz pojazd</button>
           <button class="btn secondary" onclick="flClearVehicleForm()">Wyczyść</button>
@@ -1354,6 +1367,28 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
     document.getElementById('fl-'+t).classList.add('active');
   };
 
+  // ── Badge alertów na przycisku Flota ─────────────────────
+  function updateFleetAlertBadge(vehicles) {
+    const badge = document.getElementById('fleetAlertBadge');
+    if (!badge) return;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const keys = ['oc_date','przeglad_date','tacho_date','serwis_date'];
+    let count = 0;
+    for (const v of vehicles) {
+      for (const key of keys) {
+        if (!v[key]) continue;
+        const d = new Date(v[key]); d.setHours(0,0,0,0);
+        if (Math.round((d - today) / 86400000) <= 30) count++;
+      }
+    }
+    if (count > 0) {
+      badge.textContent = count > 9 ? '9+' : count;
+      badge.style.display = 'block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
   // ── Load all ─────────────────────────────────────────────
   async function flLoadAll(){
     const [v,t,d] = await Promise.all([
@@ -1362,8 +1397,8 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
     fleetData.vehicles = v;
     fleetData.trailers = t;
     fleetData.drivers  = d;
-    // Zapisz w window żeby inne moduły miały dostęp
     window.fleetData = fleetData;
+    updateFleetAlertBadge(fleetData.vehicles);
   }
 
   function flRenderAll(){
@@ -1393,6 +1428,11 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
       euro_class:     document.getElementById('flVEuro').value,
       driver_id:      document.getElementById('flVDriver').value || null,
       notes:          document.getElementById('flVNotes').value.trim(),
+      oc_date:        document.getElementById('flVOcDate').value || null,
+      przeglad_date:  document.getElementById('flVPrzegladDate').value || null,
+      tacho_date:     document.getElementById('flVTachoDate').value || null,
+      serwis_date:    document.getElementById('flVSerwisDate').value || null,
+      serwis_km:      +document.getElementById('flVSerwisKm').value || null,
       active:         true,
     };
     await flPost('vehicles', body);
@@ -1417,6 +1457,11 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
     document.getElementById('flVEuro').value   = v.euro_class||'EURO6';
     document.getElementById('flVDriver').value = v.driver_id||'';
     document.getElementById('flVNotes').value  = v.notes||'';
+    document.getElementById('flVOcDate').value       = v.oc_date||'';
+    document.getElementById('flVPrzegladDate').value = v.przeglad_date||'';
+    document.getElementById('flVTachoDate').value    = v.tacho_date||'';
+    document.getElementById('flVSerwisDate').value   = v.serwis_date||'';
+    document.getElementById('flVSerwisKm').value     = v.serwis_km||'';
     document.getElementById('fl-vehicles').scrollTop = 0;
   };
 
@@ -1438,7 +1483,23 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
     document.getElementById('flVWidth').value=255;
     document.getElementById('flVLength').value=600;
     document.getElementById('flVDriver').value='';
+    ['flVOcDate','flVPrzegladDate','flVTachoDate','flVSerwisDate','flVSerwisKm'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.value='';
+    });
   };
+
+  function flDateBadge(dateStr, label) {
+    if (!dateStr) return '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const d = new Date(dateStr); d.setHours(0,0,0,0);
+    const days = Math.round((d - today) / 86400000);
+    let color, text;
+    if (days < 0)        { color='#ef4444'; text=`${label}: PRZETER.`; }
+    else if (days <= 7)  { color='#ef4444'; text=`${label}: ${days}d`; }
+    else if (days <= 30) { color='#f59e0b'; text=`${label}: ${days}d`; }
+    else                 { color='#22c55e'; text=`${label}: ✓`; }
+    return `<span style="font-size:11px;padding:1px 7px;border-radius:10px;background:${color}22;color:${color};border:1px solid ${color}44;margin-right:4px;">${text}</span>`;
+  }
 
   function flRenderVehicles(){
     const el = document.getElementById('flVehicleList');
@@ -1447,6 +1508,12 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
     }
     el.innerHTML = fleetData.vehicles.map(v=>{
       const driver = fleetData.drivers.find(d=>d.id===v.driver_id);
+      const termBadges = [
+        flDateBadge(v.oc_date, 'OC'),
+        flDateBadge(v.przeglad_date, 'Przeg.'),
+        flDateBadge(v.tacho_date, 'Tacho'),
+        flDateBadge(v.serwis_date, 'Serwis'),
+      ].filter(Boolean).join('');
       return `<div class="fl-item">
         <div class="fl-item-info">
           <div class="fl-item-reg">${v.reg||'—'}</div>
@@ -1459,6 +1526,7 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
             · ${v.height_cm||'?'}×${v.width_cm||'?'}×${v.length_cm||'?'} cm
             ${v.notes?`· ${v.notes}`:''}
           </div>
+          ${termBadges?`<div style="margin-top:5px;">${termBadges}</div>`:''}
         </div>
         <div class="fl-item-actions">
           <button class="fl-btn-sm" onclick="flUseVehicleInCalc('${v.id}')">📋 Użyj</button>
