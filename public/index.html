@@ -165,7 +165,7 @@
   <span class="spacer"></span>
   <button class="theme-toggle" id="themeToggle" type="button">
     <svg class="ic" viewBox="0 0 24 24" width="16" height="16"><use href="#i-gauge"/></svg>
-    <span id="themeLabel">Ciemny</span>
+    <span id="themeLabel">Tryb jasny</span>
   </button>
 </div>
 
@@ -349,7 +349,7 @@
              renderResult wpisuje wartość z jednostką inline (np. "2282 EUR"). -->
         <div class="kpis">
           <div class="kpi"><span class="accentbar"></span><div class="k">Koszt całkowity</div><div class="v num" id="kpi_total">— EUR</div></div>
-          <div class="kpi"><span class="accentbar"></span><div class="k">Cena zlecenia</div><div class="v num" id="kpi_price">— EUR</div></div>
+          <div class="kpi"><span class="accentbar"></span><div class="k" id="kpi_price_label">Cena</div><div class="v num" id="kpi_price">— EUR</div></div>
           <div class="kpi hero"><div class="k">Marża</div><div class="v num" id="kpi_margin">— EUR</div></div>
         </div>
 
@@ -601,7 +601,9 @@
 
   function applyTheme(t){
     html.setAttribute('data-theme', t);
-    if(label) label.textContent = (t === 'dark') ? 'Ciemny' : 'Jasny';
+    // Label = AKCJA (w co przełączy klik), nie stan aktualny — usuwa dwuznaczność
+    // "Ciemny" (czy jestem w ciemnym, czy włączę ciemny?).
+    if(label) label.textContent = (t === 'dark') ? 'Tryb jasny' : 'Tryb ciemny';
     try { localStorage.setItem('optirax_theme', t); } catch(e){}
     // Sync stylu mapy z motywem: jasny->mapa drogowa jasna, ciemny->drogowa noc.
     // Tylko gdy mapa już istnieje i aktualny styl to wariant DROGOWY
@@ -2169,6 +2171,7 @@ window.toggleMobileMap = function() {
 <script>
 // ===== Zwijane sekcje z pinezką =====
 (function(){
+  function initCollapsibles(){
     var sections = document.querySelectorAll('.collap');
     sections.forEach(function(sec){
       var key = sec.getAttribute('data-collap');
