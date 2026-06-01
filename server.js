@@ -64,6 +64,10 @@ console.log("🔥 OPTIRAX SERVER – HERE Routing API v8 🔥");
 // Pobierz na: https://platform.here.com  (Base Plan, darmowy do 30k req/mies)
 // ============================================================
 const HERE_API_KEY = process.env.HERE_API_KEY || "";
+// Osobny klucz TYLKO do map tiles (z restrykcją domeny w panelu HERE).
+// Jeśli ustawiony — front dostaje JEGO, a routing serwerowy nadal używa HERE_API_KEY.
+// Jeśli pusty — fallback do HERE_API_KEY (stare zachowanie).
+const HERE_TILES_KEY = process.env.HERE_TILES_KEY || HERE_API_KEY;
 if (!HERE_API_KEY) {
   console.warn("⚠️  Brak HERE_API_KEY w .env – routing używa OSRM + offline fallback");
 }
@@ -785,7 +789,8 @@ app.get("/api/health", (req, res) => res.json({
 
 // Publiczny endpoint z kluczem HERE do tile'ów mapy (tylko klucz map tiles, nie routing)
 app.get("/api/config", (req, res) => res.json({
-  hereApiKey: HERE_API_KEY || "",
+  // tiles key (front), NIE routing key
+  hereApiKey: HERE_TILES_KEY || "",
 }));
 
 // Proxy do Nominatim (autocomplete adresów) - omija CORS
@@ -1235,7 +1240,7 @@ app.patch("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) =>
     if (trial_ends_at !== undefined) update.trial_ends_at = trial_ends_at;
     if (is_active !== undefined) update.is_active = is_active;
 
-    await sbFetch("profiles", "PATCH", update, `?id=eq.${req.params.id}`);
+    await sbFetch("profiles", "PATCH", update, `?id=eq.${encodeURIComponent(req.params.id)}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1244,7 +1249,7 @@ app.patch("/api/admin/users/:id", requireAuth, requireAdmin, async (req, res) =>
 app.post("/api/admin/users/:id/extend-trial", requireAuth, requireAdmin, async (req, res) => {
   try {
     const days = req.body.days || 14;
-    const profile = await sbFetch("profiles", "GET", null, `?id=eq.${req.params.id}`);
+    const profile = await sbFetch("profiles", "GET", null, `?id=eq.${encodeURIComponent(req.params.id)}`);
     const p = profile?.[0];
     if (!p) return res.status(404).json({ error: "User nie znaleziony" });
 
@@ -1253,7 +1258,7 @@ app.post("/api/admin/users/:id/extend-trial", requireAuth, requireAdmin, async (
 
     await sbFetch("profiles", "PATCH",
       { trial_ends_at: base.toISOString(), plan: "trial", is_active: true },
-      `?id=eq.${req.params.id}`);
+      `?id=eq.${encodeURIComponent(req.params.id)}`);
 
     res.json({ ok: true, new_trial_ends_at: base.toISOString() });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -1424,7 +1429,7 @@ app.delete("/api/history/:id", requireAuth, async (req, res) => {
   try {
     const uid = req.userId;
     await sbFetch("quotes", "DELETE", null,
-      `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
+      `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1448,7 +1453,18 @@ function fleetRoutes(entity) {
   app.post(`/api/fleet/${entity}`, requireAuth, requireActiveSubscription, async (req, res) => {
     try {
       const body = { ...req.body, user_id: "default", auth_user_id: req.userId };
-      if (!body.id) body.id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      // BEZPIECZEŃSTWO: jeśli klient podał id istniejącego wiersza, sprawdź że należy do niego.
+      // Bez tego resolution=merge-duplicates pozwoliłby nadpisać cudzy pojazd.
+      if (body.id) {
+        const existing = await sbFetch(entity, "GET", null,
+          `?id=eq.${encodeURIComponent(body.id)}&select=auth_user_id`);
+        const owner = existing?.[0]?.auth_user_id;
+        if (owner && owner !== req.userId) {
+          return res.status(403).json({ error: "Brak uprawnień do tego rekordu" });
+        }
+      } else {
+        body.id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+      }
       const url = `${SUPABASE_URL}/rest/v1/${entity}`;
       console.log(`FLEET POST ${entity}:`, JSON.stringify(body).slice(0,200));
       const r = await fetch(url, {
@@ -1477,7 +1493,7 @@ function fleetRoutes(entity) {
     try {
       const uid = req.userId;
       await sbFetch(entity, "PATCH", { active: false },
-        `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
+        `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
       res.json({ ok: true });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
@@ -1495,7 +1511,7 @@ app.patch("/api/fleet/vehicles/:id", requireAuth, async (req, res) => {
     delete body.auth_user_id;
     delete body.user_id;
     await sbFetch("vehicles", "PATCH", body,
-      `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
+      `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1641,7 +1657,7 @@ app.delete("/api/fuel/:id", requireAuth, async (req, res) => {
   try {
     const uid = req.userId;
     await sbFetch("fuel_trips", "DELETE", null,
-      `?id=eq.${req.params.id}&auth_user_id=eq.${uid}`);
+      `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1897,7 +1913,7 @@ app.get("/", (req, res) => {
   // Wstrzyknij meta z kluczem HERE zaraz po <head>
   html = html.replace(
     "<head>",
-    `<head>\n<meta name="here-api-key" content="${HERE_API_KEY || ""}">`
+    `<head>\n<meta name="here-api-key" content="${HERE_TILES_KEY || ""}">`
   );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);

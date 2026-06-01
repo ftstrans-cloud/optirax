@@ -173,6 +173,10 @@ function renderResult(input, result) {
 
   const isOffer = (result.calc_mode === "offer" && Number(result.offer_price_eur || 0) > 0);
 
+  // Etykieta KPI ceny zależna od trybu: w trybie sugerowanym to NIE jest "cena zlecenia"
+  const priceLabel = document.getElementById("kpi_price_label");
+  if (priceLabel) priceLabel.textContent = isOffer ? "Cena zlecenia" : "Cena sugerowana";
+
   if (isOffer) {
     if (k2) k2.textContent = (result.offer_price_eur ?? "—") + " EUR";
     if (k3) k3.textContent = (result.margin_eur ?? "—") + " EUR";

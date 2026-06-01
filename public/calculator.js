@@ -104,16 +104,29 @@ function textHasNL(s){
   return t.includes("netherlands") || t.includes("holandia") || t.includes("niderland") || t.includes("amsterdam") || t.includes("rotterdam");
 }
 
-function calculateCosts(data){
-  const fuel_l = data.distance_km * data.fuel_l_per_100km / 100;
-  const fuel_cost_pln = fuel_l * data.fuel_price_pln_per_l;
-  const fuel_cost_eur = fuel_cost_pln / data.eur_pln;
+// Bezpieczna liczba: zwraca fallback gdy NaN/Infinity/puste
+function safeNum(x, fallback = 0){
+  const n = Number(x);
+  return Number.isFinite(n) ? n : fallback;
+}
 
-  const driver_cost_eur = data.driver_days * data.driver_eur_per_day;
+function calculateCosts(data){
+  // GUARD: kurs EUR/PLN musi być > 0, inaczej paliwo = Infinity/NaN i cała wycena bez sensu.
+  // Puste pole (+"" → 0) lub tekst (NaN) → fallback 4.3 (typowy kurs).
+  const eurPln = safeNum(data.eur_pln) > 0 ? safeNum(data.eur_pln) : 4.3;
+  const distance = safeNum(data.distance_km);
+  const fuelPer100 = safeNum(data.fuel_l_per_100km);
+  const fuelPricePln = safeNum(data.fuel_price_pln_per_l);
+
+  const fuel_l = distance * fuelPer100 / 100;
+  const fuel_cost_pln = fuel_l * fuelPricePln;
+  const fuel_cost_eur = fuel_cost_pln / eurPln;
+
+  const driver_cost_eur = safeNum(data.driver_days) * safeNum(data.driver_eur_per_day);
 
   // CHŁODNIA: spalanie agregatu (l/h) × h/dzień × dni trasy × cena paliwa
-  const reefer_l = (data.reefer_l_per_h || 0) * (data.reefer_h_per_day || 0) * (data.driver_days || 0);
-  const reefer_eur = reefer_l * data.fuel_price_pln_per_l / data.eur_pln;
+  const reefer_l = safeNum(data.reefer_l_per_h) * safeNum(data.reefer_h_per_day) * safeNum(data.driver_days);
+  const reefer_eur = reefer_l * fuelPricePln / eurPln;
 
   // NOTE: tolls_eur already includes vignettes (NL/GB) — set by app.js before run()
   // Do NOT re-calculate vignettes here to avoid double-counting
@@ -121,33 +134,33 @@ function calculateCosts(data){
 
   const total_cost_eur =
     fuel_cost_eur
-    + data.tolls_eur
-    + data.ferries_eur
+    + safeNum(data.tolls_eur)
+    + safeNum(data.ferries_eur)
     + driver_cost_eur
-    + data.other_costs_eur
+    + safeNum(data.other_costs_eur)
     + reefer_eur
     + fixed.eur;
 
 	let price_eur = 0;
 	let offer_price_eur = 0;
 
-	if (data.calc_mode === "offer" && data.offer_price_eur > 0) {
+	if (data.calc_mode === "offer" && safeNum(data.offer_price_eur) > 0) {
 		// Odwrócony kalkulator: mam cenę zlecenia → liczę marżę
-	offer_price_eur = data.offer_price_eur;
+	offer_price_eur = safeNum(data.offer_price_eur);
 	price_eur = offer_price_eur;
 	} else {
   // Klasyczny tryb: liczę cenę sugerowaną z target marży
-	price_eur = total_cost_eur * (1 + data.target_margin_pct / 100);
+	price_eur = total_cost_eur * (1 + safeNum(data.target_margin_pct) / 100);
 	}
 
 	const margin_eur = price_eur - total_cost_eur;
 	const margin_pct = price_eur > 0 ? (margin_eur / price_eur) * 100 : 0;
 
   return {
-    distance_km: round2(data.distance_km),
-    tolls_eur: round2(data.tolls_eur),
-    ferries_eur: round2(data.ferries_eur),
-    other_costs_eur: round2(data.other_costs_eur),
+    distance_km: round2(distance),
+    tolls_eur: round2(safeNum(data.tolls_eur)),
+    ferries_eur: round2(safeNum(data.ferries_eur)),
+    other_costs_eur: round2(safeNum(data.other_costs_eur)),
     reefer_eur: round2(reefer_eur),
     reefer_l: round2(reefer_l),
 
@@ -312,7 +325,7 @@ function evaluateRoute(result){
   let score = 0;
 
   // 🔥 MARŻA
-  if (margin < 5) score -= 1;
+  if (margin < 5) score -= 2;
   else if (margin < 10) score -= 1;
   else if (margin < 15) score += 1;
   else if (margin < 25) score += 2;
