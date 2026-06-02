@@ -1507,7 +1507,21 @@ function fleetRoutes(entity) {
   // POST utwórz/aktualizuj
   app.post(`/api/fleet/${entity}`, requireAuth, requireActiveSubscription, requireCompanyCtx, async (req, res) => {
     try {
-      const body = { ...req.body, user_id: "default", auth_user_id: req.userId };
+      // Whitelist kolumn per encja — nieznane pola z frontu nie wywala insertu
+      const ALLOWED = {
+        vehicles: ["id","reg","brand","model","year","gross_weight_kg","axle_weight_kg",
+                   "height_cm","width_cm","length_cm","axle_count","fuel_type","euro_class",
+                   "driver_id","active","notes","oc_date","przeglad_date","tacho_date",
+                   "serwis_date","serwis_km"],
+        trailers: ["id","reg","type","brand","model","year","active","notes",
+                   "height_cm","width_cm","length_cm","gross_weight_kg"],
+        drivers:  ["id","name","phone","email","license_categories","active","notes"],
+      };
+      const allowed = ALLOWED[entity] || Object.keys(req.body);
+      const clean = {};
+      for (const k of allowed) if (k in req.body) clean[k] = req.body[k];
+
+      const body = { ...clean, user_id: "default", auth_user_id: req.userId };
       if (req.companyId) body.company_id = req.companyId;
       if (body.id) {
         const existing = await sbFetch(entity, "GET", null,
