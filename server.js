@@ -1479,7 +1479,7 @@ app.delete("/api/history/:id", requireAuth, async (req, res) => {
 });
 
 // Przypisz pojazd do istniejącej wyceny (edycja z historii)
-app.patch("/api/history/:id/vehicle", requireAuth, async (req, res) => {
+app.patch("/api/history/:id/vehicle", requireAuth, requireCompanyCtx, async (req, res) => {
   try {
     const uid = req.userId;
     const { vehicle_id, vehicle_reg } = req.body;
@@ -1496,9 +1496,8 @@ app.patch("/api/history/:id/vehicle", requireAuth, async (req, res) => {
 // ============================================================
 function fleetRoutes(entity) {
   // GET lista
-  app.get(`/api/fleet/${entity}`, requireAuth, requireActiveSubscription, async (req, res) => {
+  app.get(`/api/fleet/${entity}`, requireAuth, requireActiveSubscription, requireCompanyCtx, async (req, res) => {
     try {
-      const uid = req.userId;
       const data = await sbFetch(entity, "GET", null,
         `?${req.companyFilter}&active=neq.false&order=created_at.desc`);
       res.json(data || []);
@@ -1506,17 +1505,18 @@ function fleetRoutes(entity) {
   });
 
   // POST utwórz/aktualizuj
-  app.post(`/api/fleet/${entity}`, requireAuth, requireActiveSubscription, async (req, res) => {
+  app.post(`/api/fleet/${entity}`, requireAuth, requireActiveSubscription, requireCompanyCtx, async (req, res) => {
     try {
       const body = { ...req.body, user_id: "default", auth_user_id: req.userId };
-      // BEZPIECZEŃSTWO: jeśli klient podał id istniejącego wiersza, sprawdź że należy do niego.
-      // Bez tego resolution=merge-duplicates pozwoliłby nadpisać cudzy pojazd.
+      if (req.companyId) body.company_id = req.companyId;
       if (body.id) {
         const existing = await sbFetch(entity, "GET", null,
-          `?id=eq.${encodeURIComponent(body.id)}&select=auth_user_id`);
-        const owner = existing?.[0]?.auth_user_id;
-        if (owner && owner !== req.userId) {
-          return res.status(403).json({ error: "Brak uprawnień do tego rekordu" });
+          `?id=eq.${encodeURIComponent(body.id)}&select=company_id,auth_user_id`);
+        const rec = existing?.[0];
+        if (rec) {
+          const sameCompany = req.companyId && rec.company_id === req.companyId;
+          const sameUser    = rec.auth_user_id === req.userId;
+          if (!sameCompany && !sameUser) return res.status(403).json({ error: "Brak uprawnien do tego rekordu" });
         }
       } else {
         body.id = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
@@ -1545,11 +1545,10 @@ function fleetRoutes(entity) {
   });
 
   // DELETE (soft delete)
-  app.delete(`/api/fleet/${entity}/:id`, requireAuth, async (req, res) => {
+  app.delete(`/api/fleet/${entity}/:id`, requireAuth, requireCompanyCtx, async (req, res) => {
     try {
-      const uid = req.userId;
       await sbFetch(entity, "PATCH", { active: false },
-        `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
+        `?id=eq.${encodeURIComponent(req.params.id)}&${req.companyFilter}`);
       res.json({ ok: true });
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
@@ -1560,7 +1559,7 @@ fleetRoutes("trailers");
 fleetRoutes("drivers");
 
 // PATCH /api/fleet/vehicles/:id — aktualizacja terminów i innych pól pojazdu
-app.patch("/api/fleet/vehicles/:id", requireAuth, async (req, res) => {
+app.patch("/api/fleet/vehicles/:id", requireAuth, requireCompanyCtx, async (req, res) => {
   try {
     const uid = req.userId;
     const body = req.body;
@@ -1573,11 +1572,11 @@ app.patch("/api/fleet/vehicles/:id", requireAuth, async (req, res) => {
 });
 
 // GET /api/fleet/alerts — pojazdy z terminami ≤30 dni
-app.get("/api/fleet/alerts", requireAuth, async (req, res) => {
+app.get("/api/fleet/alerts", requireAuth, requireCompanyCtx, async (req, res) => {
   try {
     const uid = req.userId;
     const vehicles = await sbFetch("vehicles", "GET", null,
-      `?auth_user_id=eq.${uid}&active=neq.false`);
+      `?${req.companyFilter}&active=neq.false`);
     const alerts = buildAlerts(vehicles || []);
     res.json(alerts);
   } catch(e) { res.status(500).json({ error: e.message }); }
