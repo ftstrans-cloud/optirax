@@ -780,6 +780,48 @@ async function requireAdmin(req, res, next) {
   }
 }
 
+// ============================================================
+// ETAP C — company context middleware
+// requireAuth musi byc PRZED tym middleware.
+// Dostarcza: req.companyId, req.companyFilter, req.userRole
+// Backward-compat: NULL company_id -> filtr po auth_user_id
+// ============================================================
+const _companyCache = new Map();
+const COMPANY_CACHE_TTL = 60000; // 60s
+
+async function requireCompanyCtx(req, res, next) {
+  try {
+    const userId = req.userId;
+    const cached = _companyCache.get(userId);
+    if (cached && (Date.now() - cached.ts) < COMPANY_CACHE_TTL) {
+      req.companyId     = cached.companyId;
+      req.companyFilter = cached.companyFilter;
+      req.userRole      = cached.role;
+      return next();
+    }
+    const profile = await sbFetch("profiles", "GET", null,
+      `?id=eq.${userId}&select=company_id,role`);
+    const p = profile?.[0];
+    const companyId = p?.company_id || null;
+    const role      = p?.role || "owner";
+    // Filtr PostgREST: firma -> company_id, solo -> auth_user_id (backward-compat)
+    const companyFilter = companyId
+      ? `company_id=eq.${encodeURIComponent(companyId)}`
+      : `auth_user_id=eq.${encodeURIComponent(userId)}`;
+    _companyCache.set(userId, { companyId, companyFilter, role, ts: Date.now() });
+    req.companyId     = companyId;
+    req.companyFilter = companyFilter;
+    req.userRole      = role;
+    next();
+  } catch(e) {
+    // Graceful degradation — nie blokuj przy bledzie
+    req.companyId     = null;
+    req.companyFilter = `auth_user_id=eq.${encodeURIComponent(req.userId)}`;
+    req.userRole      = "owner";
+    next();
+  }
+}
+
 app.get("/api/health", (req, res) => res.json({
   ok: true,
   ts: new Date().toISOString(),
@@ -1458,7 +1500,7 @@ function fleetRoutes(entity) {
     try {
       const uid = req.userId;
       const data = await sbFetch(entity, "GET", null,
-        `?auth_user_id=eq.${uid}&active=neq.false&order=created_at.desc`);
+        `?${req.companyFilter}&active=neq.false&order=created_at.desc`);
       res.json(data || []);
     } catch(e) { res.status(500).json({ error: e.message }); }
   });
@@ -1595,7 +1637,7 @@ async function sendFleetAlertEmail(alerts) {
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#0f172a;color:#e2e8f0;padding:24px;border-radius:12px;">
       <div style="font-size:22px;font-weight:700;color:#e8590c;margin-bottom:4px;">OPTIRAX</div>
-      <div style="font-size:14px;color:#94a3b8;margin-bottom:20px;">Alert terminów floty</div>
+      <div style="font-size:14px;color:#94a3b8;margin-bottom:20px;">Alert terminów floty${firmLabel}</div>
       <p style="margin:0 0 16px;">Pojazdy z terminami wymagającymi uwagi (≤30 dni lub przeterminowane):</p>
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead><tr style="background:#1e293b;">
@@ -1609,25 +1651,60 @@ async function sendFleetAlertEmail(alerts) {
       <p style="margin:20px 0 0;font-size:12px;color:#64748b;">Wygenerowano: ${new Date().toLocaleString("pl-PL")}</p>
     </div>`;
 
-  await notifyOwner(`🚛 OPTIRAX Alert: ${alerts.length} termin(ów) floty wymaga uwagi`, html);
+  if (!resend) { console.log(`[EMAIL DISABLED] Alert dla ${to}`); return; }
+  await resend.emails.send({ from: NOTIFICATION_FROM, to, subject: `🚛 OPTIRAX Alert${firmLabel}: ${alerts.length} termin(ów) floty wymaga uwagi`, html });
 }
 
-// Cron 24h — sprawdza terminy i wysyła email
+// Cron 24h — per firma, wysyla osobny email do kazdej
 (async function startFleetAlertCron() {
   async function checkAllFleets() {
     try {
-      console.log("🔔 Cron floty: sprawdzam terminy...");
-      const vehicles = await sbFetch("vehicles", "GET", null, "?active=neq.false");
-      if (!vehicles || !vehicles.length) return;
-      const alerts = buildAlerts(vehicles);
-      if (!alerts.length) { console.log("🔔 Cron floty: wszystkie terminy OK."); return; }
-      console.log(`🔔 Cron floty: ${alerts.length} alert(ów), wysyłam email...`);
-      await sendFleetAlertEmail(alerts);
-    } catch(e) { console.error("🔔 Cron floty błąd:", e.message); }
+      console.log("[CRON] Sprawdzam terminy floty...");
+      const vehicles = await sbFetch("vehicles", "GET", null, "?active=neq.false&select=*");
+      if (!vehicles?.length) return;
+      const groups = new Map();
+      for (const v of vehicles) {
+        const key = v.company_id || v.auth_user_id || "unknown";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(v);
+      }
+      console.log(`[CRON] ${groups.size} grup, ${vehicles.length} pojazdow`);
+      for (const [groupKey, groupVehicles] of groups) {
+        const alerts = buildAlerts(groupVehicles);
+        if (!alerts.length) continue;
+        let targetEmail = null, companyName = null;
+        try {
+          const looksLikeId = groupKey.length > 20 && !groupKey.includes("@");
+          if (looksLikeId) {
+            const cos = await sbFetch("companies", "GET", null,
+              `?id=eq.${encodeURIComponent(groupKey)}&select=alert_email,name,owner_user_id`);
+            const co = cos?.[0];
+            if (co) {
+              companyName = co.name;
+              targetEmail = co.alert_email;
+              if (!targetEmail && co.owner_user_id) {
+                const op = await sbFetch("profiles", "GET", null,
+                  `?id=eq.${encodeURIComponent(co.owner_user_id)}&select=email,alert_email`);
+                targetEmail = op?.[0]?.alert_email || op?.[0]?.email;
+              }
+            }
+          } else {
+            const op = await sbFetch("profiles", "GET", null,
+              `?id=eq.${encodeURIComponent(groupKey)}&select=email,alert_email,full_name`);
+            const p = op?.[0];
+            targetEmail = p?.alert_email || p?.email;
+            companyName = p?.full_name || "Solo";
+          }
+        } catch(e) { console.warn("[CRON] email lookup error:", e.message); }
+        if (!targetEmail) targetEmail = NOTIFICATION_EMAIL;
+        console.log(`[CRON] ${companyName || groupKey}: ${alerts.length} alertow -> ${targetEmail}`);
+        await sendFleetAlertEmail(alerts, targetEmail, companyName);
+      }
+    } catch(e) { console.error("[CRON] blad:", e.message); }
   }
   setTimeout(checkAllFleets, 5 * 60 * 1000);
   setInterval(checkAllFleets, 24 * 60 * 60 * 1000);
-  console.log("🔔 Cron alertów floty uruchomiony (co 24h).");
+  console.log("[CRON] Alert floty uruchomiony (co 24h, per firma).");
 })();
 
 app.get("/api/fuel", requireAuth, requireActiveSubscription, async (req, res) => {
