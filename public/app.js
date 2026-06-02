@@ -440,7 +440,6 @@ function hId(){
 }
 
 function openSaveHistoryModal(){
-  // podpowiedzi do pól
   const r = window.lastRoutePayload || null;
   const calc = window.lastCalc || null;
 
@@ -454,6 +453,20 @@ function openSaveHistoryModal(){
   }
   if (clientEl && !clientEl.value) clientEl.value = "";
   if (noteEl && !noteEl.value) noteEl.value = "";
+
+  // Uzupełnij listę pojazdów z floty (jeśli załadowane)
+  const vSel = document.getElementById("h_vehicle");
+  if (vSel) {
+    const vehicles = window.fleetData?.vehicles || [];
+    vSel.innerHTML = '<option value="">— bez pojazdu —</option>';
+    vehicles.filter(v => v.active !== false).forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.reg + (v.brand ? ` · ${v.brand}` : "") + (v.model ? ` ${v.model}` : "");
+      opt.dataset.reg = v.reg || "";
+      vSel.appendChild(opt);
+    });
+  }
 
   document.getElementById("historyModal").style.display = "flex";
 }
@@ -516,12 +529,19 @@ async function saveCurrentToHistory(){
   const client = (document.getElementById("h_client")?.value || "").trim();
   const note = (document.getElementById("h_note")?.value || "").trim();
 
+  // Pojazd z floty (opcjonalnie)
+  const vSel = document.getElementById("h_vehicle");
+  const vehicle_id  = vSel?.value || null;
+  const vehicle_reg = vSel?.selectedOptions?.[0]?.dataset?.reg || null;
+
   const item = {
     id: hId(),
     ts: Date.now(),
     name,
     client,
     note,
+    vehicle_id,
+    vehicle_reg,
 
     route: {
       origin: r.origin || "",
@@ -585,10 +605,14 @@ async function renderHistory(){
    const card = document.createElement("div");
     card.className = "historyItem";
 
+    const vehicleBadge = it.vehicle_reg
+      ? `<div class="badge" style="background:var(--navy,#16233f);color:#93c5fd;" title="Pojazd">🚛 ${escapeHtml(it.vehicle_reg)}</div>`
+      : "";
+
     card.innerHTML = `
       <div class="historyTop">
         <label class="history-check" title="Zaznacz do sumowania kółka">
-          <input type="checkbox" class="round-check" data-id="${it.id}" style="margin-right:8px;accent-color:var(--signal);width:15px;height:15px;">
+          <input type="checkbox" class="round-check" data-id="${it.id}" data-vehicle="${it.vehicle_id||''}" style="margin-right:8px;accent-color:var(--signal);width:15px;height:15px;">
         </label>
         <div style="flex:1">
           <div class="historyName">${escapeHtml(it.name)}</div>
@@ -601,6 +625,7 @@ async function renderHistory(){
       ${it.note ? `<div class="historyMeta" style="margin-top:4px;">${escapeHtml(it.note)}</div>` : ""}
 
       <div class="historyBadges">
+        ${vehicleBadge}
         <div class="badge">Koszt: <b>${cost}</b> €</div>
         <div class="badge">Cena: <b>${price}</b> €</div>
         <div class="badge">Marża: <b>${margin}</b> €</div>
@@ -610,6 +635,7 @@ async function renderHistory(){
         <button type="button" class="btn secondary" data-act="load" data-id="${it.id}">⚡ Wczytaj</button>
         <button type="button" class="btn secondary" data-act="reload" data-id="${it.id}">🗺 Odśwież trasę</button>
         <button type="button" class="btn secondary" data-act="duplicate" data-id="${it.id}">Duplikuj</button>
+        <button type="button" class="btn secondary" data-act="assign-vehicle" data-id="${it.id}" data-vehicle="${it.vehicle_id||''}" data-reg="${it.vehicle_reg||''}">🚛 Pojazd</button>
         <button type="button" class="btn secondary" data-act="delete" data-id="${it.id}">Usuń</button>
       </div>
     `;
@@ -644,6 +670,7 @@ async function renderHistory(){
       if (act === "reload") return hRestore(id, true);
       if (act === "delete") return hDelete(id);
       if (act === "duplicate") return hDuplicate(id);
+      if (act === "assign-vehicle") return hAssignVehicle(id, btn);
     };
   });
 
@@ -652,6 +679,59 @@ async function renderHistory(){
   if (btnWrap) {
     btnWrap.innerHTML = `<button id="roundSumBtn" type="button" class="btn btn-navy" style="width:100%;margin-top:10px;" disabled onclick="sumRound()">Zaznacz min. 2 trasy</button>`;
   }
+}
+
+// Przypisz pojazd do istniejącej wyceny z historii (inline picker)
+async function hAssignVehicle(quoteId, btn) {
+  const vehicles = window.fleetData?.vehicles || [];
+  if (!vehicles.length) {
+    alert("Najpierw dodaj pojazdy w module Flota.");
+    return;
+  }
+
+  const card = btn.closest(".historyItem");
+  let picker = card.querySelector(".vehicle-picker");
+  if (picker) { picker.remove(); return; } // toggle
+
+  picker = document.createElement("div");
+  picker.className = "vehicle-picker";
+  picker.style.cssText = "display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;";
+
+  const sel = document.createElement("select");
+  sel.style.cssText = "padding:6px 8px;border-radius:8px;border:1px solid var(--panel-edge);background:var(--panel);color:var(--ink);font-size:13px;flex:1;";
+  sel.innerHTML = '<option value="">— brak pojazdu —</option>';
+  const currentVehicleId = btn.getAttribute("data-vehicle") || "";
+  vehicles.filter(v => v.active !== false).forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v.id;
+    opt.dataset.reg = v.reg || "";
+    opt.textContent = v.reg + (v.brand ? ` · ${v.brand}` : "");
+    if (v.id === currentVehicleId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.className = "btn secondary";
+  confirmBtn.style.fontSize = "12px";
+  confirmBtn.textContent = "Zapisz";
+  confirmBtn.onclick = async () => {
+    const vehicle_id = sel.value || null;
+    const vehicle_reg = sel.selectedOptions[0]?.dataset?.reg || null;
+    try {
+      await fetch(`/api/history/${quoteId}/vehicle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle_id, vehicle_reg }),
+      });
+    } catch(e) { console.warn("assign vehicle failed", e); }
+    picker.remove();
+    renderHistory();
+  };
+
+  picker.appendChild(sel);
+  picker.appendChild(confirmBtn);
+  btn.closest(".historyBtns").after(picker);
 }
 
 // ===== SUMOWANIE KÓŁKA / rundy tras =====

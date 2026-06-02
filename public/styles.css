@@ -714,6 +714,7 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 #fuelPanel select,
 #fleetPanel input[type="text"],
 #fleetPanel input[type="number"],
+#fleetPanel input[type="date"],
 #fleetPanel select {
   width: 100%;
   padding: 10px 12px;
@@ -732,6 +733,15 @@ html[data-theme="dark"] .preview .result{ color:#fff; }
 #fleetPanel select:focus {
   outline: none;
   border-color: var(--signal);
+}
+/* Kolor schematu przeglądarki — date picker dostosowuje się do motywu */
+:root[data-theme="dark"] #fleetPanel input[type="date"],
+:root[data-theme="dark"] #fuelPanel  input[type="date"] {
+  color-scheme: dark;
+}
+:root[data-theme="light"] #fleetPanel input[type="date"],
+:root[data-theme="light"] #fuelPanel  input[type="date"] {
+  color-scheme: light;
 }
 /* Kolory zmiennych fuel/fleet (używają var(--color-*)) — mapowanie na nasze */
 #fuelPanel, #fleetPanel {

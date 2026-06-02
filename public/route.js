@@ -5,6 +5,21 @@ let map = null;
 let routeLine = null;
 let routeMarkers = [];
 
+// Generuje/odczytuje unikalny id draftu autosave dla tej sesji przeglądarki.
+// HISTORY_AUTO_ID ("AUTO_LAST") to stały string — PK collision dla każdego usera poza pierwszym.
+// Tu używamy sessionStorage żeby w tej samej sesji reużywać ten sam draft (PATCH),
+// a w nowej sesji (nowa karta/przeglądarka) generujemy nowy — czyli kolejny INSERT.
+function getAutosaveDraftId() {
+  try {
+    let id = sessionStorage.getItem('optirax_as_id');
+    if (!id) {
+      id = 'AS' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      sessionStorage.setItem('optirax_as_id', id);
+    }
+    return id;
+  } catch { return 'AS' + Date.now().toString(36); }
+}
+
 function setRouteToUI(route){
   if (!route) return;
   initRouteBuilder(); // zbuduje Skąd/Dokąd
@@ -97,12 +112,24 @@ function autoSaveNow(){
   renderHistory();
 
   // ⬇️ AUTOSAVE DO SUPABASE (draft) — token dokleja interceptor z auth.js
+  // Używamy unikalnego id per sesja zamiast stałego HISTORY_AUTO_ID — PK collision fix.
   try {
+    const supabaseItem = { ...autoItem, id: getAutosaveDraftId() };
     fetch("/api/history/autosave", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(autoItem),
-    }).catch(() => {}); // cichy — autosave nie może wywalić apki
+      body: JSON.stringify(supabaseItem),
+    })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      // Serwer mógł znaleźć istniejący draft po treści (findDraftForRoute)
+      // i zwrócić inny id — zaktualizuj sessionStorage żeby następne autosave
+      // trafiało PATCH zamiast INSERT.
+      if (data?.ok && data.id) {
+        try { sessionStorage.setItem('optirax_as_id', data.id); } catch {}
+      }
+    })
+    .catch(() => {}); // cichy — autosave nie może wywalić apki
   } catch (e) { /* ignore */ }
 }
 

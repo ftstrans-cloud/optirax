@@ -1333,6 +1333,8 @@ function buildQuoteRow(item, userId, { isDraft = false } = {}) {
     calc:         item.calc || null,
     input:        item.input || null,
     is_draft:     !!isDraft,
+    vehicle_id:   item.vehicle_id || null,
+    vehicle_reg:  item.vehicle_reg || null,
   };
 }
 
@@ -1429,6 +1431,18 @@ app.delete("/api/history/:id", requireAuth, async (req, res) => {
   try {
     const uid = req.userId;
     await sbFetch("quotes", "DELETE", null,
+      `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Przypisz pojazd do istniejącej wyceny (edycja z historii)
+app.patch("/api/history/:id/vehicle", requireAuth, async (req, res) => {
+  try {
+    const uid = req.userId;
+    const { vehicle_id, vehicle_reg } = req.body;
+    await sbFetch("quotes", "PATCH",
+      { vehicle_id: vehicle_id || null, vehicle_reg: vehicle_reg || null },
       `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
   } catch(e) { res.status(500).json({ error: e.message }); }
