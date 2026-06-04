@@ -434,7 +434,7 @@
 
 <!-- ===== TOOLBAR DOLNY (Etap 6) — akcje główne ===== -->
 <div class="actionbar">
-  <button class="action-primary" type="button" onclick="run()"><svg class="ic ic-lg" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-play"/></svg> POLICZ</button>
+  <button class="action-primary" type="button" onclick="run(true)"><svg class="ic ic-lg" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-play"/></svg> POLICZ</button>
   <div class="action-rest">
     <button class="action-sec" type="button" onclick="toggleHistoryPanel && toggleHistoryPanel()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-history"/></svg> Historia</button>
     <button class="action-sec" type="button" onclick="openPdfReport && openPdfReport()"><svg class="ic" viewBox="0 0 24 24"><use href="#i-file"/></svg> PDF oferta</button>
@@ -505,7 +505,7 @@
       <div class="field"><label>Termin płatności</label><input class="input" id="payment_terms" type="text" value="14 dni" /></div>
     </div>
   </div>
-  <div class="modal-foot"><button class="btn" type="button" onclick="closeModal('m-params')">Zamknij</button><button class="btn btn-navy" type="button" onclick="run(); refreshPeeks(); closeModal('m-params')"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Zapisz i przelicz</button></div>
+  <div class="modal-foot"><button class="btn" type="button" onclick="closeModal('m-params')">Zamknij</button><button class="btn btn-navy" type="button" onclick="run(true); refreshPeeks(); closeModal('m-params')"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Zapisz i przelicz</button></div>
 </div></div>
 
 <!-- MODAL 2: INNE KOSZTY -->
@@ -566,7 +566,7 @@
     </div>
     <p class="small" id="reeferNote">0 l/h = brak chłodni. Koszt = spalanie × godziny × dni trasy × cena paliwa (ta sama co główna). Osobny wiersz w wynikach.</p>
   </div>
-  <div class="modal-foot"><button class="btn" type="button" onclick="closeModal('m-other')">Zamknij</button><button class="btn btn-navy" type="button" onclick="run(); refreshPeeks(); closeModal('m-other')"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Zapisz i przelicz</button></div>
+  <div class="modal-foot"><button class="btn" type="button" onclick="closeModal('m-other')">Zamknij</button><button class="btn btn-navy" type="button" onclick="run(true); refreshPeeks(); closeModal('m-other')"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Zapisz i przelicz</button></div>
 </div></div>
 
 <!-- MODAL 3: PROM / PRZEPRAWY -->
@@ -578,7 +578,7 @@
     <div class="field"><label>Myto <span style="font-size:10px;color:var(--ink-faint);">← HERE auto, można skorygować</span></label><div class="suffix-wrap"><input class="input num" id="tolls_eur" type="number" value="0"><span class="suf">EUR</span></div></div>
     <p class="small">Winiety i myto wylicza automatycznie HERE API — pojawią się w wynikach po prawej (Myto wg kraju). Tu wpisujesz tylko prom/tunel albo ręczną korektę.</p>
   </div>
-  <div class="modal-foot"><button class="btn" type="button" onclick="closeModal('m-ferry')">Zamknij</button><button class="btn btn-navy" type="button" onclick="run(); refreshPeeks(); closeModal('m-ferry')"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Zapisz i przelicz</button></div>
+  <div class="modal-foot"><button class="btn" type="button" onclick="closeModal('m-ferry')">Zamknij</button><button class="btn btn-navy" type="button" onclick="run(true); refreshPeeks(); closeModal('m-ferry')"><svg class="ic" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-check"/></svg> Zapisz i przelicz</button></div>
 </div></div>
 
 <!-- ===== LOGIKA: ładowanie skryptów apki + topbar/logo/theme ===== -->

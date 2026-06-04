@@ -164,7 +164,7 @@ window.addEventListener("load", () => {
 
 });
 
-function renderResult(input, result) {
+function renderResult(input, result, fromPolicz = false) {
   const k1 = document.getElementById("kpi_total");
   const k2 = document.getElementById("kpi_price");
   const k3 = document.getElementById("kpi_margin");
@@ -345,11 +345,83 @@ if (ev) {
 
 if (result.margin_pct < 0) {
   const scoreEl = document.getElementById("routeScore");
-  if (scoreEl) {
-    scoreEl.textContent = "NIE BIERZ (STRATA)";
-  }
+  if (scoreEl) scoreEl.textContent = "NIE BIERZ (STRATA)";
 }
-  
+
+// ── AUTOSAVE przy świadomym kliknięciu POLICZ ────────────────────────
+// Zapisuje wycenę natychmiast jako non-draft z auto-nazwą.
+// Użytkownik nie musi nic klikać — historia rośnie sama.
+if (fromPolicz) {
+  // Usuń poprzedni banner jeśli był (zmiana zmiennych i ponowny POLICZ)
+  const old = document.getElementById("quickSaveBanner");
+  if (old) old.remove();
+
+  const r = window.lastRoutePayload || {};
+  const orig = r.origin ? r.origin.split(",")[0].trim() : "";
+  const dest = r.destination ? r.destination.split(",")[0].trim() : "";
+  if (!orig || !dest) return; // brak trasy — nie zapisuj
+
+  const price = result.suggested_price_eur || result.offer_price_eur || result.total_cost_eur || 0;
+  const autoName = `${orig} → ${dest} · ${Number(price).toFixed(0)} €`;
+
+  const item = {
+    id: hId(),
+    ts: Date.now(),
+    name:   autoName,
+    client: "",
+    note:   "",
+    vehicle_id:  null,
+    vehicle_reg: null,
+    route: {
+      origin:      r.origin || "",
+      destination: r.destination || "",
+      stops:       r.stops || [],
+    },
+    calc:      window.lastCalc,
+    input:     window.lastInput,
+    tolls_geo: window.lastRouteTollsGeo,
+    vignettes: window.lastRouteVignettes,
+  };
+
+  // Silent save — nie blokuje UI, nie wymaga kliku
+  fetch("/api/history", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  })
+  .then(r2 => {
+    if (!r2.ok) return;
+    renderHistory();
+
+    // Toast z opcją zmiany nazwy
+    const toast = document.createElement("div");
+    toast.id = "quickSaveBanner";
+    toast.style.cssText = `
+      position:fixed;bottom:72px;left:50%;transform:translateX(-50%);
+      background:var(--navy,#16233f);border:1px solid #16a34a;
+      border-radius:12px;padding:10px 16px;display:flex;align-items:center;
+      gap:10px;z-index:9999;box-shadow:0 4px 24px rgba(0,0,0,.5);
+      font-size:13px;color:var(--ink,#e2e8f0);max-width:90vw;
+      animation:qsIn .2s ease;
+    `;
+    if (!document.getElementById("qsStyle")) {
+      const st = document.createElement("style");
+      st.id = "qsStyle";
+      st.textContent = `@keyframes qsIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`;
+      document.head.appendChild(st);
+    }
+
+    toast.innerHTML = `
+      <span style="color:#4ade80;font-size:16px;flex-shrink:0;">✓</span>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Zapisano: <b>${autoName}</b></span>
+      <button onclick="openSaveHistoryModal()" style="background:transparent;border:1px solid var(--panel-edge,#1e2d45);border-radius:8px;padding:4px 10px;color:var(--ink,#94a3b8);font-size:12px;cursor:pointer;white-space:nowrap;">Zmień nazwę</button>
+      <button onclick="this.closest('#quickSaveBanner').remove()" style="background:transparent;border:none;color:var(--ink,#94a3b8);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => { if (document.getElementById("quickSaveBanner")) toast.remove(); }, 5000);
+  })
+  .catch(e => console.warn("autosave po POLICZ failed:", e));
+}
 }
 
 

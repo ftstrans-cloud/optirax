@@ -179,9 +179,9 @@ function calculateCosts(data){
   };
 }
 
-function run() {
+function run(fromPolicz = false) {
 
-console.log("RUN CLICK");
+console.log("RUN CLICK", fromPolicz ? "(POLICZ)" : "(auto)");
 
   const { base, empty, total } = updateTotalDistance();
   applyAutoFields();
@@ -231,7 +231,7 @@ console.log("RUN CLICK");
   
   window.lastInput = data;
 
-  renderResult(data, result);
+  renderResult(data, result, fromPolicz);
 
   // pokaż wzór kosztów stałych pod sekcją + podpowiedź auto dla dni trasy
   try {
@@ -244,7 +244,43 @@ console.log("RUN CLICK");
     }
   } catch(e){}
 
-  autoSaveAfterRun();
+  // ── AUTOSAVE po auto-run (Pobierz km bez kliknięcia POLICZ) ──────────
+  // Jeśli user nie kliknie POLICZ w ciągu 30s, zapisujemy cicho jako non-draft.
+  // Przy fromPolicz renderResult już zapisał — timer nie odpala.
+  if (!fromPolicz) {
+    autoSaveAfterRun(); // draft do localStorage (backup sesji)
+    clearTimeout(window._deferredSaveTimer);
+    window._deferredSaveTimer = setTimeout(() => {
+      // Tylko jeśli od auto-run nie było kliknięcia POLICZ
+      if (window._lastSavedFromPolicz) return;
+      const r2 = window.lastRoutePayload || {};
+      const calc2 = window.lastCalc;
+      if (!r2.origin || !r2.destination || !calc2) return;
+      const orig = r2.origin.split(",")[0].trim();
+      const dest = r2.destination.split(",")[0].trim();
+      const price = calc2.suggested_price_eur || calc2.offer_price_eur || calc2.total_cost_eur || 0;
+      const autoName = `${orig} → ${dest} · ${Number(price).toFixed(0)} €`;
+      fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: hId(), ts: Date.now(), name: autoName, client: "", note: "",
+          vehicle_id: null, vehicle_reg: null,
+          route: { origin: r2.origin, destination: r2.destination, stops: r2.stops || [] },
+          calc: calc2, input: window.lastInput,
+          tolls_geo: window.lastRouteTollsGeo, vignettes: window.lastRouteVignettes,
+        }),
+      })
+      .then(res => { if (res.ok) renderHistory(); })
+      .catch(() => {});
+    }, 30000); // 30 sekund
+  } else {
+    // POLICZ kliknięty — anuluj deferred timer, renderResult już zapisał
+    clearTimeout(window._deferredSaveTimer);
+    window._lastSavedFromPolicz = true;
+    // Reset flagi po 2s żeby kolejny auto-run znów mógł triggerować deferred save
+    setTimeout(() => { window._lastSavedFromPolicz = false; }, 2000);
+  }
 
 	const isOffer = (result.calc_mode === "offer" && result.offer_price_eur > 0);
 
