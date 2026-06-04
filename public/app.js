@@ -352,48 +352,46 @@ if (result.margin_pct < 0) {
 // Zapisuje wycenę natychmiast jako non-draft z auto-nazwą.
 // Użytkownik nie musi nic klikać — historia rośnie sama.
 if (fromPolicz) {
-  // Usuń poprzedni banner jeśli był (zmiana zmiennych i ponowny POLICZ)
   const old = document.getElementById("quickSaveBanner");
   if (old) old.remove();
 
   const r = window.lastRoutePayload || {};
   const orig = r.origin ? r.origin.split(",")[0].trim() : "";
   const dest = r.destination ? r.destination.split(",")[0].trim() : "";
-  if (!orig || !dest) return; // brak trasy — nie zapisuj
+  if (!orig || !dest) return;
 
   const price = result.suggested_price_eur || result.offer_price_eur || result.total_cost_eur || 0;
   const autoName = `${orig} → ${dest} · ${Number(price).toFixed(0)} €`;
+  const token = localStorage.getItem("optirax_token") || "";
 
-  const item = {
-    id: hId(),
-    ts: Date.now(),
-    name:   autoName,
-    client: "",
-    note:   "",
-    vehicle_id:  null,
-    vehicle_reg: null,
-    route: {
-      origin:      r.origin || "",
-      destination: r.destination || "",
-      stops:       r.stops || [],
-    },
-    calc:      window.lastCalc,
-    input:     window.lastInput,
-    tolls_geo: window.lastRouteTollsGeo,
-    vignettes: window.lastRouteVignettes,
+  const payload = {
+    ts: Date.now(), name: autoName, client: "", note: "",
+    vehicle_id: null, vehicle_reg: null,
+    route: { origin: r.origin || "", destination: r.destination || "", stops: r.stops || [] },
+    calc: window.lastCalc, input: window.lastInput,
+    tolls_geo: window.lastRouteTollsGeo, vignettes: window.lastRouteVignettes,
   };
 
-  // Silent save — nie blokuje UI, nie wymaga kliku
-  fetch("/api/history", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(item),
+  // Jeśli autosave z Pobierz-km już zapisał rekord — nadpisz go (PATCH).
+  // Inaczej stwórz nowy (POST).
+  const existingId = window._autoSaveId || null;
+  const method = existingId ? "PATCH" : "POST";
+  const url    = existingId ? `/api/history/${existingId}` : "/api/history";
+  if (!existingId) payload.id = "H" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+  console.log(`[POLICZ] ${method} ${url}`, autoName);
+
+  fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+    body: JSON.stringify(payload),
   })
   .then(r2 => {
     if (!r2.ok) return;
+    // Zapamiętaj ID żeby kolejny POLICZ też nadpisywał (nie duplikował)
+    window._autoSaveId = existingId || payload.id;
     renderHistory();
 
-    // Toast z opcją zmiany nazwy
     const toast = document.createElement("div");
     toast.id = "quickSaveBanner";
     toast.style.cssText = `
@@ -410,7 +408,6 @@ if (fromPolicz) {
       st.textContent = `@keyframes qsIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`;
       document.head.appendChild(st);
     }
-
     toast.innerHTML = `
       <span style="color:#4ade80;font-size:16px;flex-shrink:0;">✓</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Zapisano: <b>${autoName}</b></span>
@@ -420,7 +417,7 @@ if (fromPolicz) {
     document.body.appendChild(toast);
     setTimeout(() => { if (document.getElementById("quickSaveBanner")) toast.remove(); }, 5000);
   })
-  .catch(e => console.warn("autosave po POLICZ failed:", e));
+  .catch(e => console.warn("[POLICZ] save failed:", e));
 }
 }
 

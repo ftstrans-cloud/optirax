@@ -225,6 +225,8 @@ console.log("RUN CLICK", fromPolicz ? "(POLICZ)" : "(auto)");
   // FIX: nowa kalkulacja = zerujemy powiązanie z poprzednim ręcznym zapisem,
   // żeby PDF nie ciągnął nazwy/klienta ze starej trasy z historii.
   window.lastHistoryId = null;
+  // Nowa kalkulacja — resetuj ID autosave żeby nie nadpisać innej trasy
+  window._autoSaveId = null;
 
   const evalData = evaluateRoute(result);
 	window.lastEvaluation = evalData;
@@ -246,40 +248,56 @@ console.log("RUN CLICK", fromPolicz ? "(POLICZ)" : "(auto)");
 
   // ── AUTOSAVE po auto-run (Pobierz km bez kliknięcia POLICZ) ──────────
   // Jeśli user nie kliknie POLICZ w ciągu 30s, zapisujemy cicho jako non-draft.
-  // Przy fromPolicz renderResult już zapisał — timer nie odpala.
+  // ── AUTOSAVE po auto-run (Pobierz km bez kliknięcia POLICZ) ──────────
   if (!fromPolicz) {
     autoSaveAfterRun(); // draft do localStorage (backup sesji)
     clearTimeout(window._deferredSaveTimer);
-    window._deferredSaveTimer = setTimeout(() => {
-      // Tylko jeśli od auto-run nie było kliknięcia POLICZ
-      if (window._lastSavedFromPolicz) return;
+    window._deferredSaveTimer = setTimeout(function deferredSave() {
+      if (window._lastSavedFromPolicz) {
+        console.log("[autosave] pominięto — POLICZ już zapisał");
+        return;
+      }
       const r2 = window.lastRoutePayload || {};
       const calc2 = window.lastCalc;
-      if (!r2.origin || !r2.destination || !calc2) return;
-      const orig = r2.origin.split(",")[0].trim();
-      const dest = r2.destination.split(",")[0].trim();
+      if (!r2.origin || !r2.destination || !calc2) {
+        console.log("[autosave] brak danych trasy — pominięto");
+        return;
+      }
+      const orig  = r2.origin.split(",")[0].trim();
+      const dest  = r2.destination.split(",")[0].trim();
       const price = calc2.suggested_price_eur || calc2.offer_price_eur || calc2.total_cost_eur || 0;
       const autoName = `${orig} → ${dest} · ${Number(price).toFixed(0)} €`;
+      const token = localStorage.getItem("optirax_token") || "";
+      const newId = "H" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+      console.log("[autosave] zapisuję:", autoName);
       fetch("/api/history", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token,
+        },
         body: JSON.stringify({
-          id: hId(), ts: Date.now(), name: autoName, client: "", note: "",
+          id: newId, ts: Date.now(), name: autoName, client: "", note: "",
           vehicle_id: null, vehicle_reg: null,
           route: { origin: r2.origin, destination: r2.destination, stops: r2.stops || [] },
           calc: calc2, input: window.lastInput,
           tolls_geo: window.lastRouteTollsGeo, vignettes: window.lastRouteVignettes,
         }),
       })
-      .then(res => { if (res.ok) renderHistory(); })
-      .catch(() => {});
-    }, 30000); // 30 sekund
+      .then(function(res) {
+        console.log("[autosave] odpowiedź:", res.status);
+        if (res.ok) {
+          // Zapamiętaj ID — POLICZ nadpisze ten rekord zamiast tworzyć nowy
+          window._autoSaveId = newId;
+          if (typeof renderHistory === "function") renderHistory();
+        }
+      })
+      .catch(function(e) { console.warn("[autosave] błąd fetch:", e); });
+    }, 8000);
   } else {
-    // POLICZ kliknięty — anuluj deferred timer, renderResult już zapisał
     clearTimeout(window._deferredSaveTimer);
     window._lastSavedFromPolicz = true;
-    // Reset flagi po 2s żeby kolejny auto-run znów mógł triggerować deferred save
-    setTimeout(() => { window._lastSavedFromPolicz = false; }, 2000);
+    setTimeout(function() { window._lastSavedFromPolicz = false; }, 2000);
   }
 
 	const isOffer = (result.calc_mode === "offer" && result.offer_price_eur > 0);

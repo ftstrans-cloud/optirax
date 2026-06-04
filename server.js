@@ -1381,61 +1381,95 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
 
 function buildTrialEmail(user, segment) {
   const name  = user.full_name?.split(" ")?.[0] || "Hej";
-  const firma = user.company || "";
+  const firma = user.company && user.company !== "brak firmy" && user.company !== "Brak" ? user.company : "";
   const wycen = user.quotes_count || 0;
   const aktywny = wycen > 0;
 
-  const aktywnosc = aktywny
-    ? `<p style="margin:0 0 16px;">W trakcie trialu wykonałeś <strong>${wycen} ${wycen===1?"wycenę":wycen<5?"wyceny":"wycen"}</strong> — widzę, że sprawdziłeś jak OPTIRAX liczy trasy.</p>`
-    : `<p style="margin:0 0 16px;">Wiem, że przy natłoku zleceń ciężko znaleźć czas na nowe narzędzia. Dlatego mam dla Ciebie propozycję.</p>`;
-
-  const cta = segment === "expired"
-    ? { title: "Wróć i wyceniaj trasy bez zgadywania", btn: "Wznów dostęp", url: "https://app.optirax.pl" }
-    : { title: "Nie trać dostępu — przejdź na plan płatny", btn: "Wybierz plan", url: "https://app.optirax.pl" };
-
-  return `<!DOCTYPE html>
-<html lang="pl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${cta.title}</title></head>
+  // Dwa zupełnie różne maile — aktywny user vs ten co nigdy nie spróbował
+  if (!aktywny) {
+    // 0 wycen — główny przypadek (20/21 userów)
+    // Nie sprzedajemy — oferujemy drugą szansę
+    return `<!DOCTYPE html>
+<html lang="pl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
 <tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="background:#0c1322;border-radius:16px;overflow:hidden;max-width:600px;">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#0c1322;border-radius:16px;overflow:hidden;max-width:580px;">
 
-  <!-- HEADER -->
-  <tr><td style="padding:28px 32px 20px;border-bottom:1px solid #1e2d45;">
-    <span style="font-size:22px;font-weight:700;color:#e8590c;letter-spacing:-0.5px;">OPTIRAX</span>
-    <span style="font-size:13px;color:#64748b;margin-left:12px;">Kalkulator kosztów trasy</span>
+  <tr><td style="padding:24px 32px 18px;border-bottom:1px solid #1e2d45;">
+    <span style="font-size:20px;font-weight:700;color:#e8590c;">OPTIRAX</span>
+    <span style="font-size:12px;color:#475569;margin-left:10px;">Kalkulator kosztów trasy</span>
   </td></tr>
 
-  <!-- BODY -->
-  <tr><td style="padding:28px 32px;color:#e2e8f0;font-size:15px;line-height:1.7;">
+  <tr><td style="padding:28px 32px;color:#e2e8f0;font-size:15px;line-height:1.75;">
     <p style="margin:0 0 16px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
-    ${aktywnosc}
 
-    <div style="background:#16233f;border-left:3px solid #e8590c;border-radius:8px;padding:16px 20px;margin:20px 0;">
-      <p style="margin:0 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Dlaczego warto</p>
-      <p style="margin:0 0 6px;font-size:14px;color:#e2e8f0;">🚛 Paliwo + kierowca + myto + koszty stałe — <strong style="color:#fff;">jeden klik</strong></p>
-      <p style="margin:0 0 6px;font-size:14px;color:#e2e8f0;">📋 Wklej zlecenie z maila — trasa wypełni się sama</p>
-      <p style="margin:0;font-size:14px;color:#e2e8f0;">📊 Historia wycen + alerty OC, przegląd, tacho</p>
+    <p style="margin:0 0 16px;">Widzę że trial OPTIRAX właśnie wygasł, ale nie zdążyłeś go sprawdzić.</p>
+
+    <p style="margin:0 0 20px;">Rozumiem — zleceń nie ubywa, a nowe narzędzie zawsze odkłada się na "jak będzie spokojniej".</p>
+
+    <div style="background:#16233f;border-left:3px solid #e8590c;border-radius:8px;padding:18px 22px;margin:0 0 24px;">
+      <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#fff;">Przedłużamy Ci trial o 7 dni — za darmo.</p>
+      <p style="margin:0;font-size:13px;color:#94a3b8;">Odpisz na tego maila jednym słowem: <strong style="color:#e2e8f0;">TAK</strong> — ustawiamy kolejne 7 dni i nie musisz nic robić.</p>
     </div>
 
-    <div style="background:#0f1d35;border-radius:8px;padding:16px 20px;margin:20px 0;font-size:13px;color:#94a3b8;">
-      <strong style="color:#e2e8f0;font-size:14px;">Przykładowa wycena: Lublin → Berlin</strong><br>
-      Dystans: 722 km &nbsp;|&nbsp; Paliwo: 252 € &nbsp;|&nbsp; Kierowca: 240 € &nbsp;|&nbsp; Myto: 170 €<br>
-      <strong style="color:#e8590c;font-size:15px;">Koszt całkowity: 1 039 € &nbsp;·&nbsp; Marża sugerowana: 12%</strong>
-    </div>
-
-    <p style="margin:0 0 24px;font-size:14px;color:#94a3b8;">Plan SOLO — 49 zł/mies. Bez umów, możesz anulować w każdej chwili.</p>
+    <p style="margin:0 0 12px;font-size:14px;color:#94a3b8;">Co możesz sprawdzić w 5 minut:</p>
+    <p style="margin:0 0 6px;font-size:14px;color:#e2e8f0;">→ Wpisz dowolną trasę i kliknij "Pobierz km" — mapa i myto wejdą automatycznie</p>
+    <p style="margin:0 0 6px;font-size:14px;color:#e2e8f0;">→ Ustaw swoje ceny paliwa, stawkę kierowcy, koszty stałe — raz</p>
+    <p style="margin:0 0 24px;font-size:14px;color:#e2e8f0;">→ Policz ile zostaje na czysto z ostatniego zlecenia</p>
 
     <table cellpadding="0" cellspacing="0"><tr><td>
-      <a href="${cta.url}" style="display:inline-block;background:#e8590c;color:#fff;font-weight:600;font-size:15px;padding:14px 28px;border-radius:10px;text-decoration:none;">${cta.btn} →</a>
+      <a href="https://app.optirax.pl" style="display:inline-block;background:#e8590c;color:#fff;font-weight:600;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none;">Wejdź i sprawdź →</a>
     </td></tr></table>
+
+    <p style="margin:24px 0 0;font-size:13px;color:#64748b;">Masz pytanie albo coś nie działa? Odpisz tutaj — odpisuję sam.</p>
   </td></tr>
 
-  <!-- FOOTER -->
-  <tr><td style="padding:16px 32px;border-top:1px solid #1e2d45;font-size:12px;color:#475569;line-height:1.6;">
-    Wysyłamy ten email bo założyłeś konto w OPTIRAX.<br>
-    Jeśli nie jesteś zainteresowany — po prostu go zignoruj, nie będziemy naciskać.<br>
+  <tr><td style="padding:14px 32px;border-top:1px solid #1e2d45;font-size:11px;color:#475569;line-height:1.6;">
+    Przemek · OPTIRAX &nbsp;·&nbsp;
+    <a href="https://optirax.pl" style="color:#e8590c;text-decoration:none;">optirax.pl</a>
+  </td></tr>
+
+</table>
+</td></tr></table>
+</body></html>`;
+  }
+
+  // Aktywny user (1+ wycen) — normalny upsell
+  return `<!DOCTYPE html>
+<html lang="pl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#0c1322;border-radius:16px;overflow:hidden;max-width:580px;">
+
+  <tr><td style="padding:24px 32px 18px;border-bottom:1px solid #1e2d45;">
+    <span style="font-size:20px;font-weight:700;color:#e8590c;">OPTIRAX</span>
+    <span style="font-size:12px;color:#475569;margin-left:10px;">Kalkulator kosztów trasy</span>
+  </td></tr>
+
+  <tr><td style="padding:28px 32px;color:#e2e8f0;font-size:15px;line-height:1.75;">
+    <p style="margin:0 0 16px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
+
+    <p style="margin:0 0 16px;">Trial OPTIRAX wygasł. W trakcie tych 14 dni zrobiłeś ${wycen} ${wycen === 1 ? "wycenę" : wycen < 5 ? "wyceny" : "wycen"} — widzę że sprawdziłeś jak to działa.</p>
+
+    <p style="margin:0 0 20px;">Żeby nadal mieć dostęp do kalkulatora, historii i floty — plan SOLO to 49 zł/mies. Bez umowy, możesz anulować kiedy chcesz.</p>
+
+    <div style="background:#16233f;border-radius:8px;padding:16px 20px;margin:0 0 24px;font-size:13px;color:#94a3b8;">
+      <strong style="color:#e2e8f0;display:block;margin-bottom:8px;">Plan SOLO — 49 zł / miesiąc</strong>
+      Paliwo + myto + kierowca + koszty stałe w jednym miejscu<br>
+      Historia wycen · Flota + alerty OC/przegląd/tacho · PDF oferta
+    </div>
+
+    <table cellpadding="0" cellspacing="0"><tr><td>
+      <a href="https://app.optirax.pl" style="display:inline-block;background:#e8590c;color:#fff;font-weight:600;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none;">Przejdź na plan płatny →</a>
+    </td></tr></table>
+
+    <p style="margin:24px 0 0;font-size:13px;color:#64748b;">Masz pytanie? Odpisz tutaj bezpośrednio.</p>
+  </td></tr>
+
+  <tr><td style="padding:14px 32px;border-top:1px solid #1e2d45;font-size:11px;color:#475569;">
+    Przemek · OPTIRAX &nbsp;·&nbsp;
     <a href="https://optirax.pl" style="color:#e8590c;text-decoration:none;">optirax.pl</a>
   </td></tr>
 
@@ -1625,6 +1659,19 @@ app.patch("/api/history/:id/vehicle", requireAuth, requireCompanyCtx, async (req
       { vehicle_id: vehicle_id || null, vehicle_reg: vehicle_reg || null },
       `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
     res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Nadpisz istniejący zapis wyceny (POLICZ po autosave z Pobierz-km)
+app.patch("/api/history/:id", requireAuth, requireActiveSubscription, async (req, res) => {
+  try {
+    const uid  = req.userId;
+    const item = req.body;
+    const row  = buildQuoteRow(item, uid, { isDraft: false });
+    delete row.id; // id nie nadpisujemy
+    await sbFetch("quotes", "PATCH", row,
+      `?id=eq.${encodeURIComponent(req.params.id)}&auth_user_id=eq.${uid}`);
+    res.json({ ok: true, id: req.params.id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
