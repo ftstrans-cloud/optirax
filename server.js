@@ -781,7 +781,59 @@ async function requireAdmin(req, res, next) {
 }
 
 // ============================================================
-// ETAP C — company context middleware
+// DZIENNY LIMIT KALKULACJI DLA TRIAL
+// Ogranicza wywołania /api/route do DAILY_CALC_LIMIT na dobę.
+// Reset automatyczny gdy data się zmieni (o północy).
+// Płatne plany (solo/pro/team) — bez limitu.
+// ============================================================
+const DAILY_CALC_LIMIT = 10;
+
+async function requireCalcQuota(req, res, next) {
+  try {
+    const uid = req.userId;
+    const profiles = await sbFetch("profiles", "GET", null,
+      `?id=eq.${uid}&select=plan,daily_calc_count,daily_calc_date`);
+    const p = profiles?.[0];
+    if (!p) return next(); // brak profilu — przepuść (nie blokuj)
+
+    // Płatni użytkownicy — brak limitu
+    const plan = (p.plan || "trial").toLowerCase();
+    if (plan !== "trial") return next();
+
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    let count = p.daily_calc_count || 0;
+    const lastDate = p.daily_calc_date || "";
+
+    // Reset jeśli nowy dzień
+    if (lastDate !== today) count = 0;
+
+    if (count >= DAILY_CALC_LIMIT) {
+      return res.status(429).json({
+        error: "Dzienny limit kalkulacji wyczerpany.",
+        limit: DAILY_CALC_LIMIT,
+        used: count,
+        remaining: 0,
+        reset_at: today + "T23:59:59Z",
+        upgrade_url: "https://app.optirax.pl",
+      });
+    }
+
+    // Inkrementuj (fire-and-forget — nie blokujemy odpowiedzi)
+    sbFetch("profiles", "PATCH",
+      { daily_calc_count: count + 1, daily_calc_date: today },
+      `?id=eq.${uid}`
+    ).catch(e => console.warn("[quota] PATCH failed:", e.message));
+
+    // Przekaż info do odpowiedzi przez header (front może to wyświetlić)
+    res.setHeader("X-Calc-Remaining", DAILY_CALC_LIMIT - count - 1);
+    res.setHeader("X-Calc-Limit", DAILY_CALC_LIMIT);
+    next();
+  } catch(e) {
+    // Błąd quota-check → przepuść (nie blokuj użytkownika przy problemach z DB)
+    console.warn("[quota] check failed, passing through:", e.message);
+    next();
+  }
+}
 // requireAuth musi byc PRZED tym middleware.
 // Dostarcza: req.companyId, req.companyFilter, req.userRole
 // Backward-compat: NULL company_id -> filtr po auth_user_id
@@ -1954,7 +2006,27 @@ app.delete("/api/fuel/:id", requireAuth, async (req, res) => {
 
 
 // ---- /api/route  (A→B, z alternatywami) ----
-app.post("/api/route", requireAuth, requireActiveSubscription, async (req, res) => {
+app.get("/api/quota", requireAuth, async (req, res) => {
+  try {
+    const profiles = await sbFetch("profiles", "GET", null,
+      `?id=eq.${req.userId}&select=plan,daily_calc_count,daily_calc_date`);
+    const p = profiles?.[0];
+    if (!p) return res.json({ limited: false });
+    const plan = (p.plan || "trial").toLowerCase();
+    if (plan !== "trial") return res.json({ limited: false, plan });
+    const today = new Date().toISOString().slice(0, 10);
+    const count = (p.daily_calc_date === today) ? (p.daily_calc_count || 0) : 0;
+    res.json({
+      limited: true, plan,
+      used: count,
+      limit: DAILY_CALC_LIMIT,
+      remaining: Math.max(0, DAILY_CALC_LIMIT - count),
+      reset_at: today + "T23:59:59Z",
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post("/api/route", requireAuth, requireActiveSubscription, requireCalcQuota, async (req, res) => {
   try {
     const { origin, destination, truckParams } = req.body || {};
     if (!origin || !destination) return res.status(400).json({ error: "Podaj skąd i dokąd." });

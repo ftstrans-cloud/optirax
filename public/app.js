@@ -67,9 +67,20 @@ console.log("getRoute() start:", getRouteFromUI());
 	};
 
     if (!res.ok) {
-      routeInfoEl.textContent = data.error || "Błąd wyznaczania trasy.";
+      if (res.status === 429) {
+        // Limit kalkulacji wyczerpany
+        routeInfoEl.textContent = "Dzienny limit kalkulacji wyczerpany.";
+        showQuotaModal(data);
+      } else {
+        routeInfoEl.textContent = data.error || "Błąd wyznaczania trasy.";
+      }
       return;
     }
+
+    // Aktualizuj licznik z headera odpowiedzi
+    const remaining = res.headers.get("X-Calc-Remaining");
+    const limit     = res.headers.get("X-Calc-Limit");
+    if (remaining !== null) updateQuotaDisplay(Number(remaining), Number(limit || 10));
 
     baseInput.value = data.distance_km;
     updateMapFromRoute(data);
@@ -422,7 +433,89 @@ if (fromPolicz) {
 }
 
 
-// ===== EXPORT DLA onclick="" (JEDEN RAZ) =====
+// ============================================================
+// QUOTA — limit kalkulacji dla trial
+// ============================================================
+function updateQuotaDisplay(remaining, limit) {
+  let el = document.getElementById("quotaBadge");
+  const profile = JSON.parse(localStorage.getItem("optirax_profile") || "{}");
+  const isTrial = (profile.plan || "trial").toLowerCase() === "trial";
+  if (!isTrial) { if (el) el.remove(); return; }
+
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "quotaBadge";
+    el.style.cssText = `
+      position:fixed;top:12px;right:140px;z-index:8000;
+      background:var(--navy,#16233f);border:1px solid var(--panel-edge,#1e2d45);
+      border-radius:20px;padding:4px 12px;font-size:12px;
+      color:var(--ink,#94a3b8);cursor:default;
+    `;
+    document.body.appendChild(el);
+  }
+
+  const used = limit - remaining;
+  const pct  = used / limit;
+  const color = pct >= 1 ? "#ef4444" : pct >= 0.7 ? "#f59e0b" : "#4ade80";
+  el.innerHTML = `<span style="color:${color};font-weight:600;">${remaining}</span>/${limit} tras dziś`;
+  el.title = `Dzienny limit trial: ${used} z ${limit} wykorzystano`;
+}
+
+function showQuotaModal(data) {
+  const existing = document.getElementById("quotaModal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "quotaModal";
+  modal.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.7);
+    display:flex;align-items:center;justify-content:center;z-index:9999;
+  `;
+  modal.innerHTML = `
+    <div style="background:var(--panel,#0c1322);border:1px solid var(--signal,#e8590c);
+                border-radius:16px;padding:32px;max-width:440px;width:90%;text-align:center;">
+      <div style="font-size:32px;margin-bottom:12px;">🚛</div>
+      <div style="font-size:18px;font-weight:600;color:var(--ink,#e2e8f0);margin-bottom:8px;">
+        Dzisiaj obliczyłeś już ${data.limit} tras
+      </div>
+      <div style="font-size:14px;color:#94a3b8;line-height:1.7;margin-bottom:24px;">
+        Limit trialu to <strong style="color:var(--ink,#e2e8f0);">${data.limit} kalkulacji dziennie</strong>.
+        Jutro licznik się resetuje.<br><br>
+        Na planie płatnym liczysz bez limitu — i masz historię, flotę oraz alerty terminów.
+      </div>
+      <div style="display:flex;gap:12px;justify-content:center;">
+        <a href="https://app.optirax.pl" style="
+          display:inline-block;background:var(--signal,#e8590c);color:#fff;
+          font-weight:600;font-size:15px;padding:12px 24px;
+          border-radius:10px;text-decoration:none;">
+          Przejdź na plan płatny →
+        </a>
+        <button onclick="document.getElementById('quotaModal').remove()" style="
+          background:transparent;border:1px solid var(--panel-edge,#1e2d45);
+          color:#94a3b8;border-radius:10px;padding:12px 20px;
+          font-size:14px;cursor:pointer;">
+          Rozumiem, poczekam do jutra
+        </button>
+      </div>
+    </div>
+  `;
+  modal.onclick = e => { if (e.target === modal) modal.remove(); };
+  document.body.appendChild(modal);
+}
+
+// Odczyt limitu przy załadowaniu strony
+document.addEventListener("DOMContentLoaded", function() {
+  const profile = JSON.parse(localStorage.getItem("optirax_profile") || "{}");
+  if ((profile.plan || "trial").toLowerCase() !== "trial") return;
+  fetch("/api/quota")
+    .then(r => r.ok ? r.json() : null)
+    .then(d => { if (d?.limited) updateQuotaDisplay(d.remaining, d.limit); })
+    .catch(() => {});
+});
+
+// ============================================================
+// EXPORT DLA onclick="" (JEDEN RAZ)
+// ============================================================
 window.getRoute = getRoute;
 window.run = run;
 window.addRoutePoint = addRoutePoint;
