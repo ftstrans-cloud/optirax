@@ -818,11 +818,17 @@ async function requireCalcQuota(req, res, next) {
       });
     }
 
-    // Inkrementuj (fire-and-forget — nie blokujemy odpowiedzi)
-    sbFetch("profiles", "PATCH",
-      { daily_calc_count: count + 1, daily_calc_date: today },
-      `?id=eq.${uid}`
-    ).catch(e => console.warn("[quota] PATCH failed:", e.message));
+    // Inkrementuj SYNCHRONICZNIE — fire-and-forget powodował race condition
+    // przy szybkich kolejnych kliknięciach "Pobierz km"
+    try {
+      await sbFetch("profiles", "PATCH",
+        { daily_calc_count: count + 1, daily_calc_date: today },
+        `?id=eq.${uid}`
+      );
+    } catch(e) {
+      console.warn("[quota] PATCH failed:", e.message);
+      // Kontynuuj mimo błędu zapisu — nie blokuj użytkownika
+    }
 
     // Przekaż info do odpowiedzi przez header (front może to wyświetlić)
     res.setHeader("X-Calc-Remaining", DAILY_CALC_LIMIT - count - 1);

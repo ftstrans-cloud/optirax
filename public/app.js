@@ -407,10 +407,10 @@ if (fromPolicz) {
     toast.id = "quickSaveBanner";
     toast.style.cssText = `
       position:fixed;bottom:72px;left:50%;transform:translateX(-50%);
-      background:var(--navy,#16233f);border:1px solid #16a34a;
+      background:#16233f;border:1px solid #16a34a;
       border-radius:12px;padding:10px 16px;display:flex;align-items:center;
       gap:10px;z-index:9999;box-shadow:0 4px 24px rgba(0,0,0,.5);
-      font-size:13px;color:var(--ink,#e2e8f0);max-width:90vw;
+      font-size:13px;color:#e2e8f0;max-width:90vw;
       animation:qsIn .2s ease;
     `;
     if (!document.getElementById("qsStyle")) {
@@ -421,9 +421,9 @@ if (fromPolicz) {
     }
     toast.innerHTML = `
       <span style="color:#4ade80;font-size:16px;flex-shrink:0;">✓</span>
-      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Zapisano: <b>${autoName}</b></span>
-      <button onclick="openSaveHistoryModal()" style="background:transparent;border:1px solid var(--panel-edge,#1e2d45);border-radius:8px;padding:4px 10px;color:var(--ink,#94a3b8);font-size:12px;cursor:pointer;white-space:nowrap;">Zmień nazwę</button>
-      <button onclick="this.closest('#quickSaveBanner').remove()" style="background:transparent;border:none;color:var(--ink,#94a3b8);font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#e2e8f0;">Zapisano: <b>${autoName}</b></span>
+      <button onclick="openSaveHistoryModal()" style="background:transparent;border:1px solid #1e2d45;border-radius:8px;padding:4px 10px;color:#94a3b8;font-size:12px;cursor:pointer;white-space:nowrap;">Zmień nazwę</button>
+      <button onclick="this.closest('#quickSaveBanner').remove()" style="background:transparent;border:none;color:#94a3b8;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
     `;
     document.body.appendChild(toast);
     setTimeout(() => { if (document.getElementById("quickSaveBanner")) toast.remove(); }, 5000);
@@ -437,26 +437,16 @@ if (fromPolicz) {
 // QUOTA — limit kalkulacji dla trial
 // ============================================================
 function updateQuotaDisplay(remaining, limit) {
-  let el = document.getElementById("quotaBadge");
+  const el = document.getElementById("quotaBadge");
+  if (!el) return;
   const profile = JSON.parse(localStorage.getItem("optirax_profile") || "{}");
   const isTrial = (profile.plan || "trial").toLowerCase() === "trial";
-  if (!isTrial) { if (el) el.remove(); return; }
-
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "quotaBadge";
-    el.style.cssText = `
-      position:fixed;top:12px;right:140px;z-index:8000;
-      background:var(--navy,#16233f);border:1px solid var(--panel-edge,#1e2d45);
-      border-radius:20px;padding:4px 12px;font-size:12px;
-      color:var(--ink,#94a3b8);cursor:default;
-    `;
-    document.body.appendChild(el);
-  }
+  if (!isTrial) { el.style.display = "none"; return; }
 
   const used = limit - remaining;
   const pct  = used / limit;
   const color = pct >= 1 ? "#ef4444" : pct >= 0.7 ? "#f59e0b" : "#4ade80";
+  el.style.display = "inline-block";
   el.innerHTML = `<span style="color:${color};font-weight:600;">${remaining}</span>/${limit} tras dziś`;
   el.title = `Dzienny limit trial: ${used} z ${limit} wykorzystano`;
 }
@@ -472,26 +462,27 @@ function showQuotaModal(data) {
     display:flex;align-items:center;justify-content:center;z-index:9999;
   `;
   modal.innerHTML = `
-    <div style="background:var(--panel,#0c1322);border:1px solid var(--signal,#e8590c);
-                border-radius:16px;padding:32px;max-width:440px;width:90%;text-align:center;">
+    <div style="background:#0c1322;border:1px solid #e8590c;
+                border-radius:16px;padding:32px;max-width:440px;width:90%;text-align:center;
+                color:#e2e8f0;">
       <div style="font-size:32px;margin-bottom:12px;">🚛</div>
-      <div style="font-size:18px;font-weight:600;color:var(--ink,#e2e8f0);margin-bottom:8px;">
+      <div style="font-size:18px;font-weight:600;margin-bottom:8px;">
         Dzisiaj obliczyłeś już ${data.limit} tras
       </div>
       <div style="font-size:14px;color:#94a3b8;line-height:1.7;margin-bottom:24px;">
-        Limit trialu to <strong style="color:var(--ink,#e2e8f0);">${data.limit} kalkulacji dziennie</strong>.
+        Limit trialu to <strong style="color:#e2e8f0;">${data.limit} kalkulacji dziennie</strong>.
         Jutro licznik się resetuje.<br><br>
         Na planie płatnym liczysz bez limitu — i masz historię, flotę oraz alerty terminów.
       </div>
       <div style="display:flex;gap:12px;justify-content:center;">
         <a href="https://app.optirax.pl" style="
-          display:inline-block;background:var(--signal,#e8590c);color:#fff;
+          display:inline-block;background:#e8590c;color:#fff;
           font-weight:600;font-size:15px;padding:12px 24px;
           border-radius:10px;text-decoration:none;">
           Przejdź na plan płatny →
         </a>
         <button onclick="document.getElementById('quotaModal').remove()" style="
-          background:transparent;border:1px solid var(--panel-edge,#1e2d45);
+          background:transparent;border:1px solid #1e2d45;
           color:#94a3b8;border-radius:10px;padding:12px 20px;
           font-size:14px;cursor:pointer;">
           Rozumiem, poczekam do jutra
