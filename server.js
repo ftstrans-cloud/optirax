@@ -1389,14 +1389,30 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
       return res.status(400).json({ error: "segment musi być: expired | expiring_soon | expiring_week" });
     }
 
-    const users = await sbFetch("profiles", "GET", null, filter);
+    const rawUsers = await sbFetch("profiles", "GET", null, filter);
+    // Blocklist: własne/testowe konta, fake-domeny (bounce psuje reputację Resend),
+    // oraz kontakty obsługiwane ręcznie (Citronex) / partnerskie (Zygmunt) — bez szablonu.
+    const CAMPAIGN_EXCLUDE = new Set([
+      "rrsolutions.pstempniak@gmail.com","pstempniak@rrsolutions.pl","pstempniak66@gmail.com",
+      "czarekklon@gmail.com","emx8929a@gmail.com","apollo5678910@gmail.com",
+      "rerejo8288@hilostar.com","fbttxipaxekpzhbzce@jbsze.com","wijil73980@noyavip.com",
+      "eapco@wshu.net","banet92948@hitzcart.com",
+      "kacper.jakiel@ctenergy.pl","zygmunt.janiak@pm.me",
+    ]);
+    const users = (rawUsers || []).filter(u => !CAMPAIGN_EXCLUDE.has((u.email || "").toLowerCase().trim()));
     if (!users?.length) return res.json({ ok: true, sent: 0, users: [] });
 
     // Dla każdego usera policz ile zrobił wycen (personalzacja)
     const enriched = await Promise.all(users.map(async u => {
       try {
-        const qs = await sbFetch("quotes", "GET", null,
-          `?company_id=eq.${encodeURIComponent(u.company_id || "")}&select=id&limit=100`);
+        // Licz wyceny jak w TRIAL_prawdziwe_wyceny.sql:
+        // company_id == firma usera  LUB  stara wycena przypisana po auth_user_id.
+        // Bez tego stare wyceny (company_id NULL) liczą się jako 0 i user dostaje zły szablon.
+        const cid = u.company_id ? encodeURIComponent(u.company_id) : null;
+        const filter = cid
+          ? `?or=(company_id.eq.${cid},auth_user_id.eq.${u.id})&select=id&limit=200`
+          : `?auth_user_id=eq.${u.id}&select=id&limit=200`;
+        const qs = await sbFetch("quotes", "GET", null, filter);
         return { ...u, quotes_count: qs?.length || 0 };
       } catch { return { ...u, quotes_count: 0 }; }
     }));
@@ -1462,9 +1478,9 @@ function buildTrialEmail(user, segment) {
   <tr><td style="padding:28px 32px;color:#e2e8f0;font-size:15px;line-height:1.75;">
     <p style="margin:0 0 16px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
 
-    <p style="margin:0 0 16px;">Widzę że trial OPTIRAX właśnie wygasł, ale nie zdążyłeś go sprawdzić.</p>
+    <p style="margin:0 0 16px;">Twój trial OPTIRAX właśnie się skończył — chcę dać Ci jeszcze tydzień, żebyś spokojnie sprawdził go na swoich trasach.</p>
 
-    <p style="margin:0 0 20px;">Rozumiem — zleceń nie ubywa, a nowe narzędzie zawsze odkłada się na "jak będzie spokojniej".</p>
+    <p style="margin:0 0 20px;">Wiem jak to jest — zleceń nie ubywa, a nowe narzędzie zawsze odkłada się na "jak będzie spokojniej".</p>
 
     <div style="background:#16233f;border-left:3px solid #e8590c;border-radius:8px;padding:18px 22px;margin:0 0 24px;">
       <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#fff;">Przedłużamy Ci trial o 7 dni — za darmo.</p>

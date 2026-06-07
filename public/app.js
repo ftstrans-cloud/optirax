@@ -549,9 +549,14 @@ async function hLoad() {
         stops:       row.stops || [],
       },
       calc:       row.calc,
+      result:     row.calc,            // FIX: kod czyta it.result, w bazie siedzi w kolumnie calc
       input:      row.input,
       tolls_geo:  row.tolls_geo,
+      tolls_geo_adj: row.tolls_geo_adj || null,
       vignettes:  row.vignettes,
+      vehicle_id:  row.vehicle_id || null,
+      vehicle_reg: row.vehicle_reg || null,
+      is_draft:    row.is_draft === true,
     }));
   } catch(e) {
     console.warn("Supabase niedostępne, fallback localStorage:", e.message);
@@ -740,6 +745,10 @@ async function renderHistory(){
   // Filtruj drafty (AUTO_LAST lokalny + ewentualne drafty z Supabase które
   // przeleciały przez API z is_draft=true). UI historii pokazuje tylko stałe wpisy.
   items = items.filter(it => it.id !== HISTORY_AUTO_ID && it.is_draft !== true);
+
+  // FIX: cache wczytanych wpisów — hFind/hRestore/sumRound szukają po id z bazy,
+  // localStorage ma inne id (stary backup). Bez tego "Wczytaj"/"Odśwież" są martwe.
+  window._histCache = items;
 
   if (!items.length) {
     el.innerHTML = `<div style="opacity:.75;font-size:13px;">Brak zapisów. Kliknij "+ Zapisz do historii".</div>`;
@@ -962,6 +971,12 @@ function sumRound() {
 }
 
 function hFind(id){
+  // Najpierw cache z renderHistory (zawiera wpisy z Supabase, po id z bazy)
+  try{
+    const c = window._histCache;
+    if (Array.isArray(c)) { const hit = c.find(x => x.id === id); if (hit) return hit; }
+  }catch{}
+  // Fallback: lokalny backup
   try{ return JSON.parse(localStorage.getItem("ak_history_v1")||"[]").find(x=>x.id===id)||null; }catch{ return null; }
 }
 
@@ -1004,7 +1019,7 @@ function hRestore(id, refreshRoute = false){
   }
 
   const offerEl = document.getElementById("offer_price_eur");
-  if (offerEl) offerEl.value = (it.result?.offer_price_eur || "");
+  if (offerEl) offerEl.value = (it.result?.offer_price_eur || it.input?.offer_price_eur || "");
 
   // 3️⃣ Przywróć trasę do UI
   if (typeof setRouteToUI === "function") {
