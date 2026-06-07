@@ -10,11 +10,16 @@ console.log("getRoute() start:", getRouteFromUI());
   const { origin, destination, stops } = getRouteFromUI();
   const useMulti = stops.length > 0;
 
-
   if (!origin || !destination) {
     routeInfoEl.textContent = "Uzupełnij Skąd i Dokąd.";
     return;
   }
+
+  // Nowa trasa → kasuj poprzedni autosave i deferred timer
+  // (zapobiega zapisaniu starej trasy jako nowej)
+  clearTimeout(window._deferredSaveTimer);
+  window._autoSaveId = null;
+  window._lastSavedFromPolicz = false;
 
   routeInfoEl.textContent = "Szukam trasy...";
 
@@ -77,10 +82,11 @@ console.log("getRoute() start:", getRouteFromUI());
       return;
     }
 
-    // Aktualizuj licznik z headera odpowiedzi
-    const remaining = res.headers.get("X-Calc-Remaining");
-    const limit     = res.headers.get("X-Calc-Limit");
-    if (remaining !== null) updateQuotaDisplay(Number(remaining), Number(limit || 10));
+    // Odśwież licznik z API — nagłówki HTTP mogą być gubione przez interceptory
+    fetch("/api/quota")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.limited) updateQuotaDisplay(d.remaining, d.limit); })
+      .catch(() => {});
 
     baseInput.value = data.distance_km;
     updateMapFromRoute(data);
