@@ -1376,7 +1376,7 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
       const sampleUser = {
         email: test_email,
         full_name: "Przemek",
-        company: "FTS-TRANS",
+        company: "",                               // pusto = podgląd "Cześć Przemek" (bez nazwy firmy)
         quotes_count: Number(test_quotes) || 0,   // 0 = szablon "drugiej szansy", >0 = upsell SOLO
         trial_ends_at: new Date().toISOString(),
       };
