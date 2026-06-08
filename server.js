@@ -1382,7 +1382,7 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
       };
       const html = buildTrialEmail(sampleUser, segment);
       const subject = `[TEST] OPTIRAX — podgląd maila (${sampleUser.quotes_count > 0 ? "aktywny" : "0 wycen"})`;
-      await resend.emails.send({ from: NOTIFICATION_FROM, to: test_email, subject, html });
+      await resend.emails.send({ from: NOTIFICATION_FROM, to: test_email, replyTo: "kontakt@optirax.pl", subject, html });
       return res.json({ ok: true, test: true, sent_to: test_email, template: sampleUser.quotes_count > 0 ? "aktywny" : "0-wycen" });
     }
 
@@ -1460,6 +1460,7 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
           from: NOTIFICATION_FROM,
           to:   u.email,
           bcc:  "kontakt@optirax.pl",
+          replyTo: "kontakt@optirax.pl",   // odpowiedzi "TAK" trafiają do skrzynki, nie do noreply
           subject,
           html,
         });
@@ -1504,37 +1505,41 @@ function buildTrialEmail(user, segment) {
   if (!aktywny) {
     // Szablon dla tych co nie zdążyli porządnie sprawdzić — offer 7 dni gratis
     return wrapper(`
-    <p style="margin:0 0 20px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
+    <p style="margin:0 0 18px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
 
-    <p style="margin:0 0 16px;">trial w OPTIRAX wygasł — nie wiem czy miałeś kiedy go sprawdzić, więc dorzucam Ci 7 dni. Bez żadnych warunków.</p>
+    <p style="margin:0 0 16px;">trial w OPTIRAX Ci wygasł. Nie wiem czy zdążyłeś go w ogóle odpalić, więc dorzucam Ci jeszcze tydzień — za darmo.</p>
 
-    <p style="margin:0 0 16px;">Jeśli chcesz — odpisz <strong style="color:#e2e8f0;">TAK</strong>, a przedłużę od razu.</p>
+    <p style="margin:0 0 16px;">Chcesz? Odpisz na tego maila <strong style="color:#e2e8f0;">TAK</strong>, a przedłużę.</p>
 
-    <p style="margin:0 0 16px;">Jak będziesz miał chwilę, weź dowolną trasę którą robisz regularnie i wpisz ją w kalkulatorze. Kliknij "Pobierz km" — myto wyliczy się z rzeczywistej trasy dla konkretnego zestawu. Dodajesz paliwo, stawkę kierowcy, koszty stałe i wychodzi konkretna liczba, co do eurocenta. Większość ludzi jest zaskoczona tym co wychodzi.</p>
+    <p style="margin:0 0 16px;">Jak znajdziesz chwilę, wrzuć w kalkulator jedną swoją trasę — taką co ją wozisz na co dzień. Klikasz "Pobierz km", myto liczy się samo dla twojego zestawu, dorzucasz paliwo, kierowcę i koszty stałe. Po minucie widzisz ile realnie zostaje na danej trasie.</p>
 
-    <p style="margin:0 0 24px;">Sam mam 30 TIR-ów i 20 busów — robiłem to narzędzie dla siebie, bo brakowało mi czegoś prostego i konkretnego. Jak masz pytanie, odpisz tutaj bezpośrednio.</p>
+    <p style="margin:0 0 24px;">Sam prowadzę auta w firmie, która ma 30 dużych ciężarówek i 20 busów — OPTIRAX zrobiłem, bo potrzebowałem czegoś, co liczy szybko i bez ściemy. Coś nie gra albo masz pytanie? Po prostu odpisz.</p>
 
     ${btn("Wejdź do OPTIRAX →")}
+
+    <p style="margin:28px 0 0;font-size:14px;color:#e2e8f0;line-height:1.5;">Przemek z OPTIRAX<br><span style="color:#94a3b8;">507 769 420</span></p>
     `);
   }
 
   // Aktywny user — wie jak działa, potrzebuje tylko decyzji
   const wcen_txt = wycen === 1 ? "wycenę" : wycen < 5 ? "wyceny" : "wycen";
   return wrapper(`
-    <p style="margin:0 0 20px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
+    <p style="margin:0 0 18px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
 
-    <p style="margin:0 0 16px;">trial skończony. Zrobiłeś ${wycen} ${wcen_txt} — wiesz już jak to działa.</p>
+    <p style="margin:0 0 16px;">trial Ci się skończył. Zrobiłeś ${wycen} ${wcen_txt}, więc widzę że nie sprawdzałeś go tylko na próbę.</p>
 
-    <p style="margin:0 0 16px;">Żeby mieć dalej dostęp — plan SOLO to 49 zł miesięcznie. Bez umowy, anulujesz kiedy chcesz.</p>
+    <p style="margin:0 0 16px;">Żeby jechać dalej — najtańszy plan SOLO to 79 zł miesięcznie. Bez umowy, wyłączasz kiedy chcesz.</p>
 
     <div style="background:#16233f;border-radius:8px;padding:16px 20px;margin:16px 0;font-size:13px;color:#94a3b8;line-height:1.7;">
-      <strong style="color:#e2e8f0;display:block;margin-bottom:6px;">Plan SOLO — 49 zł / mies.</strong>
-      Historia wycen, flota, alerty OC/przegląd/tacho, PDF oferta — wszystko bez limitu.
+      <strong style="color:#e2e8f0;display:block;margin-bottom:6px;">SOLO 79 zł &nbsp;·&nbsp; PRO 149 zł &nbsp;·&nbsp; TEAM 299 zł / mies.</strong>
+      Historia wycen, flota, alerty OC/przegląd/tacho, PDF oferta — bez limitu.
     </div>
 
-    <p style="margin:0 0 0;">Masz pytanie albo chcesz najpierw pogadać — odpisz tutaj.</p>
+    <p style="margin:0 0 24px;">Chcesz coś większego albo masz pytanie o resztę cennika? Odpisz, podpowiem co pasuje do twojej firmy.</p>
 
-    ${btn("Przejdź na SOLO →")}
+    ${btn("Przejdź na plan płatny →")}
+
+    <p style="margin:28px 0 0;font-size:14px;color:#e2e8f0;line-height:1.5;">Przemek z OPTIRAX<br><span style="color:#94a3b8;">507 769 420</span></p>
   `);
 }
 
