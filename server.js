@@ -1397,7 +1397,10 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
       "czarekklon@gmail.com","emx8929a@gmail.com","apollo5678910@gmail.com",
       "rerejo8288@hilostar.com","fbttxipaxekpzhbzce@jbsze.com","wijil73980@noyavip.com",
       "eapco@wshu.net","banet92948@hitzcart.com",
+      // obsługa ręczna / partnerzy / konkurencja — NIE wysyłaj szablonu
       "kacper.jakiel@ctenergy.pl","zygmunt.janiak@pm.me",
+      "ada.transport@interia.pl",   // Aldona Korniejczuk — ciepły lead, rozmowa w toku
+      "xraggon@gmail.com",          // Kacper Kuleta / smartfleetplanner.pl — konkurencja
     ]);
     const users = (rawUsers || []).filter(u => !CAMPAIGN_EXCLUDE.has((u.email || "").toLowerCase().trim()));
     if (!users?.length) return res.json({ ok: true, sent: 0, users: [] });
@@ -1432,7 +1435,7 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
       try {
         const html = buildTrialEmail(u, segment);
         const subject = segment === "expired"
-          ? `Twój trial OPTIRAX wygasł — wróć i nie trać czasu`
+          ? `OPTIRAX — dorzucam Ci jeszcze 7 dni, odpisz jeśli chcesz`
           : segment === "expiring_soon"
           ? `Zostały Ci ${Math.ceil((new Date(u.trial_ends_at)-new Date())/86400000)} dni trialu OPTIRAX`
           : `Tydzień do końca trialu — co dalej z OPTIRAX?`;
@@ -1440,6 +1443,7 @@ app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, 
         await resend.emails.send({
           from: NOTIFICATION_FROM,
           to:   u.email,
+          bcc:  "kontakt@optirax.pl",
           subject,
           html,
         });
@@ -1459,97 +1463,63 @@ function buildTrialEmail(user, segment) {
   const wycen = user.quotes_count || 0;
   const aktywny = wycen > 0;
 
-  // Dwa zupełnie różne maile — aktywny user vs ten co nigdy nie spróbował
-  if (!aktywny) {
-    // 0 wycen — główny przypadek (20/21 userów)
-    // Nie sprzedajemy — oferujemy drugą szansę
-    return `<!DOCTYPE html>
+  const wrapper = (body) => `<!DOCTYPE html>
 <html lang="pl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
 <tr><td align="center">
 <table width="580" cellpadding="0" cellspacing="0" style="background:#0c1322;border-radius:16px;overflow:hidden;max-width:580px;">
-
-  <tr><td style="padding:24px 32px 18px;border-bottom:1px solid #1e2d45;">
-    <span style="font-size:20px;font-weight:700;color:#e8590c;">OPTIRAX</span>
-    <span style="font-size:12px;color:#475569;margin-left:10px;">Kalkulator kosztów trasy</span>
+  <tr><td style="padding:20px 32px;border-bottom:1px solid #1e2d45;text-align:center;">
+    <img src="https://app.optirax.pl/optirax_logo.jpg" alt="OPTIRAX" width="240" style="display:block;margin:0 auto;max-width:240px;border-radius:4px;">
   </td></tr>
-
-  <tr><td style="padding:28px 32px;color:#e2e8f0;font-size:15px;line-height:1.75;">
-    <p style="margin:0 0 16px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
-
-    <p style="margin:0 0 16px;">Twój trial OPTIRAX właśnie się skończył — chcę dać Ci jeszcze tydzień, żebyś spokojnie sprawdził go na swoich trasach.</p>
-
-    <p style="margin:0 0 20px;">Wiem jak to jest — zleceń nie ubywa, a nowe narzędzie zawsze odkłada się na "jak będzie spokojniej".</p>
-
-    <div style="background:#16233f;border-left:3px solid #e8590c;border-radius:8px;padding:18px 22px;margin:0 0 24px;">
-      <p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#fff;">Przedłużamy Ci trial o 7 dni — za darmo.</p>
-      <p style="margin:0;font-size:13px;color:#94a3b8;">Odpisz na tego maila jednym słowem: <strong style="color:#e2e8f0;">TAK</strong> — ustawiamy kolejne 7 dni i nie musisz nic robić.</p>
-    </div>
-
-    <p style="margin:0 0 12px;font-size:14px;color:#94a3b8;">Co możesz sprawdzić w 5 minut:</p>
-    <p style="margin:0 0 6px;font-size:14px;color:#e2e8f0;">→ Wpisz dowolną trasę i kliknij "Pobierz km" — mapa i myto wejdą automatycznie</p>
-    <p style="margin:0 0 6px;font-size:14px;color:#e2e8f0;">→ Ustaw swoje ceny paliwa, stawkę kierowcy, koszty stałe — raz</p>
-    <p style="margin:0 0 24px;font-size:14px;color:#e2e8f0;">→ Policz ile zostaje na czysto z ostatniego zlecenia</p>
-
-    <table cellpadding="0" cellspacing="0"><tr><td>
-      <a href="https://app.optirax.pl" style="display:inline-block;background:#e8590c;color:#fff;font-weight:600;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none;">Wejdź i sprawdź →</a>
-    </td></tr></table>
-
-    <p style="margin:24px 0 0;font-size:13px;color:#64748b;">Masz pytanie albo coś nie działa? Odpisz tutaj — odpisuję sam.</p>
-  </td></tr>
-
+  <tr><td style="padding:28px 32px 24px;color:#e2e8f0;font-size:15px;line-height:1.8;">${body}</td></tr>
   <tr><td style="padding:14px 32px;border-top:1px solid #1e2d45;font-size:11px;color:#475569;line-height:1.6;">
-    Przemek · OPTIRAX &nbsp;·&nbsp;
-    <a href="https://optirax.pl" style="color:#e8590c;text-decoration:none;">optirax.pl</a>
+    Przemek &nbsp;·&nbsp; tel. 507&nbsp;769&nbsp;420 &nbsp;·&nbsp; <a href="https://optirax.pl" style="color:#e8590c;text-decoration:none;">optirax.pl</a>
   </td></tr>
-
 </table>
 </td></tr></table>
 </body></html>`;
+
+  const btn = (tekst, href = "https://app.optirax.pl") =>
+    `<table cellpadding="0" cellspacing="0" style="margin:24px 0 0;"><tr><td>
+      <a href="${href}" style="display:inline-block;background:#e8590c;color:#fff;font-weight:600;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none;">${tekst}</a>
+    </td></tr></table>`;
+
+  if (!aktywny) {
+    // Szablon dla tych co nie zdążyli porządnie sprawdzić — offer 7 dni gratis
+    return wrapper(`
+    <p style="margin:0 0 20px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
+
+    <p style="margin:0 0 16px;">trial w OPTIRAX wygasł — nie wiem czy miałeś kiedy go sprawdzić, więc dorzucam Ci 7 dni. Bez żadnych warunków.</p>
+
+    <p style="margin:0 0 16px;">Jeśli chcesz — odpisz <strong style="color:#e2e8f0;">TAK</strong>, a przedłużę od razu.</p>
+
+    <p style="margin:0 0 16px;">Jak będziesz miał chwilę, weź dowolną trasę którą robisz regularnie i wpisz ją w kalkulatorze. Kliknij "Pobierz km" — myto wyliczy się z rzeczywistej trasy dla konkretnego zestawu. Dodajesz paliwo, stawkę kierowcy, koszty stałe i wychodzi konkretna liczba, co do eurocenta. Większość ludzi jest zaskoczona tym co wychodzi.</p>
+
+    <p style="margin:0 0 24px;">Sam mam 30 TIR-ów i 20 busów — robiłem to narzędzie dla siebie, bo brakowało mi czegoś prostego i konkretnego. Jak masz pytanie, odpisz tutaj bezpośrednio.</p>
+
+    ${btn("Wejdź do OPTIRAX →")}
+    `);
   }
 
-  // Aktywny user (1+ wycen) — normalny upsell
-  return `<!DOCTYPE html>
-<html lang="pl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px;">
-<tr><td align="center">
-<table width="580" cellpadding="0" cellspacing="0" style="background:#0c1322;border-radius:16px;overflow:hidden;max-width:580px;">
+  // Aktywny user — wie jak działa, potrzebuje tylko decyzji
+  const wcen_txt = wycen === 1 ? "wycenę" : wycen < 5 ? "wyceny" : "wycen";
+  return wrapper(`
+    <p style="margin:0 0 20px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
 
-  <tr><td style="padding:24px 32px 18px;border-bottom:1px solid #1e2d45;">
-    <span style="font-size:20px;font-weight:700;color:#e8590c;">OPTIRAX</span>
-    <span style="font-size:12px;color:#475569;margin-left:10px;">Kalkulator kosztów trasy</span>
-  </td></tr>
+    <p style="margin:0 0 16px;">trial skończony. Zrobiłeś ${wycen} ${wcen_txt} — wiesz już jak to działa.</p>
 
-  <tr><td style="padding:28px 32px;color:#e2e8f0;font-size:15px;line-height:1.75;">
-    <p style="margin:0 0 16px;">Cześć ${name}${firma ? ` z ${firma}` : ""},</p>
+    <p style="margin:0 0 16px;">Żeby mieć dalej dostęp — plan SOLO to 49 zł miesięcznie. Bez umowy, anulujesz kiedy chcesz.</p>
 
-    <p style="margin:0 0 16px;">Trial OPTIRAX wygasł. W trakcie tych 14 dni zrobiłeś ${wycen} ${wycen === 1 ? "wycenę" : wycen < 5 ? "wyceny" : "wycen"} — widzę że sprawdziłeś jak to działa.</p>
-
-    <p style="margin:0 0 20px;">Żeby nadal mieć dostęp do kalkulatora, historii i floty — plan SOLO to 49 zł/mies. Bez umowy, możesz anulować kiedy chcesz.</p>
-
-    <div style="background:#16233f;border-radius:8px;padding:16px 20px;margin:0 0 24px;font-size:13px;color:#94a3b8;">
-      <strong style="color:#e2e8f0;display:block;margin-bottom:8px;">Plan SOLO — 49 zł / miesiąc</strong>
-      Paliwo + myto + kierowca + koszty stałe w jednym miejscu<br>
-      Historia wycen · Flota + alerty OC/przegląd/tacho · PDF oferta
+    <div style="background:#16233f;border-radius:8px;padding:16px 20px;margin:16px 0;font-size:13px;color:#94a3b8;line-height:1.7;">
+      <strong style="color:#e2e8f0;display:block;margin-bottom:6px;">Plan SOLO — 49 zł / mies.</strong>
+      Historia wycen, flota, alerty OC/przegląd/tacho, PDF oferta — wszystko bez limitu.
     </div>
 
-    <table cellpadding="0" cellspacing="0"><tr><td>
-      <a href="https://app.optirax.pl" style="display:inline-block;background:#e8590c;color:#fff;font-weight:600;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none;">Przejdź na plan płatny →</a>
-    </td></tr></table>
+    <p style="margin:0 0 0;">Masz pytanie albo chcesz najpierw pogadać — odpisz tutaj.</p>
 
-    <p style="margin:24px 0 0;font-size:13px;color:#64748b;">Masz pytanie? Odpisz tutaj bezpośrednio.</p>
-  </td></tr>
-
-  <tr><td style="padding:14px 32px;border-top:1px solid #1e2d45;font-size:11px;color:#475569;">
-    Przemek · OPTIRAX &nbsp;·&nbsp;
-    <a href="https://optirax.pl" style="color:#e8590c;text-decoration:none;">optirax.pl</a>
-  </td></tr>
-
-</table>
-</td></tr></table>
-</body></html>`;
+    ${btn("Przejdź na SOLO →")}
+  `);
 }
 
 // ============================================================
