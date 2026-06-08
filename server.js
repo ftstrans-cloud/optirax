@@ -1368,8 +1368,24 @@ app.post("/api/admin/users/:id/extend-trial", requireAuth, requireAdmin, async (
 // segment: "expired" | "expiring_soon" | "expiring_week"
 // dry_run: true = tylko pokaż listę, nie wysyłaj
 app.post("/api/admin/send-trial-emails", requireAuth, requireAdmin, async (req, res) => {
-  const { segment = "expired", dry_run = false } = req.body;
+  const { segment = "expired", dry_run = false, test_email = null, test_quotes = 0 } = req.body;
   try {
+    // --- Tryb testowy: wyślij JEDEN mail na podany adres, nie ruszaj prawdziwej listy ---
+    if (test_email) {
+      if (!resend) return res.status(503).json({ error: "Resend nie skonfigurowany (brak RESEND_API_KEY)" });
+      const sampleUser = {
+        email: test_email,
+        full_name: "Przemek",
+        company: "FTS-TRANS",
+        quotes_count: Number(test_quotes) || 0,   // 0 = szablon "drugiej szansy", >0 = upsell SOLO
+        trial_ends_at: new Date().toISOString(),
+      };
+      const html = buildTrialEmail(sampleUser, segment);
+      const subject = `[TEST] OPTIRAX — podgląd maila (${sampleUser.quotes_count > 0 ? "aktywny" : "0 wycen"})`;
+      await resend.emails.send({ from: NOTIFICATION_FROM, to: test_email, subject, html });
+      return res.json({ ok: true, test: true, sent_to: test_email, template: sampleUser.quotes_count > 0 ? "aktywny" : "0-wycen" });
+    }
+
     let filter = "";
     if (segment === "expired") {
       // Trial wygasł max 30 dni temu
