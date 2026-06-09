@@ -960,10 +960,35 @@ app.post("/api/expand-url", async (req, res) => {
 // ============================================================
 
 // Rejestracja
+// Domeny jednorazowe (temp-mail) — blokujemy rejestrację, żeby nie obchodzono triala
+// i nie zaśmiecano bazy. Lista: znane fejki z bazy + najpopularniejsze serwisy.
+const DISPOSABLE_DOMAINS = new Set([
+  // złapane w naszej bazie
+  "noyavip.com","hilostar.com","wshu.net","jbsze.com","hitzcart.com",
+  // najpopularniejsze serwisy temp-mail
+  "mailinator.com","guerrillamail.com","guerrillamail.info","grr.la","sharklasers.com",
+  "10minutemail.com","tempmail.com","temp-mail.org","tempmail.net","throwawaymail.com",
+  "yopmail.com","getnada.com","nada.email","dispostable.com","trashmail.com","mailnesia.com",
+  "maildrop.cc","fakeinbox.com","tempr.email","mohmal.com","emailondeck.com","mintemail.com",
+  "spam4.me","mytemp.email","tmpmail.org","tmpmail.net","luxusmail.org","moakt.com",
+  "inboxkitten.com","mailpoof.com","1secmail.com","1secmail.org","1secmail.net",
+  "burnermail.io","tempmailo.com","gufum.com","emailtemporario.com.br",
+]);
+
+function isDisposableEmail(email) {
+  const domain = String(email || "").toLowerCase().split("@")[1] || "";
+  return DISPOSABLE_DOMAINS.has(domain);
+}
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, full_name, company, plan } = req.body;
     if (!email || !password) return res.status(400).json({ error: "Email i hasło są wymagane" });
+
+    // Blokada maili jednorazowych — realne firmy przechodzą, temp-mail odpada na wejściu
+    if (isDisposableEmail(email)) {
+      return res.status(400).json({ error: "Użyj firmowego lub stałego adresu email — adresy jednorazowe nie są obsługiwane." });
+    }
 
     // Walidacja planu (whitelist)
     const validPlans = ["solo", "pro", "team"];
