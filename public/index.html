@@ -1479,7 +1479,7 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 ?
 /).filter(l=>l.trim());
       if(lines.length < 2) { alert('Plik jest pusty lub ma tylko nagłówek.'); return; }
-      const headers = lines[0].split(/[,;]/).map(h=>h.trim().toLowerCase().replace(/\s+/g,'_'));
+      const headers = lines[0].split(/[,;]/).map(h=>h.trim().toLowerCase().split(' ').join('_'));
       _importRows = [];
       for(let i=1; i<lines.length; i++) {
         const vals = lines[i].split(/[,;]/);
