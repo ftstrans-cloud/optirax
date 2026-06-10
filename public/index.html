@@ -1265,10 +1265,10 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
         <div class="fl-card" style="margin-bottom:12px;">
           <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--signal);">Import pojazdów z CSV</div>
           <div class="fl-import-drop" id="flImportDrop" onclick="document.getElementById('flImportFile').click()">
-            📂 Kliknij lub przeciągnij plik CSV / Excel (.csv)<br>
+            📂 Kliknij lub przeciągnij plik CSV lub Excel (.csv, .xls, .xlsx)<br>
             <span style="font-size:11px;opacity:.6;">Wymagana kolumna: rejestracja. Daty w formacie RRRR-MM-DD</span>
           </div>
-          <input type="file" id="flImportFile" accept=".csv,.txt" style="display:none" onchange="flParseCSV(this)">
+          <input type="file" id="flImportFile" accept=".csv,.txt,.xls,.xlsx" style="display:none" onchange="flParseCSV(this)">
           <div id="flImportPreview" class="fl-import-preview" style="display:none;"></div>
           <div id="flImportActions" style="display:none;gap:8px;display:none;">
             <button class="btn" id="flImportBtn" onclick="flDoImport()">✅ Importuj zaznaczone</button>
@@ -1472,23 +1472,49 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 
   window.flParseCSV = function(input) {
     const file = input.files?.[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const text = e.target.result;
-      const lines = text.split(/\r?\n/).filter(l=>l.trim());
-	  
-      if(lines.length < 2) { alert('Plik jest pusty lub ma tylko nagłówek.'); return; }
-      const headers = lines[0].split(/[,;]/).map(h=>h.trim().toLowerCase().split(' ').join('_'));
+    const ext = file.name.split('.').pop().toLowerCase();
+    const isExcel = ext === 'xls' || ext === 'xlsx';
+
+    function processRows(rows) {
       _importRows = [];
-      for(let i=1; i<lines.length; i++) {
-        const vals = lines[i].split(/[,;]/);
-        const row = {};
-        headers.forEach((h,j)=>row[h] = (vals[j]||'').trim());
-        if(row.rejestracja || row.reg) _importRows.push(row);
+      for (const row of rows) {
+        const norm = {};
+        for (const [k, v] of Object.entries(row)) {
+          const key = String(k).trim().toLowerCase().split(' ').join('_');
+          norm[key] = v instanceof Date ? v.toISOString().slice(0,10) : String(v||'').trim();
+        }
+        if (norm.rejestracja || norm.reg) _importRows.push(norm);
       }
       flShowImportPreview();
-    };
-    reader.readAsText(file, 'UTF-8');
+    }
+
+    if (isExcel && typeof XLSX !== 'undefined') {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          processRows(XLSX.utils.sheet_to_json(ws, { defval: '' }));
+        } catch(err) { alert('Błąd odczytu Excel: ' + err.message); }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const lines = e.target.result.split(/\r?\n/).filter(l=>l.trim());
+        if(lines.length < 2) { alert('Plik jest pusty lub ma tylko nagłówek.'); return; }
+        const headers = lines[0].split(/[,;]/).map(h=>h.trim().toLowerCase().split(' ').join('_'));
+        const rows = [];
+        for(let i=1; i<lines.length; i++) {
+          const vals = lines[i].split(/[,;]/);
+          const row = {};
+          headers.forEach((h,j)=>row[h] = (vals[j]||'').trim());
+          rows.push(row);
+        }
+        processRows(rows);
+      };
+      reader.readAsText(file, 'UTF-8');
+    }
   };
 
   function flShowImportPreview() {
@@ -1539,7 +1565,12 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
   };
 
   window.flDownloadTemplate = function() {
-    const csv = 'rejestracja,marka,model,rok,oc_do,przeglad_do,tacho_do,serwis_do,serwis_km,uwagi\nLU1234A,Volvo,FH16,2021,2026-12-31,2026-08-15,2027-03-01,2026-09-01,450000,\nLU5678B,Mercedes,Sprinter,2020,2026-11-30,2026-07-20,,,150000,klimatyzacja\n';
+    const csv = 'rejestracja,marka,model,rok,oc_do,przeglad_do,tacho_do,serwis_do,serwis_km,uwagi
+' +
+                'LU1234A,Volvo,FH16,2021,2026-12-31,2026-08-15,2027-03-01,2026-09-01,450000,
+' +
+                'LU5678B,Mercedes,Sprinter,2020,2026-11-30,2026-07-20,,,150000,klimatyzacja
+';
     const a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
     a.download = 'OPTIRAX_import_pojazdow_wzor.csv';
@@ -2273,6 +2304,7 @@ function calcCargo(){
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ===== Wgrywanie PDF do pola wklejania zlecenia =====
 (function(){
