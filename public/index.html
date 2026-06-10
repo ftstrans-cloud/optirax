@@ -1565,7 +1565,12 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
   };
 
   window.flDownloadTemplate = function() {
-    const csv = 'rejestracja,marka,model,rok,oc_do,przeglad_do,tacho_do,serwis_do,serwis_km,uwagi\nLU1234A,Volvo,FH16,2021,2026-12-31,2026-08-15,2027-03-01,2026-09-01,450000,\nLU5678B,Mercedes,Sprinter,2020,2026-11-30,2026-07-20,,,150000,klimatyzacja\n';
+    const csv = 'rejestracja,marka,model,rok,oc_do,przeglad_do,tacho_do,serwis_do,serwis_km,uwagi
+' +
+                'LU1234A,Volvo,FH16,2021,2026-12-31,2026-08-15,2027-03-01,2026-09-01,450000,
+' +
+                'LU5678B,Mercedes,Sprinter,2020,2026-11-30,2026-07-20,,,150000,klimatyzacja
+';
     const a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
     a.download = 'OPTIRAX_import_pojazdow_wzor.csv';
@@ -2299,7 +2304,7 @@ function calcCargo(){
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="/xlsx.full.min.js"></script>
 <script>
 // ===== Wgrywanie PDF do pola wklejania zlecenia =====
 (function(){
