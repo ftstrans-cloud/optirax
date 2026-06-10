@@ -1475,12 +1475,32 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
     const ext = file.name.split('.').pop().toLowerCase();
     const isExcel = ext === 'xls' || ext === 'xlsx';
 
+    // Mapowanie nagłówków z szablonu XLSX (polskie/z gwiazdką) na klucze bazy
+    const HDR_MAP = {
+      'rejestracja *': 'rejestracja', 'rejestracja': 'rejestracja', 'reg': 'rejestracja',
+      'typ': 'typ',
+      'marka': 'marka', 'brand': 'marka',
+      'model': 'model',
+      'rok': 'rok', 'year': 'rok',
+      'oc do': 'oc_do', 'oc_do': 'oc_do', 'oc_date': 'oc_do',
+      'przegląd do': 'przeglad_do', 'przeglad do': 'przeglad_do', 'przeglad_do': 'przeglad_do', 'przeglad_date': 'przeglad_do',
+      'tacho do': 'tacho_do', 'tacho_do': 'tacho_do', 'tacho_date': 'tacho_do',
+      'serwis do': 'serwis_do', 'serwis_do': 'serwis_do', 'serwis_date': 'serwis_do',
+      'serwis km': 'serwis_km', 'serwis_km': 'serwis_km',
+      'uwagi': 'uwagi', 'notes': 'uwagi',
+    };
+
+    function normalizeKey(k) {
+      const raw = String(k).trim().toLowerCase().replace(/\*/g,'').trim();
+      return HDR_MAP[raw] || raw.split(' ').join('_');
+    }
+
     function processRows(rows) {
       _importRows = [];
       for (const row of rows) {
         const norm = {};
         for (const [k, v] of Object.entries(row)) {
-          const key = String(k).trim().toLowerCase().split(' ').join('_');
+          const key = normalizeKey(k);
           norm[key] = v instanceof Date ? v.toISOString().slice(0,10) : String(v||'').trim();
         }
         if (norm.rejestracja || norm.reg) _importRows.push(norm);
@@ -1565,12 +1585,12 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
   };
 
   window.flDownloadTemplate = function() {
-   const rows = [
-      ['rejestracja','marka','model','rok','oc_do','przeglad_do','tacho_do','serwis_do','serwis_km','uwagi'],
-      ['LU1234A','Volvo','FH16','2021','2026-12-31','2026-08-15','2027-03-01','2026-09-01','450000',''],
-      ['LU5678B','Mercedes','Sprinter','2020','2026-11-30','2026-07-20','','','150000','klimatyzacja'],
-    ];
-    const csv = rows.map(r=>r.join(',')).join('\n') + '\n';
+    const csv = 'rejestracja,marka,model,rok,oc_do,przeglad_do,tacho_do,serwis_do,serwis_km,uwagi
+' +
+                'LU1234A,Volvo,FH16,2021,2026-12-31,2026-08-15,2027-03-01,2026-09-01,450000,
+' +
+                'LU5678B,Mercedes,Sprinter,2020,2026-11-30,2026-07-20,,,150000,klimatyzacja
+';
     const a = document.createElement('a');
     a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
     a.download = 'OPTIRAX_import_pojazdow_wzor.csv';
