@@ -1153,7 +1153,7 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 <style>
 #fleetModal{position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center}
 #fleetModal.open{display:flex}
-#fleetPanel{background:var(--bg,#0f172a);border-radius:16px;width:92%;max-width:640px;max-height:88vh;overflow-y:auto;padding:24px}
+#fleetPanel{background:var(--bg,#0f172a);border-radius:16px;width:96%;max-width:900px;max-height:92vh;overflow-y:auto;padding:24px}
 :root[data-theme="light"] #fleetPanel{background:#f8fafc}
 .fl-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--color-text-secondary);padding:0 4px}
 .fl-tabs{display:flex;gap:6px;margin:14px 0}
@@ -1175,6 +1175,13 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 .fl-empty{text-align:center;color:var(--color-text-tertiary);font-size:13px;padding:1.5rem 0}
 .fl-type-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:var(--color-background-secondary);color:var(--color-text-secondary);margin-left:6px}
 .fl-select-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+.fl-search{width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--line,#334155);background:var(--panel,#1e293b);color:var(--ink,#e2e8f0);font-size:13px;margin-bottom:12px;box-sizing:border-box}
+.fl-import-drop{border:2px dashed var(--line,#334155);border-radius:10px;padding:20px;text-align:center;cursor:pointer;color:var(--ink-faint,#64748b);font-size:13px;margin-bottom:12px;transition:border-color .2s}
+.fl-import-drop:hover,.fl-import-drop.dragover{border-color:var(--signal,#e8590c);color:var(--signal,#e8590c)}
+.fl-import-preview{max-height:220px;overflow-y:auto;margin-bottom:12px}
+.fl-import-row{display:grid;grid-template-columns:120px 80px 1fr 1fr 80px 90px 90px 90px;gap:6px;font-size:11px;padding:4px 0;border-bottom:1px solid var(--line,#334155)22}
+.fl-import-row.header{font-weight:700;color:var(--ink,#e2e8f0);font-size:11px}
+.fl-import-ok{color:#22c55e}.fl-import-err{color:#ef4444}
 </style>
 
 <div id="fleetModal">
@@ -1186,6 +1193,7 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
       <button class="fl-tab active" onclick="flTab('vehicles')">Pojazdy</button>
       <button class="fl-tab" onclick="flTab('trailers')">Naczepy</button>
       <button class="fl-tab" onclick="flTab('drivers')">Kierowcy</button>
+      <button class="fl-tab" onclick="flTab('settings')">⚙️ Ustawienia</button>
     </div>
 
     <!-- POJAZDY -->
@@ -1248,6 +1256,27 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
           <button class="btn secondary" onclick="flClearVehicleForm()">Wyczyść</button>
         </div>
       </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center;">
+        <input type="text" class="fl-search" id="flVSearch" placeholder="🔍 Szukaj pojazdu (rejestracja, marka, model...)" oninput="flRenderVehicles()" style="margin-bottom:0;flex:1;">
+        <button class="btn secondary" style="white-space:nowrap;font-size:13px;" onclick="flShowImport()">⬆️ Import CSV</button>
+      </div>
+      <!-- Import CSV panel -->
+      <div id="flImportPanel" style="display:none;">
+        <div class="fl-card" style="margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--signal);">Import pojazdów z CSV</div>
+          <div class="fl-import-drop" id="flImportDrop" onclick="document.getElementById('flImportFile').click()">
+            📂 Kliknij lub przeciągnij plik CSV / Excel (.csv)<br>
+            <span style="font-size:11px;opacity:.6;">Wymagana kolumna: rejestracja. Daty w formacie RRRR-MM-DD</span>
+          </div>
+          <input type="file" id="flImportFile" accept=".csv,.txt" style="display:none" onchange="flParseCSV(this)">
+          <div id="flImportPreview" class="fl-import-preview" style="display:none;"></div>
+          <div id="flImportActions" style="display:none;gap:8px;display:none;">
+            <button class="btn" id="flImportBtn" onclick="flDoImport()">✅ Importuj zaznaczone</button>
+            <button class="btn secondary" onclick="flHideImport()">Anuluj</button>
+          </div>
+          <a id="flCsvTemplate" href="#" onclick="flDownloadTemplate();return false;" style="font-size:12px;color:var(--signal);display:block;margin-top:8px;">⬇️ Pobierz szablon CSV</a>
+        </div>
+      </div>
       <div id="flVehicleList"><div class="fl-empty">Brak pojazdów. Dodaj pierwszy pojazd powyżej.</div></div>
     </div>
 
@@ -1296,6 +1325,22 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
         </div>
       </div>
       <div id="flTrailerList"><div class="fl-empty">Brak naczep. Dodaj pierwszą naczepę powyżej.</div></div>
+    </div>
+
+    <!-- USTAWIENIA -->
+    <div id="fl-settings" class="fl-sec">
+      <div class="fl-card">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px;">Powiadomienia o terminach floty</div>
+        <div class="fl-label">Adres email do alertów (OC/przegląd/tacho/serwis)</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <input type="email" id="flAlertEmail" placeholder="np. biuro@twojafirma.pl" style="flex:1;"/>
+          <button class="btn" onclick="flSaveAlertEmail()">Zapisz</button>
+        </div>
+        <div id="flAlertEmailStatus" style="font-size:12px;color:#22c55e;display:none;">✓ Zapisano</div>
+        <div style="font-size:12px;color:var(--ink-faint,#64748b);margin-top:6px;">
+          System sprawdza terminy codziennie i wysyła przypomnienie na ten adres gdy któryś z terminów jest ≤30 dni.
+        </div>
+      </div>
     </div>
 
     <!-- KIEROWCY -->
@@ -1370,9 +1415,10 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
   // ── Tabs ──────────────────────────────────────────────────
   window.flTab = function(t){
     document.querySelectorAll('.fl-tab').forEach((b,i)=>
-      b.classList.toggle('active',['vehicles','trailers','drivers'][i]===t));
+      b.classList.toggle('active',['vehicles','trailers','drivers','settings'][i]===t));
     document.querySelectorAll('.fl-sec').forEach(s=>s.classList.remove('active'));
     document.getElementById('fl-'+t).classList.add('active');
+    if(t==='settings') flLoadAlertEmail();
   };
 
   // ── Badge alertów na przycisku Flota ─────────────────────
@@ -1396,6 +1442,142 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
       badge.style.display = 'none';
     }
   }
+
+  // ── Import CSV ────────────────────────────────────────────
+  let _importRows = [];
+
+  window.flShowImport = function() {
+    document.getElementById('flImportPanel').style.display = 'block';
+    document.getElementById('flImportPreview').style.display = 'none';
+    document.getElementById('flImportActions').style.display = 'none';
+    document.getElementById('flImportFile').value = '';
+    _importRows = [];
+  };
+  window.flHideImport = function() {
+    document.getElementById('flImportPanel').style.display = 'none';
+    _importRows = [];
+  };
+
+  // Drag & drop
+  const drop = document.getElementById('flImportDrop');
+  if(drop) {
+    drop.addEventListener('dragover', e=>{e.preventDefault();drop.classList.add('dragover');});
+    drop.addEventListener('dragleave', ()=>drop.classList.remove('dragover'));
+    drop.addEventListener('drop', e=>{
+      e.preventDefault(); drop.classList.remove('dragover');
+      const f = e.dataTransfer.files[0];
+      if(f) { document.getElementById('flImportFile').files = e.dataTransfer.files; flParseCSV({files:[f]}); }
+    });
+  }
+
+  window.flParseCSV = function(input) {
+    const file = input.files?.[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target.result;
+      const lines = text.split(/?
+/).filter(l=>l.trim());
+      if(lines.length < 2) { alert('Plik jest pusty lub ma tylko nagłówek.'); return; }
+      const headers = lines[0].split(/[,;]/).map(h=>h.trim().toLowerCase().replace(/\s+/g,'_'));
+      _importRows = [];
+      for(let i=1; i<lines.length; i++) {
+        const vals = lines[i].split(/[,;]/);
+        const row = {};
+        headers.forEach((h,j)=>row[h] = (vals[j]||'').trim());
+        if(row.rejestracja || row.reg) _importRows.push(row);
+      }
+      flShowImportPreview();
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  function flShowImportPreview() {
+    const el = document.getElementById('flImportPreview');
+    if(!_importRows.length) { el.innerHTML='<div class="fl-empty">Brak wierszy danych.</div>'; el.style.display='block'; return; }
+    const cols = ['rejestracja','marka','model','rok','oc_do','przeglad_do','tacho_do','serwis_do'];
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="fl-import-row header">
+        <span>Rejestracja</span><span>Rok</span><span>Marka</span><span>Model</span>
+        <span>OC do</span><span>Przegląd</span><span>Tacho</span><span>Serwis</span>
+      </div>` +
+      _importRows.map((r,i) => {
+        const reg = r.rejestracja||r.reg||'—';
+        const ok = reg && reg !== '—';
+        return `<div class="fl-import-row ${ok?'fl-import-ok':'fl-import-err'}">
+          <span>${reg}</span><span>${r.rok||'—'}</span>
+          <span>${r.marka||r.brand||'—'}</span><span>${r.model||'—'}</span>
+          <span>${r.oc_do||r.oc_date||'—'}</span>
+          <span>${r.przeglad_do||r.przeglad_date||'—'}</span>
+          <span>${r.tacho_do||r.tacho_date||'—'}</span>
+          <span>${r.serwis_do||r.serwis_date||'—'}</span>
+        </div>`;
+      }).join('');
+    const acts = document.getElementById('flImportActions');
+    acts.style.display = 'flex';
+    document.getElementById('flImportBtn').textContent = `✅ Importuj ${_importRows.length} pojazdów`;
+  }
+
+  window.flDoImport = async function() {
+    if(!_importRows.length) return;
+    const btn = document.getElementById('flImportBtn');
+    btn.disabled = true; btn.textContent = 'Importuję...';
+    try {
+      const r = await fetch('/api/fleet/vehicles/import', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ rows: _importRows })
+      });
+      const data = await r.json();
+      alert(`Import zakończony: ${data.imported} dodanych, ${data.failed} błędów.`);
+      flHideImport();
+      await flLoadAll(); flRenderAll();
+    } catch(e) {
+      alert('Błąd importu: '+e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  window.flDownloadTemplate = function() {
+    const csv = 'rejestracja,marka,model,rok,oc_do,przeglad_do,tacho_do,serwis_do,serwis_km,uwagi
+' +
+                'LU1234A,Volvo,FH16,2021,2026-12-31,2026-08-15,2027-03-01,2026-09-01,450000,
+' +
+                'LU5678B,Mercedes,Sprinter,2020,2026-11-30,2026-07-20,,,150000,klimatyzacja
+';
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,﻿' + encodeURIComponent(csv);
+    a.download = 'OPTIRAX_import_pojazdow_wzor.csv';
+    a.click();
+  };
+
+  // ── Ustawienia — alert email ───────────────────────────────
+  async function flLoadAlertEmail() {
+    try {
+      const r = await fetch('/api/company/settings');
+      if(!r.ok) return;
+      const d = await r.json();
+      const el = document.getElementById('flAlertEmail');
+      if(el) el.value = d.alert_email || d.email || '';
+    } catch(e) {}
+  }
+
+  window.flSaveAlertEmail = async function() {
+    const email = document.getElementById('flAlertEmail').value.trim();
+    if(!email) { alert('Podaj adres email.'); return; }
+    try {
+      const r = await fetch('/api/company/settings', {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ alert_email: email })
+      });
+      const d = await r.json();
+      if(d.ok) {
+        const st = document.getElementById('flAlertEmailStatus');
+        st.style.display = 'block';
+        setTimeout(()=>st.style.display='none', 3000);
+      }
+    } catch(e) { alert('Błąd: '+e.message); }
+  };
 
   // ── Load all ─────────────────────────────────────────────
   async function flLoadAll(){
@@ -1511,10 +1693,18 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
 
   function flRenderVehicles(){
     const el = document.getElementById('flVehicleList');
-    if(!fleetData.vehicles.length){
-      el.innerHTML='<div class="fl-empty">Brak pojazdów.</div>'; return;
+    const q = (document.getElementById('flVSearch')?.value||'').toLowerCase().trim();
+    const list = q
+      ? fleetData.vehicles.filter(v =>
+          (v.reg||'').toLowerCase().includes(q) ||
+          (v.brand||'').toLowerCase().includes(q) ||
+          (v.model||'').toLowerCase().includes(q) ||
+          (v.notes||'').toLowerCase().includes(q))
+      : fleetData.vehicles;
+    if(!list.length){
+      el.innerHTML='<div class="fl-empty">Brak pojazdów' + (q ? ' pasujących do "'+q+'"' : '') + '.</div>'; return;
     }
-    el.innerHTML = fleetData.vehicles.map(v=>{
+    el.innerHTML = list.map(v=>{
       const driver = fleetData.drivers.find(d=>d.id===v.driver_id);
       const termBadges = [
         flDateBadge(v.oc_date, 'OC'),

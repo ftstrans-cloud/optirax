@@ -1860,6 +1860,88 @@ app.patch("/api/fleet/vehicles/:id", requireAuth, requireCompanyCtx, async (req,
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ============================================================
+// POST /api/fleet/vehicles/import  — import CSV pojazdów
+// ============================================================
+app.post("/api/fleet/vehicles/import", requireAuth, requireActiveSubscription, requireCompanyCtx, async (req, res) => {
+  try {
+    const rows = req.body?.rows;
+    if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: "Brak danych do importu" });
+
+    const results = [];
+    for (const row of rows) {
+      try {
+        const body = {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+          reg:           (row.rejestracja || row.reg || "").trim().toUpperCase(),
+          brand:         (row.marka       || row.brand || "").trim(),
+          model:         (row.model       || "").trim(),
+          year:          row.rok          ? parseInt(row.rok) : null,
+          notes:         (row.uwagi       || row.notes || "").trim(),
+          oc_date:       row.oc_do        || row.oc_date        || null,
+          przeglad_date: row.przeglad_do  || row.przeglad_date  || null,
+          tacho_date:    row.tacho_do     || row.tacho_date      || null,
+          serwis_date:   row.serwis_do    || row.serwis_date     || null,
+          serwis_km:     row.serwis_km    ? parseInt(row.serwis_km) : null,
+          user_id:       "default",
+          auth_user_id:  req.userId,
+          active:        true,
+        };
+        if (req.companyId) body.company_id = req.companyId;
+        if (!body.reg) { results.push({ row: row.rejestracja || "?", ok: false, error: "Brak rejestracji" }); continue; }
+
+        const url = `${SUPABASE_URL}/rest/v1/vehicles`;
+        const r = await fetch(url, {
+          method: "POST",
+          headers: {
+            "apikey":        SUPABASE_KEY,
+            "Authorization": `Bearer ${SUPABASE_KEY}`,
+            "Content-Type":  "application/json",
+            "Prefer":        "resolution=merge-duplicates,return=representation",
+          },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { results.push({ row: body.reg, ok: false, error: await r.text() }); }
+        else       { results.push({ row: body.reg, ok: true }); }
+      } catch(e) { results.push({ row: row.rejestracja || "?", ok: false, error: e.message }); }
+      await new Promise(r => setTimeout(r, 80));
+    }
+    const imported = results.filter(r => r.ok).length;
+    const failed   = results.filter(r => !r.ok).length;
+    res.json({ ok: true, imported, failed, results });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET  /api/company/settings
+app.get("/api/company/settings", requireAuth, requireCompanyCtx, async (req, res) => {
+  try {
+    if (req.companyId) {
+      const co = await sbFetch("companies", "GET", null,
+        `?id=eq.${encodeURIComponent(req.companyId)}&select=id,name,alert_email`);
+      return res.json(co?.[0] || {});
+    }
+    const p = await sbFetch("profiles", "GET", null,
+      `?id=eq.${encodeURIComponent(req.userId)}&select=email,alert_email,full_name`);
+    res.json(p?.[0] || {});
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/company/settings
+app.patch("/api/company/settings", requireAuth, requireCompanyCtx, async (req, res) => {
+  try {
+    const { alert_email } = req.body;
+    if (!alert_email) return res.status(400).json({ error: "Brak alert_email" });
+    if (req.companyId) {
+      await sbFetch("companies", "PATCH", { alert_email },
+        `?id=eq.${encodeURIComponent(req.companyId)}`);
+    } else {
+      await sbFetch("profiles", "PATCH", { alert_email },
+        `?id=eq.${encodeURIComponent(req.userId)}`);
+    }
+    res.json({ ok: true, alert_email });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/fleet/alerts — pojazdy z terminami ≤30 dni
 app.get("/api/fleet/alerts", requireAuth, requireCompanyCtx, async (req, res) => {
   try {
