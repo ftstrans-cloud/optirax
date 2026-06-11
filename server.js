@@ -1945,10 +1945,10 @@ app.patch("/api/company/settings", requireAuth, requireCompanyCtx, async (req, r
 // GET /api/fleet/alerts — pojazdy z terminami ≤30 dni
 app.get("/api/fleet/alerts", requireAuth, requireCompanyCtx, async (req, res) => {
   try {
-    const uid = req.userId;
+    const days = parseInt(req.query.days) || 30;
     const vehicles = await sbFetch("vehicles", "GET", null,
       `?${req.companyFilter}&active=neq.false`);
-    const alerts = buildAlerts(vehicles || []);
+    const alerts = buildAlerts(vehicles || [], days);
     res.json(alerts);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1966,7 +1966,7 @@ app.post("/api/alerts/send", requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-function buildAlerts(vehicles) {
+function buildAlerts(vehicles, days = 30) {
   const today = new Date();
   today.setHours(0,0,0,0);
   const alerts = [];
@@ -1982,12 +1982,12 @@ function buildAlerts(vehicles) {
       const d = new Date(v[key]);
       d.setHours(0,0,0,0);
       const daysLeft = Math.round((d - today) / 86400000);
-      if (daysLeft <= 30) {
-        alerts.push({ reg: v.reg, field: key, label, date: v[key], daysLeft });
+      if (daysLeft <= days) {
+        alerts.push({ reg: v.reg, brand: v.brand||"", model: v.model||"", field: key, label, date: v[key], daysLeft });
       }
     }
   }
-  return alerts;
+  return alerts.sort((a,b) => a.daysLeft - b.daysLeft);
 }
 
 async function sendFleetAlertEmail(alerts) {

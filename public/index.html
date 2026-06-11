@@ -1194,6 +1194,7 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
       <button class="fl-tab" onclick="flTab('trailers')">Naczepy</button>
       <button class="fl-tab" onclick="flTab('drivers')">Kierowcy</button>
       <button class="fl-tab" onclick="flTab('settings')">⚙️ Ustawienia</button>
+      <button class="fl-tab" id="flAlertsTab" onclick="flTab('alerts')">🔔 Terminy</button>
     </div>
 
     <!-- POJAZDY -->
@@ -1327,6 +1328,23 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
       <div id="flTrailerList"><div class="fl-empty">Brak naczep. Dodaj pierwszą naczepę powyżej.</div></div>
     </div>
 
+    <!-- TERMINY -->
+    <div id="fl-alerts" class="fl-sec">
+      <div class="fl-card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <span style="font-size:13px;font-weight:700;">Nadchodzące terminy</span>
+          <select id="flAlertsDays" onchange="flLoadAlertsTab()" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--line,#334155);background:var(--panel,#1e293b);color:var(--ink,#e2e8f0);">
+            <option value="14">14 dni</option>
+            <option value="21" selected>21 dni</option>
+            <option value="30">30 dni</option>
+            <option value="60">60 dni</option>
+          </select>
+          <button class="btn secondary" style="font-size:12px;padding:6px 12px;" onclick="flLoadAlertsTab()">🔄 Odśwież</button>
+        </div>
+        <div id="flAlertsBody"><div class="fl-empty">Ładowanie...</div></div>
+      </div>
+    </div>
+
     <!-- USTAWIENIA -->
     <div id="fl-settings" class="fl-sec">
       <div class="fl-card">
@@ -1415,10 +1433,61 @@ window.addEventListener('load', function(){ setTimeout(buildStopsPeek, 350); });
   // ── Tabs ──────────────────────────────────────────────────
   window.flTab = function(t){
     document.querySelectorAll('.fl-tab').forEach((b,i)=>
-      b.classList.toggle('active',['vehicles','trailers','drivers','settings'][i]===t));
+      b.classList.toggle('active',['vehicles','trailers','drivers','settings','alerts'][i]===t));
     document.querySelectorAll('.fl-sec').forEach(s=>s.classList.remove('active'));
     document.getElementById('fl-'+t).classList.add('active');
     if(t==='settings') flLoadAlertEmail();
+    if(t==='alerts')   flLoadAlertsTab();
+  };
+
+  window.flLoadAlertsTab = async function() {
+    const days = document.getElementById('flAlertsDays')?.value || 21;
+    const el   = document.getElementById('flAlertsBody');
+    if(!el) return;
+    el.innerHTML = '<div class="fl-empty">Ładowanie...</div>';
+    try {
+      const r = await fetch(`/api/fleet/alerts?days=${days}`);
+      const alerts = await r.json();
+      if(!Array.isArray(alerts) || !alerts.length) {
+        el.innerHTML = `<div class="fl-empty">Brak terminów w ciągu ${days} dni. ✅</div>`;
+        // Aktualizuj badge
+        document.getElementById('flAlertsTab') && (document.getElementById('flAlertsTab').textContent = '🔔 Terminy');
+        return;
+      }
+      // Aktualizuj badge z liczba
+      const exp = alerts.filter(a=>a.daysLeft<0).length;
+      const tab = document.getElementById('flAlertsTab');
+      if(tab) tab.textContent = exp > 0 ? \`🔴 Terminy (\${exp})\` : \`🟡 Terminy (\${alerts.length})\`;
+
+      el.innerHTML = \`
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="color:var(--ink-faint,#64748b);text-align:left;">
+              <th style="padding:6px 8px;">Rejestracja</th>
+              <th style="padding:6px 8px;">Marka/Model</th>
+              <th style="padding:6px 8px;">Termin</th>
+              <th style="padding:6px 8px;">Data</th>
+              <th style="padding:6px 8px;">Status</th>
+            </tr>
+          </thead>
+          <tbody>\${alerts.map(a => {
+            const color = a.daysLeft < 0 ? '#ef4444' : a.daysLeft <= 7 ? '#ef4444' : a.daysLeft <= 14 ? '#f59e0b' : '#22c55e';
+            const status = a.daysLeft < 0
+              ? \`⛔ Przeterminowane \${Math.abs(a.daysLeft)} dni temu\`
+              : a.daysLeft === 0 ? '🔴 Dziś!'
+              : \`za \${a.daysLeft} dni\`;
+            return \`<tr style="border-bottom:1px solid var(--line,#334155)22;">
+              <td style="padding:7px 8px;font-weight:700;">\${a.reg}</td>
+              <td style="padding:7px 8px;color:var(--ink-faint,#64748b);">\${a.brand} \${a.model}</td>
+              <td style="padding:7px 8px;">\${a.label}</td>
+              <td style="padding:7px 8px;">\${a.date}</td>
+              <td style="padding:7px 8px;font-weight:600;color:\${color};">\${status}</td>
+            </tr>\`;
+          }).join('')}</tbody>
+        </table>\`;
+    } catch(e) {
+      el.innerHTML = '<div class="fl-empty">Błąd ładowania terminów.</div>';
+    }
   };
 
   // ── Badge alertów na przycisku Flota ─────────────────────
