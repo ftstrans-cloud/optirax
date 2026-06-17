@@ -65,9 +65,13 @@ console.log("🔥 OPTIRAX SERVER – HERE Routing API v8 🔥");
 // ============================================================
 const HERE_API_KEY = process.env.HERE_API_KEY || "";
 // Osobny klucz TYLKO do map tiles (z restrykcją domeny w panelu HERE).
-// Jeśli ustawiony — front dostaje JEGO, a routing serwerowy nadal używa HERE_API_KEY.
-// Jeśli pusty — fallback do HERE_API_KEY (stare zachowanie).
-const HERE_TILES_KEY = process.env.HERE_TILES_KEY || HERE_API_KEY;
+// BEZPIECZEŃSTWO: BRAK fallbacku do HERE_API_KEY. Jeśli HERE_TILES_KEY nie jest
+// ustawiony, front dostaje "" i mapa leci na OSM — NIGDY nie serwujemy klucza
+// routingowego do przeglądarki (to była przyczyna wycieku z maja 2026).
+const HERE_TILES_KEY = process.env.HERE_TILES_KEY || "";
+if (!HERE_TILES_KEY) {
+  console.warn("⚠️  Brak HERE_TILES_KEY — kafle map lecą na OSM. USTAW HERE_TILES_KEY na Railway, inaczej brak kafli HERE (klucza routingowego NIE serwujemy do frontu).");
+}
 if (!HERE_API_KEY) {
   console.warn("⚠️  Brak HERE_API_KEY w .env – routing używa OSRM + offline fallback");
 }
@@ -781,6 +785,76 @@ async function requireAdmin(req, res, next) {
 }
 
 // ============================================================
+// RATE-LIMITER HERE  (ochrona przed powtórką spike'u 2,5 mln transakcji)
+// In-memory, per-instancja. Gatuje /api/route ORAZ /api/route/multi.
+//   - 12 wywołań / minutę / użytkownik
+//   - 120 wywołań / godzinę / użytkownik
+//   - po przekroczeniu: blokada 15 min
+//   - GLOBALNY kill-switch: 200 wywołań / minutę łącznie (wszyscy) → 503
+//   - alert mailowy do właściciela przy przekroczeniu (max 1/15min, anty-spam)
+// ============================================================
+const HERE_RL_PER_MIN   = 12;
+const HERE_RL_PER_HOUR  = 120;
+const HERE_RL_BLOCK_MS   = 15 * 60 * 1000;
+const HERE_RL_GLOBAL_MIN = 200;
+
+const _rlUsers   = new Map();      // userId -> { minWin, minCount, hourWin, hourCount, blockedUntil }
+let   _rlGlobal  = { win: 0, count: 0 };
+let   _rlLastAlert = 0;
+
+function _rlAlert(subject, html) {
+  const now = Date.now();
+  if (now - _rlLastAlert < HERE_RL_BLOCK_MS) return; // anty-spam alertów
+  _rlLastAlert = now;
+  try { notifyOwner(subject, html); } catch(e) { console.warn("[rl] alert fail:", e.message); }
+}
+
+function hereRateLimit(req, res, next) {
+  const now  = Date.now();
+  const minW = Math.floor(now / 60000);
+  const hrW  = Math.floor(now / 3600000);
+
+  // Globalny kill-switch
+  if (_rlGlobal.win !== minW) { _rlGlobal = { win: minW, count: 0 }; }
+  _rlGlobal.count++;
+  if (_rlGlobal.count > HERE_RL_GLOBAL_MIN) {
+    _rlAlert("🚨 OPTIRAX kill-switch HERE",
+      `<p style="font-family:sans-serif">Globalny limit ${HERE_RL_GLOBAL_MIN} wywołań/min przekroczony (${_rlGlobal.count}). Routing czasowo wstrzymany. Sprawdź ruch — możliwy atak lub pętla.</p>`);
+    return res.status(503).json({ error: "Chwilowe przeciążenie. Spróbuj za minutę.", code: "GLOBAL_LIMIT" });
+  }
+
+  const uid = req.userId || "anon";
+  let u = _rlUsers.get(uid);
+  if (!u) { u = { minWin: minW, minCount: 0, hourWin: hrW, hourCount: 0, blockedUntil: 0 }; _rlUsers.set(uid, u); }
+
+  if (u.blockedUntil > now) {
+    const sec = Math.ceil((u.blockedUntil - now) / 1000);
+    return res.status(429).json({ error: `Za dużo zapytań. Odczekaj ${sec}s.`, code: "RATE_LIMIT", retry_after_s: sec });
+  }
+
+  if (u.minWin  !== minW) { u.minWin  = minW; u.minCount  = 0; }
+  if (u.hourWin !== hrW)  { u.hourWin = hrW;  u.hourCount = 0; }
+  u.minCount++; u.hourCount++;
+
+  if (u.minCount > HERE_RL_PER_MIN || u.hourCount > HERE_RL_PER_HOUR) {
+    u.blockedUntil = now + HERE_RL_BLOCK_MS;
+    _rlAlert("⚠️ OPTIRAX rate-limit użytkownika",
+      `<p style="font-family:sans-serif">Użytkownik <b>${req.user?.email || uid}</b> przekroczył limit (${u.minCount}/min, ${u.hourCount}/h) i został zablokowany na 15 min. Email: ${req.user?.email || "—"}</p>`);
+    return res.status(429).json({ error: "Przekroczono limit zapytań. Blokada 15 min.", code: "RATE_LIMIT" });
+  }
+
+  next();
+}
+
+// Sprzątanie starych wpisów co 30 min (nie rośnie w nieskończoność)
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of _rlUsers) {
+    if (v.blockedUntil < now && (now - v.hourWin * 3600000) > 3600000) _rlUsers.delete(k);
+  }
+}, 30 * 60 * 1000);
+
+// ============================================================
 // DZIENNY LIMIT KALKULACJI DLA TRIAL
 // Ogranicza wywołania /api/route do DAILY_CALC_LIMIT na dobę.
 // Reset automatyczny gdy data się zmieni (o północy).
@@ -792,13 +866,19 @@ async function requireCalcQuota(req, res, next) {
   try {
     const uid = req.userId;
     const profiles = await sbFetch("profiles", "GET", null,
-      `?id=eq.${uid}&select=plan,daily_calc_count,daily_calc_date`);
+      `?id=eq.${uid}&select=plan,daily_calc_count,daily_calc_date,total_calc_count`);
     const p = profiles?.[0];
     if (!p) return next(); // brak profilu — przepuść (nie blokuj)
 
-    // Płatni użytkownicy — brak limitu
+    const newTotal = (p.total_calc_count || 0) + 1; // dożywotni licznik — rośnie dla KAŻDEGO planu
+
+    // Płatni użytkownicy — brak limitu dziennego, ale liczymy total
     const plan = (p.plan || "trial").toLowerCase();
-    if (plan !== "trial") return next();
+    if (plan !== "trial") {
+      sbFetch("profiles", "PATCH", { total_calc_count: newTotal }, `?id=eq.${uid}`)
+        .catch(e => console.warn("[quota] total PATCH (paid) failed:", e.message));
+      return next();
+    }
 
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     let count = p.daily_calc_count || 0;
@@ -822,7 +902,7 @@ async function requireCalcQuota(req, res, next) {
     // przy szybkich kolejnych kliknięciach "Pobierz km"
     try {
       await sbFetch("profiles", "PATCH",
-        { daily_calc_count: count + 1, daily_calc_date: today },
+        { daily_calc_count: count + 1, daily_calc_date: today, total_calc_count: newTotal },
         `?id=eq.${uid}`
       );
     } catch(e) {
@@ -910,12 +990,27 @@ app.get("/api/geocode", async (req, res) => {
   }
 });
 
+// Blokuje adresy wewnętrzne/prywatne (ochrona SSRF)
+function isSafePublicUrl(u) {
+  try {
+    const url = new URL(u);
+    if (!/^https?:$/.test(url.protocol)) return false;
+    const h = url.hostname.toLowerCase();
+    if (h === "localhost" || h.endsWith(".internal") || h.endsWith(".local")) return false;
+    // IP literalne w zakresach prywatnych/loopback/link-local/metadata
+    if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h)) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
+    if (/^169\.254\./.test(h) || h === "0.0.0.0" || h === "::1" || h.startsWith("[")) return false;
+    return true;
+  } catch { return false; }
+}
+
 // Rozwija skrócone linki (maps.app.goo.gl, goo.gl/maps) do pełnego URL
-app.post("/api/expand-url", async (req, res) => {
+app.post("/api/expand-url", requireAuth, async (req, res) => {
   try {
     const { url } = req.body || {};
     if (!url || typeof url !== "string") return res.status(400).json({ error: "Brak URL" });
-    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Nieprawidłowy URL" });
+    if (!isSafePublicUrl(url)) return res.status(400).json({ error: "Niedozwolony URL" });
 
     // Google Maps wymaga przeglądarkowego User-Agent
     const headers = {
@@ -932,6 +1027,7 @@ app.post("/api/expand-url", async (req, res) => {
       console.log(`[expand-url] hop ${hops}: ${r.status} -> ${loc?.slice(0,100) || "(no redirect)"}`);
       if (loc && (r.status >= 300 && r.status < 400)) {
         currentUrl = loc.startsWith("http") ? loc : new URL(loc, currentUrl).href;
+        if (!isSafePublicUrl(currentUrl)) { console.warn("[expand-url] zablokowano hop na adres wewnętrzny"); break; }
         hops++;
       } else if (r.status === 200) {
         // Dla niektórych skróconych linków Google odpowiada HTML z meta redirect
@@ -2146,7 +2242,7 @@ app.get("/api/quota", requireAuth, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post("/api/route", requireAuth, requireActiveSubscription, requireCalcQuota, async (req, res) => {
+app.post("/api/route", requireAuth, requireActiveSubscription, hereRateLimit, requireCalcQuota, async (req, res) => {
   try {
     const { origin, destination, truckParams } = req.body || {};
     if (!origin || !destination) return res.status(400).json({ error: "Podaj skąd i dokąd." });
@@ -2230,7 +2326,7 @@ app.post("/api/route", requireAuth, requireActiveSubscription, requireCalcQuota,
 });
 
 // ---- /api/route/multi  (wielopunktowa, bez alternatyw) ----
-app.post("/api/route/multi", requireAuth, requireActiveSubscription, async (req, res) => {
+app.post("/api/route/multi", requireAuth, requireActiveSubscription, hereRateLimit, async (req, res) => {
   try {
     const { origin, destination, stops, truckParams } = req.body || {};
     if (!origin || !destination) return res.status(400).json({ error: "Podaj skąd i dokąd." });
