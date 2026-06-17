@@ -73,9 +73,16 @@ console.log("getRoute() start:", getRouteFromUI());
 
     if (!res.ok) {
       if (res.status === 429) {
-        // Limit kalkulacji wyczerpany
-        routeInfoEl.textContent = "Dzienny limit kalkulacji wyczerpany.";
-        showQuotaModal(data);
+        if (data.code === "RATE_LIMIT" || data.code === "GLOBAL_LIMIT") {
+          // Za szybkie/zbyt liczne zapytania — NIE pokazuj modala upgrade'u
+          routeInfoEl.textContent = data.error || "Za dużo zapytań. Odczekaj chwilę.";
+        } else {
+          // Dzienny limit kalkulacji trialu wyczerpany
+          routeInfoEl.textContent = "Dzienny limit kalkulacji wyczerpany.";
+          showQuotaModal(data);
+        }
+      } else if (res.status === 503) {
+        routeInfoEl.textContent = data.error || "Chwilowe przeciążenie. Spróbuj za minutę.";
       } else {
         routeInfoEl.textContent = data.error || "Błąd wyznaczania trasy.";
       }
@@ -458,6 +465,7 @@ function updateQuotaDisplay(remaining, limit) {
 }
 
 function showQuotaModal(data) {
+  const lim = data?.limit ?? 10;
   const existing = document.getElementById("quotaModal");
   if (existing) existing.remove();
 
@@ -473,10 +481,10 @@ function showQuotaModal(data) {
                 color:#e2e8f0;">
       <div style="font-size:32px;margin-bottom:12px;">🚛</div>
       <div style="font-size:18px;font-weight:600;margin-bottom:8px;">
-        Dzisiaj obliczyłeś już ${data.limit} tras
+        Dzisiaj obliczyłeś już ${lim} tras
       </div>
       <div style="font-size:14px;color:#94a3b8;line-height:1.7;margin-bottom:24px;">
-        Limit trialu to <strong style="color:#e2e8f0;">${data.limit} kalkulacji dziennie</strong>.
+        Limit trialu to <strong style="color:#e2e8f0;">${lim} kalkulacji dziennie</strong>.
         Jutro licznik się resetuje.<br><br>
         Na planie płatnym liczysz bez limitu — i masz historię, flotę oraz alerty terminów.
       </div>
