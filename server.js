@@ -2367,7 +2367,7 @@ app.post("/api/route/multi", requireAuth, requireActiveSubscription, hereRateLim
 });
 
 // ---- /api/parse-stops  (NLP wyciąganie adresów z tekstu) ----
-app.post("/api/parse-stops", requireAuth, requireActiveSubscription, async (req, res) => {
+app.post("/api/parse-stops", requireAuth, requireActiveSubscription, hereRateLimit, async (req, res) => {
   try {
     const { text } = req.body || {};
     if (!text?.trim()) return res.status(400).json({ error: "Brak tekstu." });
@@ -2421,7 +2421,7 @@ Zasady:
 });
 
 
-app.post("/api/report", requireAuth, requireActiveSubscription, async (req, res) => {
+app.post("/api/report", requireAuth, requireActiveSubscription, hereRateLimit, async (req, res) => {
   try {
     const calc = req.body?.calc || req.body?.result || req.body;
     if (!calc || typeof calc !== "object") return res.status(400).json({ error: "Brak danych kalkulatora" });
