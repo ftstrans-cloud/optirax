@@ -317,39 +317,29 @@ console.log("RUN CLICK", fromPolicz ? "(POLICZ)" : "(auto)");
 function applyVignetteOverrides(tg, v){
   if (!tg?.by_country?.length) return tg;
 
-  const hasNL = !!v?.rows?.some(r => String(r.country).startsWith("NL"));
+  // NL: od 01.07.2026 system km-based (OBU) — NL traktujemy jak DE/FR (myto per km)
+  // NL usuniete z logiki winieta. Zostaje tylko GB (winieta dzienna nadal obowiazuje).
   const hasGB = !!v?.rows?.some(r => String(r.country).startsWith("GB"));
 
-  if (!hasNL && !hasGB) return tg;
+  if (!hasGB) return tg;
 
-  const isNL = (c) => /holand|niderl|nether|nl\b/i.test(String(c||""));
-  const isGB = (c) => /\bgb\b|uk|united kingdom|wielka brytania|england|scotland/i.test(String(c||""));
+  const isGB = (c) => /gb|uk|united kingdom|wielka brytania|england|scotland/i.test(String(c||""));
 
   let removed = 0;
   const kept = [];
 
   for (const x of tg.by_country){
     const c = x.country;
-    const isHereToll = x.source === "HERE"; // HERE = rzeczywiste myto (tunel, autostrady)
-    const isOffline  = !isHereToll;         // offline = szacowany €/km
+    const isRealToll = x.source === "HERE" || x.source === "TomTom";
+    const isOffline  = !isRealToll;
 
-    // Dla NL: zawsze zeruj €/km (winieta zastępuje), ale nie usuwaj jeśli HERE podało rzeczywiste myto
-    if (hasNL && isNL(c)) {
-      if (isOffline) {
-        // pomiń – winieta zastępuje szacunek offline
-        removed += Number(x.cost_eur || 0);
-        continue;
-      }
-      // HERE podało rzeczywiste myto NL (np. A2 itp.) – zachowaj, winieta DODATKOWO
-    }
-
-    // Dla GB: zeruj TYLKO offline (szacunek €/km), NIE zeruj rzeczywistego myto HERE (tunel!)
+    // Dla GB: zeruj TYLKO offline (szacunek EUR/km), NIE zeruj rzeczywistego myto (tunel!)
     if (hasGB && isGB(c)) {
       if (isOffline) {
         removed += Number(x.cost_eur || 0);
         continue;
       }
-      // HERE tunel Channel Tunnel = realne myto – zachowaj!
+      // TomTom/HERE: realne myto (Channel Tunnel) – zachowaj!
     }
 
     kept.push(x);

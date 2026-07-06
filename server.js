@@ -112,8 +112,10 @@ const ISO_TO_PL = {
 };
 
 // ============================================================
-// STAWKI MYTO €/km  – fallback gdy brak HERE lub dla OSRM
-// Kraje z winietą dzienną (NL, GB, CH) mają 0 – liczone osobno w app.js
+// STAWKI MYTO €/km  – fallback gdy brak TomTom lub dla OSRM
+// NL: od 01.07.2026 system km-based (OBU) zastąpił winietę dzienną
+// Stawka bazowa dla TIR 40t EURO VI: ~0.149 €/km
+// GB: winieta dzienna nadal obowiązuje, liczona osobno w app.js
 // ============================================================
 const TOLL_RATE = {
   "Polska":          0.16,
@@ -123,7 +125,7 @@ const TOLL_RATE = {
   "Włochy":          0.20,
   "Francja":         0.40,
   "Belgia":          0.21,
-  "Holandia":        0.00,   // winieta dzienna
+  "Holandia":        0.149,  // km-based od 01.07.2026 (EURO VI 40t), było: winieta dzienna
   "Słowacja":        0.20,
   "Węgry":           0.55,
   "Słowenia":        0.20,
@@ -178,7 +180,7 @@ function getRouteScore(margin) {
 }
 
 // ============================================================
-// TOMTOM ROUTING API v2  – truck profile z mytem
+// TOMTOM ROUTING API v2  – truck profile z mytem per sekcja
 // Free tier: 2500 req/dzień. Dokumentacja:
 // https://developer.tomtom.com/routing-api/documentation/routing/calculate-route
 // ============================================================
@@ -199,7 +201,7 @@ async function tomtomRoute(waypoints, truckParams = {}) {
   // TomTom: waypoints jako locations w URL path
   const locs = waypoints.map(([lat, lon]) => `${lat},${lon}`).join(":");
 
-  // Parametry pojazdu ciężarowego
+  // Parametry pojazdu ciężarowego (w metrach i kg)
   const vehicleParams = isBus ? "" :
     `&vehicleWeight=${grossWeightKg}` +
     `&vehicleAxleWeight=${axleWeightKg}` +
@@ -216,19 +218,17 @@ async function tomtomRoute(waypoints, truckParams = {}) {
 
   // Alternatywne trasy tylko dla tras A→B (2 punkty)
   const maxAlternatives = waypoints.length === 2 ? 2 : 0;
-
   const travelMode = isBus ? "car" : "truck";
 
+  // v2 API — zwraca tollInformation per sekcja z kwotą w lokalnej walucie + EUR
   const url =
-    `https://api.tomtom.com/routing/1/calculateRoute/${locs}/json` +
+    `https://api.tomtom.com/routing/2/calculateRoute/${locs}/json` +
     `?key=${TOMTOM_API_KEY}` +
     `&travelMode=${travelMode}` +
     `&routeType=fastest` +
     `&traffic=false` +
-    `&computeBestOrder=false` +
     `&sectionType=tollRoad` +
     `&report=effectiveSettings` +
-    `&computeTravelTimeFor=none` +
     `&maxAlternatives=${maxAlternatives}` +
     vehicleParams + avoidParam;
 
@@ -255,40 +255,91 @@ function parseTomtomRoute(ttData, routeIdx = 0) {
   const distance_km = round1((summary.lengthInMeters || 0) / 1000);
   const duration_h  = round2((summary.travelTimeInSeconds || 0) / 3600);
 
-  // Geometria z legs → points (lista [lat,lon])
+  // Geometria z legs → points [lon, lat] (GeoJSON format)
   const allCoords = [];
   (route.legs || []).forEach(leg => {
     (leg.points || []).forEach(pt => {
-      allCoords.push([pt.longitude, pt.latitude]); // GeoJSON: [lon, lat]
+      allCoords.push([pt.longitude, pt.latitude]);
     });
   });
   const geometry = { type: "LineString", coordinates: allCoords };
 
-  // Myto z sekcji tollRoad
-  // TomTom zwraca sekcje z typem "TOLL_ROAD" — wyciągamy km per kraj z geometrii
-  // bo TomTom nie zwraca breakdownu myto per kraj bezpośrednio w /calculateRoute
-  // Używamy tollsFromGeometryFallback z rzeczywistą geometrią trasy
-  const tollFallback = tollsFromGeometryFallback(geometry);
+  // Myto z sekcji TomTom v2 — tollInformation per sekcja
+  // TomTom v2 zwraca sekcje z typem TOLL_ROAD i opcjonalnie tollInformation
+  const tollByCountry = {}; // iso2 → { name, cost_eur }
 
-  // Sprawdź czy trasa ma sekcje toll (jeśli nie ma — myto = 0)
-  const hasTollSections = (route.sections || []).some(s => s.sectionType === "TOLL_ROAD");
-  if (!hasTollSections) {
-    // Brak płatnych odcinków na tej trasie
-    return {
-      distance_km,
-      duration_h,
-      geometry,
-      tolls_geo: { total_eur: 0, by_country: [] },
-    };
+  (route.sections || []).forEach(section => {
+    if (section.sectionType !== "TOLL_ROAD") return;
+
+    const toll = section.tollInformation;
+    if (!toll) return;
+
+    // countryCode w sekcji (ISO 3166-1 alpha-2)
+    const iso2 = section.countryCode || toll.countryCode || "??";
+    if (iso2 === "??") return;
+
+    // Szukaj ceny w EUR
+    let costEur = 0;
+    (toll.paymentOptions || []).forEach(opt => {
+      (opt.estimatedPrice?.currencyCode === "EUR" ? [opt.estimatedPrice] : []).forEach(price => {
+        costEur = Math.max(costEur, Number(price.amount || 0));
+      });
+      // Fallback: inne waluty przelicz przez przybliżony kurs
+      if (costEur === 0) {
+        (opt.estimatedPrice ? [opt.estimatedPrice] : []).forEach(price => {
+          const amt = Number(price.amount || 0);
+          const ccy = price.currencyCode || "";
+          const rates = { PLN: 0.233, GBP: 1.17, CHF: 1.02, CZK: 0.04, HUF: 0.0025, DKK: 0.134 };
+          costEur = Math.max(costEur, amt * (rates[ccy] || 1));
+        });
+      }
+    });
+
+    if (!tollByCountry[iso2]) tollByCountry[iso2] = { costEur: 0 };
+    tollByCountry[iso2].costEur += costEur;
+  });
+
+  const hasTomtomTolls = Object.keys(tollByCountry).length > 0;
+
+  if (hasTomtomTolls) {
+    // Mamy realne dane z TomTom — łączymy z km z geometrii
+    const geoFallback = tollsFromGeometryFallback(geometry);
+    const geoByIso2 = {};
+    geoFallback.by_country.forEach(x => {
+      // Mapuj nazwę polską → ISO2
+      const iso2map = {
+        "Polska":"PL","Niemcy":"DE","Czechy":"CZ","Austria":"AT","Włochy":"IT",
+        "Francja":"FR","Belgia":"BE","Holandia":"NL","Słowacja":"SK","Węgry":"HU",
+        "Słowenia":"SI","Chorwacja":"HR","Wielka Brytania":"GB","Szwajcaria":"CH",
+        "Rumunia":"RO","Bułgaria":"BG","Serbia":"RS","Hiszpania":"ES","Portugalia":"PT",
+        "Szwecja":"SE","Dania":"DK","Norwegia":"NO","Finlandia":"FI","Luksemburg":"LU",
+      };
+      const iso2 = Object.entries(iso2map).find(([k]) => k === x.country)?.[1] || "??";
+      if (iso2 !== "??") geoByIso2[iso2] = x.km;
+    });
+
+    const by_country = Object.entries(tollByCountry).map(([iso2, d]) => {
+      const name = ISO_TO_PL[iso2] || iso2;
+      const km   = geoByIso2[iso2] || 0;
+      return {
+        country:        name,
+        km:             round1(km),
+        rate_eur_per_km: km > 0 ? round2(d.costEur / km) : 0,
+        cost_eur:       round2(d.costEur),
+        source:         "TomTom",
+      };
+    }).sort((a, b) => b.cost_eur - a.cost_eur);
+
+    const total_eur = round2(by_country.reduce((s, x) => s + x.cost_eur, 0));
+    console.log("TomTom tolls per country:", JSON.stringify(by_country.map(x => `${x.country}:${x.cost_eur}€`)));
+
+    return { distance_km, duration_h, geometry, tolls_geo: { total_eur, by_country } };
   }
 
-  // Myto offline per kraj na podstawie rzeczywistej geometrii TomTom
-  return {
-    distance_km,
-    duration_h,
-    geometry,
-    tolls_geo: { ...tollFallback, source: "TomTom+offline" },
-  };
+  // Brak danych TomTom — fallback offline €/km z rzeczywistą geometrią
+  console.log("TomTom: brak toll sections, używam offline fallback z geometrii TomTom");
+  const fallback = tollsFromGeometryFallback(geometry);
+  return { distance_km, duration_h, geometry, tolls_geo: fallback };
 }
 
 // ============================================================

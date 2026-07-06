@@ -242,20 +242,17 @@ function calcDailyVignettesFromGeo(tg, driverDays, gbpEur, routeText = "", total
 
   const gbInText =
     rt.includes("united kingdom") || rt.includes("wielka brytania") ||
-    rt.includes("zjednoczone królestwo") || rt.includes("england") ||
+    rt.includes("zjednoczone krolewstwo") || rt.includes("england") ||
     rt.includes("great britain") || rt.includes("scotland") || rt.includes("wales") ||
     rt.includes(" gb") || rt.includes(" uk");
 
-  const nlInText =
-    rt.includes("netherlands") || rt.includes("holandia") || rt.includes("nederland") ||
-    rt.includes("amsterdam") || rt.includes("rotterdam") || rt.includes("utrecht") ||
-    rt.includes("niderl");
+  // NL: od 01.07.2026 system km-based (OBU) — myto NL liczone w TOLL_RATE jak DE/FR
+  // Winieta NL usunieta z tej funkcji. Pozostaje tylko GB.
 
   const nonEuKmEst = (routeKm > 0 && euKm > 0) ? Math.max(0, routeKm - euKm) : 0;
   const totalKmForDays = (euKm + (gbInText ? nonEuKmEst : 0)) || euKm || routeKm || 0;
 
   const daysTotal = Math.max(0, Number(driverDays || 0));
-  // km/dzień – z UI, albo z trasy/dni, albo domyślnie 550
   const kmPerDay = (Number(kmPerDayUi) > 0)
     ? Number(kmPerDayUi)
     : (daysTotal > 0 && totalKmForDays > 0 ? (totalKmForDays / daysTotal) : 550);
@@ -265,44 +262,23 @@ function calcDailyVignettesFromGeo(tg, driverDays, gbpEur, routeText = "", total
     return Math.max(1, Math.ceil(kmInCountry / kmPerDay));
   };
 
-  const NL_EUR_PER_DAY = 12;
   const GB_GBP_PER_DAY = 10;
   const kGbpEur = (Number(gbpEur) > 0) ? Number(gbpEur) : 1.17;
 
-  let kmNL = 0, kmGB = 0;
-
+  let kmGB = 0;
   for (const x of by) {
     const code = normC(x.country);
     const km = Number(x.km) || 0;
     if (!km) continue;
-    if (code === "NL") kmNL += km;
     if (code === "GB") kmGB += km;
   }
 
-  // NL: jeśli nie ma w by_country (wykluczone z HERE), estymuj z geometrii offline
-  // Używamy stałej ~200km dla trasy przez NL (Rotterdam-granica DE ~150km, Amsterdam ~200km)
-  // Lepsza estymacja: szukaj "Holandia" w offline geo jeśli dostępne
-  const nlOfflineKm = (() => {
-    const offlineNL = (window._lastOfflineTolls?.by_country || []).find(x => normC(x.country) === "NL");
-    return offlineNL?.km || 0;
-  })();
-  const kmNLFinal = (kmNL > 0) ? kmNL : (nlInText ? (nlOfflineKm || 200) : 0);
-
-  // GB km: z HERE jeśli dostępne, inaczej estymacja (totalKm - euKm)
   const kmGBFinal = (kmGB > 0) ? kmGB : (gbInText ? nonEuKmEst : 0);
-
-  const daysNL = kmNLFinal > 0 ? daysForKm(kmNLFinal) : 0;
   const daysGB = kmGBFinal > 0 ? daysForKm(kmGBFinal) : 0;
 
-  // BEZ cappowania do driverDays – winieta zależy od km w kraju, nie od łącznych dni
-
-  if (daysNL > 0) {
-    const costEur = daysNL * NL_EUR_PER_DAY;
-    rows.push({ country: "NL (winieta)", unit: "dzień", qty: daysNL, rate: NL_EUR_PER_DAY, rate_ccy: "EUR", cost_eur: +costEur.toFixed(2) });
-  }
   if (daysGB > 0) {
     const costEur = daysGB * GB_GBP_PER_DAY * kGbpEur;
-    rows.push({ country: "GB (winieta)", unit: "dzień", qty: daysGB, rate: GB_GBP_PER_DAY, rate_ccy: "GBP", cost_eur: +costEur.toFixed(2) });
+    rows.push({ country: "GB (winieta)", unit: "dzien", qty: daysGB, rate: GB_GBP_PER_DAY, rate_ccy: "GBP", cost_eur: +costEur.toFixed(2) });
   }
 
   const total = rows.reduce((s, r) => s + (Number(r.cost_eur) || 0), 0);
