@@ -572,37 +572,41 @@ document.addEventListener("input", (e) => {
 });
 
 // ============================================================
-// STYLE MAPY – HERE Map Tile API v3 + OSM fallback
+// STYLE MAPY – TomTom Map Display API + OSM fallback
 // ============================================================
-const HERE_KEY = window._hereApiKey || "";  // wstrzyknięty przez serwer lub odczytany z meta
 
-// Buduje URL HERE Map Tile v3
-function hereTileUrl(style, scheme, apiKey, resource) {
-  // resource: 'background' (tło bez label) | 'base' (tło+drogi+label) | 'label' (tylko label)
-  // style: 'explore' | 'lite' | 'satellite' | 'logistics'
-  // scheme: 'day' | 'night'
-  const res = resource || "base";
-  return `https://maps.hereapi.com/v3/${res}/mc/{z}/{x}/{y}/png?style=${style}.${scheme}&apiKey=${apiKey}&lang=pl&ppi=100`;
+// Buduje URL TomTom Map Display API v1
+// Dokumentacja: https://developer.tomtom.com/map-display-api/documentation/raster/tile
+function tomtomTileUrl(layer, style, apiKey) {
+  // layer: 'basic' | 'hybrid' | 'labels'
+  // style: 'main' | 'night'
+  return `https://api.tomtom.com/map/1/tile/${layer}/${style}/{z}/{x}/{y}.png?key=${apiKey}&language=pl&view=Unified`;
 }
 
 // Mapa stylów do warstw Leaflet
 function buildTileLayers(apiKey) {
-  const attr_here = '&copy; <a href="https://www.here.com">HERE</a>';
-  const attr_osm  = '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>';
+  const attr_tt  = '&copy; <a href="https://www.tomtom.com">TomTom</a> &copy; <a href="https://openstreetmap.org">OpenStreetMap</a>';
+  const attr_osm = '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>';
+  const attr_esri = '&copy; Esri';
 
   return {
-    "here-road-day": apiKey
-      ? L.tileLayer(hereTileUrl("explore", "day", apiKey, "base"),    { attribution: attr_here, maxZoom: 20 })
+    // Jasna mapa drogowa TomTom
+    "tt-road-day": apiKey
+      ? L.tileLayer(tomtomTileUrl("basic", "main", apiKey), { attribution: attr_tt, maxZoom: 22 })
       : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm }),
 
-    "here-road-night": apiKey
-      ? L.tileLayer(hereTileUrl("explore", "night", apiKey, "base"),  { attribution: attr_here, maxZoom: 20 })
-      : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
+    // Ciemna mapa TomTom (noc)
+    "tt-road-night": apiKey
+      ? L.tileLayer(tomtomTileUrl("basic", "night", apiKey), { attribution: attr_tt, maxZoom: 22 })
+      : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: attr_esri }),
 
-    "here-satellite": apiKey
-      ? L.tileLayer(hereTileUrl("satellite", "day", apiKey, "base"),  { attribution: attr_here, maxZoom: 20 })
-      : L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { attribution: "&copy; Esri" }),
+    // Satelita (Esri — TomTom satellite wymaga osobnej licencji)
+    "tt-satellite": L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { attribution: attr_esri, maxZoom: 19 }
+    ),
 
+    // OSM zawsze dostępny
     "osm": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: attr_osm, maxZoom: 19 }),
   };
 }
@@ -613,30 +617,25 @@ let tileLayers = {};
 function switchMapStyle(style) {
   if (!map) return;
 
-  // usuń aktywną warstwę
   if (currentTileLayer) {
     try { map.removeLayer(currentTileLayer); } catch {}
   }
 
-  // dodaj nową
   if (tileLayers[style]) {
     tileLayers[style].addTo(map);
     currentTileLayer = tileLayers[style];
   }
 
-  // zaktualizuj przyciski
   document.querySelectorAll(".mapStyleBtn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.style === style);
   });
 
-  // zapisz preferencję
   try { localStorage.setItem("mapStyle", style); } catch {}
 }
 
 function initMap() {
   if (map) return;
 
-  // Leaflet – scrollWheelZoom domyślnie true, dragging true
   map = L.map("map", {
     zoomControl: true,
     scrollWheelZoom: true,
@@ -644,26 +643,40 @@ function initMap() {
   }).setView([52.23, 21.01], 6);
   window.map = map;
 
-  // Pobierz klucz HERE z serwera, potem zbuduj warstwy
+  // Pobierz klucz TomTom tiles z serwera
   fetch("/api/config")
     .then(r => r.json())
     .then(cfg => {
-      tileLayers = buildTileLayers(cfg.hereApiKey || "");
+      const tilesKey = cfg.tomtomTilesKey || "";
+      tileLayers = buildTileLayers(tilesKey);
 
-      // Domyślny styl: z localStorage lub ciemna HERE
+      // Domyślny styl wg motywu
       const savedStyle = (() => { try { return localStorage.getItem("mapStyle"); } catch { return null; } })();
       const savedTheme = document.documentElement.getAttribute("data-theme") || "dark";
-      const defaultStyle = (savedStyle && tileLayers[savedStyle])
-        ? savedStyle
-        : (savedTheme === "light" ? "here-road-day" : "here-road-night");
+
+      // Mapowanie starych nazw HERE → nowe TomTom (kompatybilność localStorage)
+      const styleMap = {
+        "here-road-day":   "tt-road-day",
+        "here-road-night": "tt-road-night",
+        "here-satellite":  "tt-satellite",
+      };
+      const mappedStyle = styleMap[savedStyle] || savedStyle;
+
+      const defaultStyle = (mappedStyle && tileLayers[mappedStyle])
+        ? mappedStyle
+        : (savedTheme === "light" ? "tt-road-day" : "tt-road-night");
 
       tileLayers[defaultStyle].addTo(map);
       currentTileLayer = tileLayers[defaultStyle];
 
-      // Podepnij przyciski stylu mapy
       document.querySelectorAll(".mapStyleBtn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.style === defaultStyle);
-        btn.addEventListener("click", () => switchMapStyle(btn.dataset.style));
+        // Obsługa starych data-style HERE
+        const mappedBtnStyle = styleMap[btn.dataset.style] || btn.dataset.style;
+        btn.classList.toggle("active", mappedBtnStyle === defaultStyle);
+        btn.addEventListener("click", () => {
+          const s = styleMap[btn.dataset.style] || btn.dataset.style;
+          switchMapStyle(s);
+        });
       });
 
       map.invalidateSize();

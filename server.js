@@ -57,23 +57,23 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_AN
 console.log("Supabase URL:", SUPABASE_URL ? SUPABASE_URL.slice(0,40)+"..." : "BRAK");
 console.log("Supabase KEY:", SUPABASE_KEY ? SUPABASE_KEY.slice(0,20)+"..." : "BRAK");
 
-console.log("🔥 OPTIRAX SERVER – HERE Routing API v8 🔥");
+console.log("🔥 OPTIRAX SERVER – TomTom Routing API v2 🔥");
 
 // ============================================================
-// HERE API KEY
-// Pobierz na: https://platform.here.com  (Base Plan, darmowy do 30k req/mies)
+// TOMTOM API KEYS
+// TOMTOM_API_KEY     — klucz routingowy, TYLKO po stronie serwera, nigdy w przeglądarce
+//                      (Domain whitelist: Off w panelu TomTom — dostęp tylko z Railway IP)
+// TOMTOM_TILES_KEY   — klucz do kafelków mapy, serwowany do frontu przez /api/config
+//                      (Domain whitelist: On, ograniczony do app.optirax.pl)
+// BEZPIECZEŃSTWO: NIGDY nie serwuj TOMTOM_API_KEY do przeglądarki.
 // ============================================================
-const HERE_API_KEY = process.env.HERE_API_KEY || "";
-// Osobny klucz TYLKO do map tiles (z restrykcją domeny w panelu HERE).
-// BEZPIECZEŃSTWO: BRAK fallbacku do HERE_API_KEY. Jeśli HERE_TILES_KEY nie jest
-// ustawiony, front dostaje "" i mapa leci na OSM — NIGDY nie serwujemy klucza
-// routingowego do przeglądarki (to była przyczyna wycieku z maja 2026).
-const HERE_TILES_KEY = process.env.HERE_TILES_KEY || "";
-if (!HERE_TILES_KEY) {
-  console.warn("⚠️  Brak HERE_TILES_KEY — kafle map lecą na OSM. USTAW HERE_TILES_KEY na Railway, inaczej brak kafli HERE (klucza routingowego NIE serwujemy do frontu).");
+const TOMTOM_API_KEY   = process.env.TOMTOM_API_KEY   || "";
+const TOMTOM_TILES_KEY = process.env.TOMTOM_TILES_KEY || "";
+if (!TOMTOM_API_KEY) {
+  console.warn("⚠️  Brak TOMTOM_API_KEY – routing używa OSRM + offline fallback");
 }
-if (!HERE_API_KEY) {
-  console.warn("⚠️  Brak HERE_API_KEY w .env – routing używa OSRM + offline fallback");
+if (!TOMTOM_TILES_KEY) {
+  console.warn("⚠️  Brak TOMTOM_TILES_KEY – kafle map lecą na OSM fallback");
 }
 
 // ============================================================
@@ -178,8 +178,121 @@ function getRouteScore(margin) {
 }
 
 // ============================================================
-// FLEXIBLE POLYLINE DECODER  (format HERE Routing API v8)
-// Spec: https://github.com/heremaps/flexible-polyline
+// TOMTOM ROUTING API v2  – truck profile z mytem
+// Free tier: 2500 req/dzień. Dokumentacja:
+// https://developer.tomtom.com/routing-api/documentation/routing/calculate-route
+// ============================================================
+async function tomtomRoute(waypoints, truckParams = {}) {
+  const {
+    transportMode = "truck",
+    grossWeightKg = 40000,
+    axleWeightKg  = 11500,
+    heightCm      = 400,
+    widthCm       = 255,
+    lengthCm      = 1360,
+    axleCount     = 5,
+    avoidCountries = [],
+  } = truckParams;
+
+  const isBus = transportMode === "bus";
+
+  // TomTom: waypoints jako locations w URL path
+  const locs = waypoints.map(([lat, lon]) => `${lat},${lon}`).join(":");
+
+  // Parametry pojazdu ciężarowego
+  const vehicleParams = isBus ? "" :
+    `&vehicleWeight=${grossWeightKg}` +
+    `&vehicleAxleWeight=${axleWeightKg}` +
+    `&vehicleHeight=${(heightCm / 100).toFixed(2)}` +
+    `&vehicleWidth=${(widthCm / 100).toFixed(2)}` +
+    `&vehicleLength=${(lengthCm / 100).toFixed(2)}` +
+    `&vehicleNumberOfAxles=${axleCount}` +
+    `&vehicleCommercial=true`;
+
+  // Omijanie krajów (kody ISO 3166-1 alpha-2)
+  const avoidParam = avoidCountries.length > 0
+    ? "&avoid=countries:" + avoidCountries.join(",")
+    : "";
+
+  // Alternatywne trasy tylko dla tras A→B (2 punkty)
+  const maxAlternatives = waypoints.length === 2 ? 2 : 0;
+
+  const travelMode = isBus ? "car" : "truck";
+
+  const url =
+    `https://api.tomtom.com/routing/1/calculateRoute/${locs}/json` +
+    `?key=${TOMTOM_API_KEY}` +
+    `&travelMode=${travelMode}` +
+    `&routeType=fastest` +
+    `&traffic=false` +
+    `&computeBestOrder=false` +
+    `&sectionType=tollRoad` +
+    `&report=effectiveSettings` +
+    `&computeTravelTimeFor=none` +
+    `&maxAlternatives=${maxAlternatives}` +
+    vehicleParams + avoidParam;
+
+  console.log("TomTom URL (bez klucza):", url.replace(TOMTOM_API_KEY, "KEY").slice(0, 300));
+
+  const r = await fetch(url);
+  if (!r.ok) {
+    const txt = await r.text();
+    console.error("TomTom ERROR:", r.status, txt.slice(0, 400));
+    throw new Error(`TomTom ${r.status}: ${txt.slice(0, 300)}`);
+  }
+  const data = await r.json();
+  console.log("TomTom OK – routes:", data.routes?.length);
+  return data;
+}
+
+function parseTomtomRoute(ttData, routeIdx = 0) {
+  const routes = ttData?.routes;
+  if (!routes?.length) return null;
+  const route = routes[routeIdx] || routes[0];
+  if (!route) return null;
+
+  const summary = route.summary || {};
+  const distance_km = round1((summary.lengthInMeters || 0) / 1000);
+  const duration_h  = round2((summary.travelTimeInSeconds || 0) / 3600);
+
+  // Geometria z legs → points (lista [lat,lon])
+  const allCoords = [];
+  (route.legs || []).forEach(leg => {
+    (leg.points || []).forEach(pt => {
+      allCoords.push([pt.longitude, pt.latitude]); // GeoJSON: [lon, lat]
+    });
+  });
+  const geometry = { type: "LineString", coordinates: allCoords };
+
+  // Myto z sekcji tollRoad
+  // TomTom zwraca sekcje z typem "TOLL_ROAD" — wyciągamy km per kraj z geometrii
+  // bo TomTom nie zwraca breakdownu myto per kraj bezpośrednio w /calculateRoute
+  // Używamy tollsFromGeometryFallback z rzeczywistą geometrią trasy
+  const tollFallback = tollsFromGeometryFallback(geometry);
+
+  // Sprawdź czy trasa ma sekcje toll (jeśli nie ma — myto = 0)
+  const hasTollSections = (route.sections || []).some(s => s.sectionType === "TOLL_ROAD");
+  if (!hasTollSections) {
+    // Brak płatnych odcinków na tej trasie
+    return {
+      distance_km,
+      duration_h,
+      geometry,
+      tolls_geo: { total_eur: 0, by_country: [] },
+    };
+  }
+
+  // Myto offline per kraj na podstawie rzeczywistej geometrii TomTom
+  return {
+    distance_km,
+    duration_h,
+    geometry,
+    tolls_geo: { ...tollFallback, source: "TomTom+offline" },
+  };
+}
+
+// ============================================================
+// FLEXIBLE POLYLINE DECODER  (format HERE Routing API v8 — zachowany dla kompatybilności)
 // ============================================================
 function decodeFlexiblePolyline(encoded) {
   if (!encoded) return [];
@@ -539,28 +652,28 @@ async function osrmFetch(coordsStr, alternatives=false) {
 }
 
 // ============================================================
-// MASTER ROUTE  – HERE lub OSRM
+// MASTER ROUTE  – TomTom → OSRM fallback
 // ============================================================
 async function getRouteData(geocodedPoints, truckParams={}, alternatives=false) {
-  if (HERE_API_KEY) {
+  if (TOMTOM_API_KEY) {
     try {
       const waypoints = geocodedPoints.map(p => [p.lat, p.lon]);
-      const hereData  = await hereRoute(waypoints, truckParams);
-      const routes    = hereData?.routes || [];
-      if (!routes.length) throw new Error("HERE: 0 tras");
+      const ttData    = await tomtomRoute(waypoints, truckParams);
+      const routes    = ttData?.routes || [];
+      if (!routes.length) throw new Error("TomTom: 0 tras");
 
       if (alternatives && routes.length > 1) {
-        return routes.map((_,i) => parseHereRoute(hereData,i)).filter(Boolean);
+        return routes.map((_,i) => parseTomtomRoute(ttData, i)).filter(Boolean);
       }
-      const parsed = parseHereRoute(hereData, 0);
-      if (!parsed) throw new Error("HERE: błąd parsowania");
+      const parsed = parseTomtomRoute(ttData, 0);
+      if (!parsed) throw new Error("TomTom: błąd parsowania");
       return parsed;
     } catch(err) {
-      console.warn("⚠️  HERE fallback OSRM:", err.message);
+      console.warn("⚠️  TomTom fallback OSRM:", err.message);
     }
   }
 
-  // OSRM fallback
+  // OSRM fallback (ostateczny)
   const coordsStr = geocodedPoints.map(p => `${p.lon},${p.lat}`).join(";");
   if (alternatives) {
     const osrmRoutes = await osrmFetch(coordsStr, true);
@@ -963,14 +1076,17 @@ async function requireCompanyCtx(req, res, next) {
 app.get("/api/health", (req, res) => res.json({
   ok: true,
   ts: new Date().toISOString(),
-  hereApiKey: HERE_API_KEY ? "set" : "missing",
-  routingEngine: HERE_API_KEY ? "HERE Routing API v8 (truck ✅)" : "OSRM + offline fallback",
+  tomtomApiKey: TOMTOM_API_KEY ? "set" : "missing",
+  routingEngine: TOMTOM_API_KEY ? "TomTom Routing API v2 (truck ✅)" : "OSRM + offline fallback",
 }));
 
-// Publiczny endpoint z kluczem HERE do tile'ów mapy (tylko klucz map tiles, nie routing)
+// Publiczny endpoint z kluczem TomTom do tile'ów mapy
+// BEZPIECZEŃSTWO: serwujemy TYLKO TOMTOM_TILES_KEY (Domain whitelist: app.optirax.pl)
+// NIGDY nie serwujemy TOMTOM_API_KEY (klucz routingowy)
 app.get("/api/config", (req, res) => res.json({
-  // tiles key (front), NIE routing key
-  hereApiKey: HERE_TILES_KEY || "",
+  tomtomTilesKey: TOMTOM_TILES_KEY || "",
+  // hereApiKey zachowany dla kompatybilności wstecznej (pusty)
+  hereApiKey: "",
 }));
 
 // Proxy do Nominatim (autocomplete adresów) - omija CORS
@@ -2304,7 +2420,7 @@ app.post("/api/route", requireAuth, requireActiveSubscription, hereRateLimit, re
       tolls_geo:    main.tolls_geo,
       total_cost:   main.tolls_geo.total_eur,
       margin, score,
-      routing_engine: HERE_API_KEY ? "HERE" : "OSRM",
+      routing_engine: TOMTOM_API_KEY ? "TomTom" : "OSRM",
       // ← pełna lista alternatyw z geometrią (potrzebna do rysowania na mapie)
       alternatives: alts.map((alt,idx) => ({
         idx,
@@ -2354,7 +2470,7 @@ app.post("/api/route/multi", requireAuth, requireActiveSubscription, hereRateLim
       tolls_geo:   route.tolls_geo,
       total_cost:  route.tolls_geo.total_eur,
       score,
-      routing_engine: HERE_API_KEY ? "HERE" : "OSRM",
+      routing_engine: TOMTOM_API_KEY ? "TomTom" : "OSRM",
       points: geocoded.map((p,idx) => ({
         type: idx===0 ? "start" : idx===geocoded.length-1 ? "end" : "via",
         lat: p.lat, lng: p.lon, label: p.display, country: extractCountry(p.display),
@@ -2490,7 +2606,7 @@ app.get("/", (req, res) => {
   // Wstrzyknij meta z kluczem HERE zaraz po <head>
   html = html.replace(
     "<head>",
-    `<head>\n<meta name="here-api-key" content="${HERE_TILES_KEY || ""}">`
+    `<head>\n<meta name="tomtom-tiles-key" content="${TOMTOM_TILES_KEY || ""}">`
   );
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(html);
@@ -2499,6 +2615,6 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✅ Serwer: http://localhost:${PORT}`);
-  console.log(`🗺  Routing: ${HERE_API_KEY ? "HERE Routing API v8 – truck profile ✅" : "OSRM + offline (dodaj HERE_API_KEY do .env)"}`);
+  console.log(`🗺  Routing: ${HERE_API_KEY ? "TomTom Routing API v2 – truck profile ✅" : "OSRM + offline (dodaj TOMTOM_API_KEY do Railway)"}`);
 });
 // TEMP: pełny dump toll sections dla debugowania
