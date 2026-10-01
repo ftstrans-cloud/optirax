@@ -1,5 +1,6 @@
 // ===== RAPORT AI (JEDYNA WERSJA) =====
 async function generateReport(){
+  if (!RouteQuality.canCalculate()) return;
   const aiReportEl = document.getElementById("aiReport");
   if (!aiReportEl) {
     console.error("Brak elementu #aiReport w HTML");
@@ -14,7 +15,7 @@ async function generateReport(){
   aiReportEl.textContent = "Generuję raport...";
 
   const payload = {
-    note: "Kalkulacja",
+    note: "Kalkulacja wymagająca weryfikacji. " + RouteQuality.description() + " " + RouteQuality.notes().join(" "),
     input: window.lastInput,
     calc: window.lastCalc
   };

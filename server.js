@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import fs from "fs";
 import path from "path";
 import { Resend } from "resend";
+import { createRouteService, RoutingError } from "./lib/routing.js";
 
 dotenv.config();
 
@@ -54,10 +55,10 @@ function fmtDate(d = new Date()) {
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
 
-console.log("Supabase URL:", SUPABASE_URL ? SUPABASE_URL.slice(0,40)+"..." : "BRAK");
-console.log("Supabase KEY:", SUPABASE_KEY ? SUPABASE_KEY.slice(0,20)+"..." : "BRAK");
+console.log("Supabase URL:", SUPABASE_URL ? "ustawiony" : "BRAK");
+console.log("Supabase KEY:", SUPABASE_KEY ? "ustawiony" : "BRAK");
 
-console.log("🔥 OPTIRAX SERVER – TomTom Routing API v2 🔥");
+console.log("🔥 OPTIRAX SERVER – TomTom Routing API v1 🔥");
 
 // ============================================================
 // TOMTOM API KEYS
@@ -70,397 +71,25 @@ console.log("🔥 OPTIRAX SERVER – TomTom Routing API v2 🔥");
 const TOMTOM_API_KEY   = process.env.TOMTOM_API_KEY   || "";
 const TOMTOM_TILES_KEY = process.env.TOMTOM_TILES_KEY || "";
 if (!TOMTOM_API_KEY) {
-  console.warn("⚠️  Brak TOMTOM_API_KEY – routing używa OSRM + offline fallback");
+  console.warn("⚠️  Brak TOMTOM_API_KEY – routing ciężarowy niedostępny; OSRM tylko po wybraniu podglądu");
 }
 if (!TOMTOM_TILES_KEY) {
   console.warn("⚠️  Brak TOMTOM_TILES_KEY – kafle map lecą na OSM fallback");
 }
 
-// ============================================================
-// ISO → polska nazwa wyświetlana w UI/PDF
-// ============================================================
-const ISO_TO_PL = {
-  "POL":"Polska",     "PL":"Polska",
-  "DEU":"Niemcy",     "DE":"Niemcy",
-  "CZE":"Czechy",     "CZ":"Czechy",
-  "AUT":"Austria",    "AT":"Austria",
-  "ITA":"Włochy",     "IT":"Włochy",
-  "FRA":"Francja",    "FR":"Francja",
-  "BEL":"Belgia",     "BE":"Belgia",
-  "NLD":"Holandia",   "NL":"Holandia",
-  "SVK":"Słowacja",   "SK":"Słowacja",
-  "HUN":"Węgry",      "HU":"Węgry",
-  "SVN":"Słowenia",   "SI":"Słowenia",
-  "HRV":"Chorwacja",  "HR":"Chorwacja",
-  "GBR":"Wielka Brytania","GB":"Wielka Brytania",
-  "CHE":"Szwajcaria", "CH":"Szwajcaria",
-  "ROU":"Rumunia",    "RO":"Rumunia",
-  "BGR":"Bułgaria",   "BG":"Bułgaria",
-  "SRB":"Serbia",     "RS":"Serbia",
-  "ESP":"Hiszpania",  "ES":"Hiszpania",
-  "PRT":"Portugalia", "PT":"Portugalia",
-  "SWE":"Szwecja",    "SE":"Szwecja",
-  "DNK":"Dania",      "DK":"Dania",
-  "NOR":"Norwegia",   "NO":"Norwegia",
-  "FIN":"Finlandia",  "FI":"Finlandia",
-  "LUX":"Luksemburg", "LU":"Luksemburg",
-  "IRL":"Irlandia",   "IE":"Irlandia",
-  "GRC":"Grecja",     "GR":"Grecja",
-  "LTU":"Litwa",      "LT":"Litwa",
-  "LVA":"Łotwa",      "LV":"Łotwa",
-  "EST":"Estonia",    "EE":"Estonia",
-};
-
-// ============================================================
-// STAWKI MYTO €/km  – fallback gdy brak TomTom lub dla OSRM
-// NL: od 01.07.2026 system km-based (OBU) zastąpił winietę dzienną
-// Stawka bazowa dla TIR 40t EURO VI: ~0.149 €/km
-// GB: winieta dzienna nadal obowiązuje, liczona osobno w app.js
-// ============================================================
-const TOLL_RATE = {
-  "Polska":          0.16,
-  "Niemcy":          0.35,
-  "Czechy":          0.15,
-  "Austria":         0.50,
-  "Włochy":          0.20,
-  "Francja":         0.40,
-  "Belgia":          0.21,
-  "Holandia":        0.149,  // km-based od 01.07.2026 (EURO VI 40t), było: winieta dzienna
-  "Słowacja":        0.20,
-  "Węgry":           0.55,
-  "Słowenia":        0.20,
-  "Chorwacja":       0.12,
-  "Wielka Brytania": 0.00,   // winieta dzienna
-  "Szwajcaria":      1.00,   // płaska stawka 40t, kraj wykluczony z HERE
-  "Rumunia":         0.09,
-  "Bułgaria":        0.08,
-  "Serbia":          0.08,
-  "Hiszpania":       0.18,
-  "Portugalia":      0.18,
-  "Szwecja":         0.00,
-  "Dania":           0.00,
-  "Norwegia":        0.00,
-  "Finlandia":       0.00,
-  "Luksemburg":      0.00,
-  "Litwa":           0.00,
-  "Łotwa":           0.00,
-  "Estonia":         0.00,
-  "Irlandia":        0.00,
-  "Grecja":          0.07,
-  // aliasy angielskie (gdy HERE zwróci EN zamiast PL)
-  "United Kingdom":  0.00,
-  "Netherlands":     0.00,
-  "Germany":         0.35,
-  "France":          0.40,
-  "Italy":           0.20,
-  "Belgium":         0.21,
-  "Switzerland":     0.00,
-  "Austria":         0.50,
-  "Hungary":         0.55,
-  "Czech Republic":  0.15,
-  "Czechia":         0.15,
-};
-
-// ============================================================
-// HELPERS
-// ============================================================
-const round2 = x => Math.round(Number(x) * 100) / 100;
-const round1 = x => Math.round(Number(x) * 10) / 10;
+const getRouteData = createRouteService({ apiKey: TOMTOM_API_KEY });
 
 function extractCountry(display) {
-  if (!display) return "??";
-  const parts = display.split(",").map(s => s.trim());
-  return parts[parts.length - 1] || "??";
+  return String(display || "").split(",").map(s => s.trim()).at(-1) || "??";
 }
 
-function getRouteScore(margin) {
-  if (margin > 300) return { label: "🟢 Dobra", color: "#2ecc71" };
-  if (margin >= 0)  return { label: "🟡 Średnia", color: "#f1c40f" };
-  return { label: "🔴 Strata", color: "#e74c3c" };
-}
-
-// ============================================================
-// TOMTOM ROUTING API v1  – truck profile
-// v2 wymaga płatnego planu — v1 działa na Evaluation (free tier)
-// Myto: wyciągamy km per kraj z sekcji TOLL_ROAD + stosujemy TOLL_RATE offline
-// Free tier: 2500 req/dzień
-// ============================================================
-async function tomtomRoute(waypoints, truckParams = {}) {
-  const {
-    transportMode = "truck",
-    grossWeightKg = 40000,
-    axleWeightKg  = 11500,
-    heightCm      = 400,
-    widthCm       = 255,
-    lengthCm      = 1360,
-    axleCount     = 5,
-    avoidCountries = [],
-  } = truckParams;
-
-  const isBus = transportMode === "bus";
-  const locs = waypoints.map(([lat, lon]) => `${lat},${lon}`).join(":");
-
-  const vehicleParams = isBus ? "" :
-    `&vehicleWeight=${grossWeightKg}` +
-    `&vehicleAxleWeight=${axleWeightKg}` +
-    `&vehicleHeight=${(heightCm / 100).toFixed(2)}` +
-    `&vehicleWidth=${(widthCm / 100).toFixed(2)}` +
-    `&vehicleLength=${(lengthCm / 100).toFixed(2)}` +
-    `&vehicleNumberOfAxles=${axleCount}` +
-    `&vehicleCommercial=true`;
-
-  const avoidParam = avoidCountries.length > 0
-    ? "&avoid=countries:" + avoidCountries.join(",")
-    : "";
-
-  const maxAlternatives = waypoints.length === 2 ? 2 : 0;
-  const travelMode = isBus ? "car" : "truck";
-
-  const url =
-    `https://api.tomtom.com/routing/1/calculateRoute/${locs}/json` +
-    `?key=${TOMTOM_API_KEY}` +
-    `&travelMode=${travelMode}` +
-    `&routeType=fastest` +
-    `&traffic=false` +
-    `&sectionType=tollRoad` +
-    `&report=effectiveSettings` +
-    `&maxAlternatives=${maxAlternatives}` +
-    vehicleParams + avoidParam;
-
-  console.log("TomTom URL (bez klucza):", url.replace(TOMTOM_API_KEY, "KEY").slice(0, 300));
-
-  const r = await fetch(url);
-  if (!r.ok) {
-    const txt = await r.text();
-    console.error("TomTom ERROR:", r.status, txt.slice(0, 400));
-    throw new Error(`TomTom ${r.status}: ${txt.slice(0, 300)}`);
+function routeErrorResponse(res, err) {
+  if (err instanceof RoutingError) {
+    console.warn("Routing:", err.code);
+    return res.status(err.status).json({ error: err.message, code: err.code });
   }
-  const data = await r.json();
-  console.log("TomTom OK – routes:", data.routes?.length);
-  return data;
-}
-
-function parseTomtomRoute(ttData, routeIdx = 0) {
-  const routes = ttData?.routes;
-  if (!routes?.length) return null;
-  const route = routes[routeIdx] || routes[0];
-  if (!route) return null;
-
-  const summary = route.summary || {};
-  const distance_km = round1((summary.lengthInMeters || 0) / 1000);
-  const duration_h  = round2((summary.travelTimeInSeconds || 0) / 3600);
-
-  // Geometria z legs → points [lon, lat] (GeoJSON)
-  const allCoords = [];
-  (route.legs || []).forEach(leg => {
-    (leg.points || []).forEach(pt => {
-      allCoords.push([pt.longitude, pt.latitude]);
-    });
-  });
-  const geometry = { type: "LineString", coordinates: allCoords };
-
-  // Myto z geometrii TomTom — ray-casting per kraj na rzeczywistej trasie HGV
-  // TomTom v1 nie zwraca kwot myto, ale geometria trasy jest poprawna dla truck
-  // TOLL_RATE offline + rzeczywiste km = lepsza dokładność niż OSRM fallback
-  const tolls_geo = tollsFromGeometryFallback(geometry);
-
-  // Oznacz źródło jako TomTom (nie OSRM) — trasa jest rzeczywiście truck-optimized
-  const by_country = tolls_geo.by_country.map(x => ({ ...x, source: "TomTom+offline" }));
-
-  console.log("TomTom route: dist", distance_km, "km, myto offline per kraj:",
-    by_country.map(x => `${x.country}:${x.cost_eur}€`).join(", "));
-
-  return {
-    distance_km,
-    duration_h,
-    geometry,
-    tolls_geo: { total_eur: tolls_geo.total_eur, by_country },
-  };
-}
-
-// ============================================================
-// FLEXIBLE POLYLINE DECODER  (format HERE Routing API v8 — zachowany dla kompatybilności)
-// ============================================================
-function decodeFlexiblePolyline(encoded) {
-  if (!encoded) return [];
-
-  const ENC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  const DEC = {};
-  for (let i = 0; i < ENC.length; i++) DEC[ENC[i]] = i;
-
-  let i = 0;
-
-  function readVarint() {
-    let r = 0, s = 0, c;
-    do {
-      c = DEC[encoded[i++]];
-      r |= (c & 0x1F) << s;
-      s += 5;
-    } while (c & 0x20);
-    return r;
-  }
-
-  function toSigned(v) { return (v & 1) ? ~(v >>> 1) : (v >>> 1); }
-
-  readVarint(); // version
-  const hdr  = readVarint();
-  const prec = hdr & 0xF;
-  const dim  = (hdr >> 4) & 0x7;
-  if (dim > 0) readVarint(); // precision3d
-
-  const factor = Math.pow(10, prec);
-  const pts = [];
-  let lat = 0, lon = 0;
-
-  while (i < encoded.length) {
-    lat += toSigned(readVarint());
-    lon += toSigned(readVarint());
-    if (dim > 0) readVarint(); // 3rd dimension – ignorujemy
-    pts.push([lat / factor, lon / factor]);
-  }
-
-  return pts;
-}
-
-// ============================================================
-// OSRM + OFFLINE FALLBACK  (bez Turf.js – własny ray-casting)
-// ============================================================
-const EU_A3 = new Set([
-  // UE
-  "AUT","BEL","BGR","HRV","CYP","CZE","DNK","EST","FIN","FRA","DEU","GRC",
-  "HUN","IRL","ITA","LVA","LTU","LUX","MLT","NLD","POL","PRT","ROU","SVK",
-  "SVN","ESP","SWE","GBR",
-  // poza-UE Europa (transport)
-  "CHE","NOR","SRB","BIH","MKD","MNE","ALB","LIE","TUR","UKR","BLR","MDA",
-  "ISL","XKX",
-]);
-let countryFeatures = [];
-
-function loadBorders() {
-  try {
-    const fp = path.join(process.cwd(), "data", "europe_countries.geojson");
-    if (!fs.existsSync(fp)) { console.warn("⚠️  Brak europe_countries.geojson"); return; }
-    const geo = JSON.parse(fs.readFileSync(fp, "utf8"));
-    countryFeatures = (geo?.features || []).filter(f => EU_A3.has(f?.id));
-    console.log("✅ Borders loaded:", countryFeatures.length, "krajów");
-  } catch(e) { console.warn("⚠️  loadBorders:", e.message); }
-}
-
-function haversineKm(a, b) {
-  const R = 6371, r = x => x * Math.PI / 180;
-  const dLat = r(b.lat-a.lat), dLon = r(b.lon-a.lon);
-  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat))*Math.cos(r(b.lat))*Math.sin(dLon/2)**2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function pointInPolygon(lat, lon, geom) {
-  if (!geom?.coordinates) return false;
-  const rings = geom.type === "MultiPolygon" ? geom.coordinates.flat(1) : geom.coordinates;
-  for (const ring of rings) {
-    let inside = false;
-    for (let i = 0, j = ring.length-1; i < ring.length; j = i++) {
-      const [xi,yi] = ring[i], [xj,yj] = ring[j];
-      if (((yi>lat) !== (yj>lat)) && (lon < (xj-xi)*(lat-yi)/(yj-yi)+xi)) inside=!inside;
-    }
-    if (inside) return true;
-  }
-  return false;
-}
-
-function countryIso3(lat, lon) {
-  for (const f of countryFeatures) {
-    if (pointInPolygon(lat, lon, f.geometry)) return f.id || "???";
-  }
-  return "???";
-}
-
-const ISO3_TO_NAME = {
-  POL:"Polska",CZE:"Czechy",DEU:"Niemcy",AUT:"Austria",ITA:"Włochy",
-  SVK:"Słowacja",HUN:"Węgry",SVN:"Słowenia",FRA:"Francja",BEL:"Belgia",
-  NLD:"Holandia",GBR:"Wielka Brytania",ESP:"Hiszpania",PRT:"Portugalia",
-  ROU:"Rumunia",BGR:"Bułgaria",HRV:"Chorwacja",SWE:"Szwecja",DNK:"Dania",
-  NOR:"Norwegia",FIN:"Finlandia",LUX:"Luksemburg",LTU:"Litwa",LVA:"Łotwa",
-  EST:"Estonia",IRL:"Irlandia",GRC:"Grecja",CHE:"Szwajcaria",SRB:"Serbia",
-};
-
-function tollsFromGeometryFallback(geometry) {
-  const coords = geometry?.coordinates;
-  if (!Array.isArray(coords) || coords.length < 2) return { total_eur: 0, by_country: [] };
-
-  const step = Math.max(1, Math.floor(coords.length / 500));
-  const samples = [];
-  for (let i = 0; i < coords.length; i += step) samples.push({ lat: coords[i][1], lon: coords[i][0] });
-
-  const kmByIso3 = {};
-  for (let i = 0; i < samples.length-1; i++) {
-    const iso3 = countryIso3(samples[i].lat, samples[i].lon);
-    kmByIso3[iso3] = (kmByIso3[iso3] || 0) + haversineKm(samples[i], samples[i+1]);
-  }
-
-  let total = 0;
-  const by_country = Object.entries(kmByIso3)
-    .filter(([iso3,km]) => iso3 !== "???" && km > 0.2)
-    .map(([iso3,km]) => {
-      const name = ISO3_TO_NAME[iso3] || iso3;
-      const rate = TOLL_RATE[name] ?? 0;
-      const cost = km * rate;
-      total += cost;
-      return { country:name, km:round1(km), rate_eur_per_km:rate, cost_eur:round2(cost), source:"OSRM+offline" };
-    })
-    .sort((a,b) => b.km - a.km);
-
-  return { total_eur:round2(total), by_country };
-}
-
-async function osrmFetch(coordsStr, alternatives=false) {
-  const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&alternatives=${alternatives}&steps=false`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("OSRM failed: " + r.status);
-  const data = await r.json();
-  return alternatives ? (data?.routes || []) : (data?.routes?.[0] || null);
-}
-
-// ============================================================
-// MASTER ROUTE  – TomTom → OSRM fallback
-// ============================================================
-async function getRouteData(geocodedPoints, truckParams={}, alternatives=false) {
-  if (TOMTOM_API_KEY) {
-    try {
-      const waypoints = geocodedPoints.map(p => [p.lat, p.lon]);
-      const ttData    = await tomtomRoute(waypoints, truckParams);
-      const routes    = ttData?.routes || [];
-      if (!routes.length) throw new Error("TomTom: 0 tras");
-
-      if (alternatives && routes.length > 1) {
-        return routes.map((_,i) => parseTomtomRoute(ttData, i)).filter(Boolean);
-      }
-      const parsed = parseTomtomRoute(ttData, 0);
-      if (!parsed) throw new Error("TomTom: błąd parsowania");
-      return parsed;
-    } catch(err) {
-      console.warn("⚠️  TomTom fallback OSRM:", err.message);
-    }
-  }
-
-  // OSRM fallback (ostateczny)
-  const coordsStr = geocodedPoints.map(p => `${p.lon},${p.lat}`).join(";");
-  if (alternatives) {
-    const osrmRoutes = await osrmFetch(coordsStr, true);
-    return osrmRoutes.slice(0,3).map(r => ({
-      distance_km: round1(r.distance/1000),
-      duration_h:  round2(r.duration/3600),
-      geometry:    r.geometry,
-      tolls_geo:   tollsFromGeometryFallback(r.geometry),
-    }));
-  }
-  const r = await osrmFetch(coordsStr, false);
-  if (!r) throw new Error("OSRM: brak trasy");
-  return {
-    distance_km: round1(r.distance/1000),
-    duration_h:  round2(r.duration/3600),
-    geometry:    r.geometry,
-    tolls_geo:   tollsFromGeometryFallback(r.geometry),
-  };
+  console.error("Routing: nieoczekiwany błąd");
+  return res.status(500).json({ error: "Błąd wyznaczania trasy. Spróbuj ponownie.", code: "ROUTE_ERROR" });
 }
 
 // ============================================================
@@ -560,7 +189,7 @@ async function geocode(q) {
   for (const candidate of candidates) {
     const url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(candidate);
     try {
-      const r = await fetch(url, { headers: { "User-Agent": "optirax-kalkulator/2.0", "Accept-Language": "pl,en" } });
+      const r = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { "User-Agent": "optirax-kalkulator/2.0", "Accept-Language": "pl,en" } });
       if (!r.ok) continue;
       const data = await r.json();
       if (data?.length) {
@@ -579,7 +208,7 @@ async function geocode(q) {
 // ============================================================
 // OPENAI
 // ============================================================
-console.log("OPENAI KEY START:", process.env.OPENAI_API_KEY?.slice(0,12));
+console.log("OpenAI KEY:", process.env.OPENAI_API_KEY ? "ustawiony" : "BRAK");
 
 let client = null;
 if (process.env.OPENAI_API_KEY) {
@@ -846,7 +475,7 @@ app.get("/api/health", (req, res) => res.json({
   ok: true,
   ts: new Date().toISOString(),
   tomtomApiKey: TOMTOM_API_KEY ? "set" : "missing",
-  routingEngine: TOMTOM_API_KEY ? "TomTom Routing API v2 (truck ✅)" : "OSRM + offline fallback",
+  routingEngine: TOMTOM_API_KEY ? "TomTom Routing API v1 (truck ✅)" : "Brak routingu ciężarowego; OSRM tylko jako jawny podgląd",
 }));
 
 // Publiczny endpoint z kluczem TomTom do tile'ów mapy
@@ -2130,7 +1759,7 @@ app.get("/api/quota", requireAuth, async (req, res) => {
 app.post("/api/route", requireAuth, requireActiveSubscription, hereRateLimit, requireCalcQuota, async (req, res) => {
   try {
     const { origin, destination, truckParams } = req.body || {};
-    if (!origin || !destination) return res.status(400).json({ error: "Podaj skąd i dokąd." });
+    if (typeof origin !== "string" || typeof destination !== "string" || !origin.trim() || !destination.trim()) return res.status(400).json({ error: "Podaj skąd i dokąd." });
 
     const [a, b] = await Promise.all([geocode(origin), geocode(destination)]);
     if (!a) return res.status(400).json({ error: `Nie znaleziono: ${origin}` });
@@ -2139,9 +1768,6 @@ app.post("/api/route", requireAuth, requireActiveSubscription, hereRateLimit, re
     const routes = await getRouteData([a,b], truckParams||{}, true);
     const alts   = Array.isArray(routes) ? routes : [routes];
     const main   = alts[0];
-    const revenue = req.body.revenue || 0;
-    const margin  = revenue - main.tolls_geo.total_eur;
-    const score   = getRouteScore(margin);
 
     // Powiadomienie o PIERWSZEJ kalkulacji trasy (najmocniejszy sygnał — user realnie używa)
     const meta = req.user?.user_metadata || {};
@@ -2173,7 +1799,7 @@ app.post("/api/route", requireAuth, requireActiveSubscription, hereRateLimit, re
             <tr><td style="padding:6px 12px;color:#666;">Firma:</td><td style="padding:6px 12px;">${meta.company || "—"}</td></tr>
             <tr><td style="padding:6px 12px;color:#666;">Trasa:</td><td style="padding:6px 12px;">${a.display} → ${b.display}</td></tr>
             <tr><td style="padding:6px 12px;color:#666;">Dystans:</td><td style="padding:6px 12px;">${main.distance_km} km</td></tr>
-            <tr><td style="padding:6px 12px;color:#666;">Koszt tras:</td><td style="padding:6px 12px;">${main.tolls_geo.total_eur} EUR</td></tr>
+            <tr><td style="padding:6px 12px;color:#666;">Szacunek myta:</td><td style="padding:6px 12px;">${main.tolls_geo.total_eur} EUR</td></tr>
             <tr><td style="padding:6px 12px;color:#666;">Data:</td><td style="padding:6px 12px;">${fmtDate()}</td></tr>
           </table>
         `
@@ -2183,39 +1809,26 @@ app.post("/api/route", requireAuth, requireActiveSubscription, hereRateLimit, re
     return res.json({
       origin_resolved:      a.display,
       destination_resolved: b.display,
-      distance_km:  main.distance_km,
-      duration_h:   main.duration_h,
-      geometry:     main.geometry,
-      tolls_geo:    main.tolls_geo,
-      total_cost:   main.tolls_geo.total_eur,
-      margin, score,
-      routing_engine: TOMTOM_API_KEY ? "TomTom" : "OSRM",
-      // ← pełna lista alternatyw z geometrią (potrzebna do rysowania na mapie)
-      alternatives: alts.map((alt,idx) => ({
-        idx,
-        distance_km: alt.distance_km,
-        duration_h:  alt.duration_h,
-        geometry:    alt.geometry,
-        tolls_geo:   alt.tolls_geo,
-        total_cost:  alt.tolls_geo.total_eur,
-      })),
+      ...main,
+      toll_estimate_eur: main.tolls_geo.total_eur,
+      alternatives: alts.map((alt, idx) => ({ idx, ...alt })),
       points: [
         { type:"start", lat:a.lat, lng:a.lon, label:a.display, country:extractCountry(a.display) },
         { type:"end",   lat:b.lat, lng:b.lon, label:b.display, country:extractCountry(b.display) },
       ],
     });
   } catch(err) {
-    console.error("ROUTE ERROR:", err);
-    return res.status(500).json({ error:"Route failed", details:err.message });
+    return routeErrorResponse(res, err);
   }
 });
 
 // ---- /api/route/multi  (wielopunktowa, bez alternatyw) ----
-app.post("/api/route/multi", requireAuth, requireActiveSubscription, hereRateLimit, async (req, res) => {
+app.post("/api/route/multi", requireAuth, requireActiveSubscription, hereRateLimit, requireCalcQuota, async (req, res) => {
   try {
     const { origin, destination, stops, truckParams } = req.body || {};
-    if (!origin || !destination) return res.status(400).json({ error: "Podaj skąd i dokąd." });
+    if (typeof origin !== "string" || typeof destination !== "string" || !origin.trim() || !destination.trim()) return res.status(400).json({ error: "Podaj skąd i dokąd." });
 
+    if (stops != null && (!Array.isArray(stops) || stops.length > 18 || stops.some(s => typeof s !== "string"))) return res.status(400).json({ error: "Podaj najwyżej 18 punktów pośrednich." });
     const pointsText = [origin, ...(stops||[]), destination]
       .map(x => (x||"").trim()).filter(Boolean);
     if (pointsText.length < 2) return res.status(400).json({ error: "Za mało punktów." });
@@ -2226,28 +1839,20 @@ app.post("/api/route/multi", requireAuth, requireActiveSubscription, hereRateLim
     }
 
     const route  = await getRouteData(geocoded, truckParams||{}, false);
-    const revenue = req.body.revenue || 0;
-    const score   = getRouteScore(revenue - route.tolls_geo.total_eur);
 
     return res.json({
       points_resolved: geocoded.map(p => p.display),
       origin_resolved:      geocoded[0].display,
       destination_resolved: geocoded[geocoded.length-1].display,
-      distance_km: route.distance_km,
-      duration_h:  route.duration_h,
-      geometry:    route.geometry,
-      tolls_geo:   route.tolls_geo,
-      total_cost:  route.tolls_geo.total_eur,
-      score,
-      routing_engine: TOMTOM_API_KEY ? "TomTom" : "OSRM",
+      ...route,
+      toll_estimate_eur: route.tolls_geo.total_eur,
       points: geocoded.map((p,idx) => ({
         type: idx===0 ? "start" : idx===geocoded.length-1 ? "end" : "via",
         lat: p.lat, lng: p.lon, label: p.display, country: extractCountry(p.display),
       })),
     });
   } catch(err) {
-    console.error("ROUTE MULTI ERROR:", err);
-    return res.status(500).json({ error: "Błąd wyznaczania trasy (multi)" });
+    return routeErrorResponse(res, err);
   }
 });
 
@@ -2320,11 +1925,11 @@ app.post("/api/report", requireAuth, requireActiveSubscription, hereRateLimit, a
       messages: [
         {
           role: "system",
-          content: "Jesteś analitykiem transportu drogowego w Europie. Twoim zadaniem jest ocenić rentowność trasy dla firmy transportowej. Skup się na: kosztach, marży, ryzykach operacyjnych, sytuacji rynkowej. Pisz krótko, konkretnie i profesjonalnie. Unikaj ogólnych tekstów AI."
+          content: "Jesteś analitykiem transportu drogowego w Europie. Oceń koszty i marżę na podstawie przekazanych liczb. Myto i trasa mogą wymagać weryfikacji. Wyraźnie opisz braki danych; nie przedstawiaj szacunku ani podglądu OSRM jako potwierdzonej wyceny lub przejezdności. Nie wymyślaj stawek rynkowych. Pisz krótko i konkretnie."
         },
         {
           role: "user",
-          content: `Jesteś profesjonalnym asystentem spedytora. Oceń trasę i podaj:\n1. Podsumowanie\n2. Analizę kosztów\n3. Rekomendowaną cenę\n4. Ryzyka\n\nDane kalkulacji:\n${JSON.stringify(calc, null, 2)}`
+          content: `Oceń trasę: podsumowanie, koszty, cena wynikająca z założeń i ryzyka.\nJakość danych:\n${String(req.body?.note || "Brak potwierdzenia jakości danych.").slice(0, 4000)}\nDane kalkulacji:\n${JSON.stringify(calc, null, 2)}`
         }
       ]
     });
@@ -2337,7 +1942,6 @@ app.post("/api/report", requireAuth, requireActiveSubscription, hereRateLimit, a
 });
 
 // ============================================================
-loadBorders();
 app.use(express.static(path.join(process.cwd(), "public"), { extensions: ["html"] }));
 
 // Strony
@@ -2384,6 +1988,6 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`✅ Serwer: http://localhost:${PORT}`);
-  console.log(`🗺  Routing: ${TOMTOM_API_KEY ? "TomTom Routing API v2 – truck profile ✅" : "OSRM + offline (dodaj TOMTOM_API_KEY do Railway)"}`);
+  console.log(`🗺  Routing: ${TOMTOM_API_KEY ? "TomTom Routing API v1 – truck profile ✅" : "Brak routingu ciężarowego (dodaj TOMTOM_API_KEY do Railway)"}`);
 });
 // TEMP: pełny dump toll sections dla debugowania

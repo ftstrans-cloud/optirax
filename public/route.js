@@ -231,60 +231,13 @@ function hasGBInRoutePayload() {
   return txt.includes("united kingdom") || txt.includes("wielka brytania") || txt.includes("uk");
 }
 
-function calcDailyVignettesFromGeo(tg, driverDays, gbpEur, routeText = "", totalRouteKm = 0, kmPerDayUi = 0) {
-  const rows = [];
-
-  const by = Array.isArray(tg?.by_country) ? tg.by_country : [];
-  const euKm = by.reduce((s, x) => s + (Number(x.km) || 0), 0);
-
-  const routeKm = Math.max(0, Number(totalRouteKm || 0));
-  const rt = String(routeText || "").toLowerCase();
-
-  const gbInText =
-    rt.includes("united kingdom") || rt.includes("wielka brytania") ||
-    rt.includes("zjednoczone krolewstwo") || rt.includes("england") ||
-    rt.includes("great britain") || rt.includes("scotland") || rt.includes("wales") ||
-    rt.includes(" gb") || rt.includes(" uk");
-
-  // NL: od 01.07.2026 system km-based (OBU) — myto NL liczone w TOLL_RATE jak DE/FR
-  // Winieta NL usunieta z tej funkcji. Pozostaje tylko GB.
-
-  const nonEuKmEst = (routeKm > 0 && euKm > 0) ? Math.max(0, routeKm - euKm) : 0;
-  const totalKmForDays = (euKm + (gbInText ? nonEuKmEst : 0)) || euKm || routeKm || 0;
-
-  const daysTotal = Math.max(0, Number(driverDays || 0));
-  const kmPerDay = (Number(kmPerDayUi) > 0)
-    ? Number(kmPerDayUi)
-    : (daysTotal > 0 && totalKmForDays > 0 ? (totalKmForDays / daysTotal) : 550);
-
-  const daysForKm = (kmInCountry) => {
-    if (!kmInCountry || kmInCountry <= 0 || !kmPerDay || kmPerDay <= 0) return 0;
-    return Math.max(1, Math.ceil(kmInCountry / kmPerDay));
-  };
-
-  const GB_GBP_PER_DAY = 10;
-  const kGbpEur = (Number(gbpEur) > 0) ? Number(gbpEur) : 1.17;
-
-  let kmGB = 0;
-  for (const x of by) {
-    const code = normC(x.country);
-    const km = Number(x.km) || 0;
-    if (!km) continue;
-    if (code === "GB") kmGB += km;
-  }
-
-  const kmGBFinal = (kmGB > 0) ? kmGB : (gbInText ? nonEuKmEst : 0);
-  const daysGB = kmGBFinal > 0 ? daysForKm(kmGBFinal) : 0;
-
-  if (daysGB > 0) {
-    const costEur = daysGB * GB_GBP_PER_DAY * kGbpEur;
-    rows.push({ country: "GB (winieta)", unit: "dzien", qty: daysGB, rate: GB_GBP_PER_DAY, rate_ccy: "GBP", cost_eur: +costEur.toFixed(2) });
-  }
-
-  const total = rows.reduce((s, r) => s + (Number(r.cost_eur) || 0), 0);
-  return { rows, total_eur: +total.toFixed(2) };
+function calcDailyVignettesFromGeo() {
+  // Days driven are not the chargeable days in GB; no invented default levy.
+  // Enter the actual levy/vignette amount as part of the manual toll correction.
+  return { rows: [], total_eur: 0, status: "manual_required" };
 }
 function openPdfReport(){
+  if (!RouteQuality.canCalculate()) return;
 
   // lokalne helpery (żeby PDF nie znikał przez scope/redeclaration)
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({
@@ -346,7 +299,7 @@ function openPdfReport(){
   const rand = Math.random().toString(16).slice(2,6).toUpperCase();
   const offerNo = `${y}${m}${d}-${hh}${mm}-${rand}`;
 
-  const title = "Oferta transportowa";
+  const title = tgBase?.routing?.quality === "approximate" ? "Kalkulacja orientacyjna" : "Oferta transportowa";
 
   const routeLine =
     (r.origin || "") + " → " + (r.destination || "") +
@@ -369,7 +322,7 @@ function openPdfReport(){
     tollRows = tg.by_country.map(x => (
       "<tr>" +
         "<td>" + esc(x.country ?? "—") + "</td>" +
-        "<td style='text-align:right;'>" + esc(num1(x.km)) + "</td>" +
+        "<td style='text-align:right;'>" + esc(num1(x.toll_km ?? x.km)) + "</td>" +
         "<td style='text-align:right;'>" + esc(String(x.rate_eur_per_km ?? "—")) + "</td>" +
         "<td style='text-align:right;'>" + esc(String(x.cost_eur ?? "—")) + "</td>" +
       "</tr>"
@@ -467,6 +420,7 @@ watermarkHtml +
 "  </div>" +
 "</div>" +
 
+"<div class='card'><div class='h'>Założenia i jakość danych</div><div>" + esc(RouteQuality.description(tgBase)) + "</div><p>" + esc(RouteQuality.notes(tgBase).join(" ")) + "</p></div>" +
 "<div class='kpi'>" +
 "  <div class='k'><div class='t'>Koszt całkowity</div><div class='v'>" + esc(moneyPdf(calc.total_cost_eur)) + "</div><div class='muted'>Koszt/km: " + esc(num2(costPerKm)) + " €/km</div></div>" +
 "  <div class='k'><div class='t'>" + (isOffer ? "Cena zlecenia" : "Cena sugerowana") + "</div><div class='v'>" + esc(moneyPdf(price)) + "</div><div class='muted'>Cena/km: " + esc(num2(pricePerKm)) + " €/km</div></div>" +
@@ -481,19 +435,19 @@ watermarkHtml +
 "      <tr><td>Kierowca</td><td style='text-align:right;'>" + esc(moneyPdf(calc.driver_cost_eur)) + "</td></tr>" +
 "      <tr><td>Myto</td><td style='text-align:right;'>" + esc(moneyPdf(calc.tolls_eur)) + "</td></tr>" +
 "      <tr><td>Promy</td><td style='text-align:right;'>" + esc(moneyPdf(calc.ferries_eur)) + "</td></tr>" +
-"      <tr><td>Winiety dzienne (NL/GB)</td><td style='text-align:right;'>" + esc(moneyPdf(daily.total_eur)) + "</td></tr>" +
+"      <tr><td>W tym winiety zapisane w mycie</td><td style='text-align:right;'>" + esc(moneyPdf(daily.total_eur)) + "</td></tr>" +
 "      <tr><td>Inne</td><td style='text-align:right;'>" + esc(moneyPdf(calc.other_costs_eur)) + "</td></tr>" +
 "      <tr><td><b>Suma</b></td><td style='text-align:right;'><b>" + esc(moneyPdf(calc.total_cost_eur)) + "</b></td></tr>" +
 "    </table>" +
 "  </div>" +
 
 "  <div class='card'>" +
-"    <div class='h'>Myto UE – podział na kraje</div>" +
+"    <div class='h'>Szacunek myta – odcinki płatne</div>" +
 "    <table>" +
-"      <thead><tr><th>Kraj</th><th style='text-align:right;'>km</th><th style='text-align:right;'>€/km</th><th style='text-align:right;'>€</th></tr></thead>" +
+"      <thead><tr><th>Kraj</th><th style='text-align:right;'>km płatne</th><th style='text-align:right;'>€/km</th><th style='text-align:right;'>€</th></tr></thead>" +
 "      <tbody>" + tollRows + vignetteRows + "</tbody>" +
 "    </table>" +
-"    <div class='muted' style='margin-top:8px;'>Razem (UE offline): " + esc(moneyPdf(tg?.total_eur)) + "</div>" +
+"    <div class='muted' style='margin-top:8px;'>Szacunek przed korektą: " + esc(moneyPdf(tg?.total_eur)) + "</div>" +
 "  </div>" +
 "</div>" +
 

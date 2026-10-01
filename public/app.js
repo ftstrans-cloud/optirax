@@ -3,172 +3,82 @@
 /* =========================
    API: POBIERZ TRASĘ
 ========================= */
+let routeRequestController = null;
+let pendingRouteFingerprint = null;
 async function getRoute(){
-console.log("getRoute() start:", getRouteFromUI());
-  const baseInput = document.getElementById("base_distance_km");
   const routeInfoEl = document.getElementById("routeInfo");
   const { origin, destination, stops } = getRouteFromUI();
-  const useMulti = stops.length > 0;
-
   if (!origin || !destination) {
-    routeInfoEl.textContent = "Uzupełnij Skąd i Dokąd.";
+    RouteQuality.invalidate("Uzupełnij Skąd i Dokąd.");
     return;
   }
-
-  // Nowa trasa → kasuj poprzedni autosave i deferred timer
-  // (zapobiega zapisaniu starej trasy jako nowej)
-  clearTimeout(window._deferredSaveTimer);
+  const requested = RouteQuality.fingerprint();
+  if (routeRequestController && pendingRouteFingerprint === requested) return;
+  routeRequestController?.abort();
+  const controller = new AbortController();
+  routeRequestController = controller;
+  pendingRouteFingerprint = requested;
+  const fingerprint = RouteQuality.begin();
   window._autoSaveId = null;
   window._lastSavedFromPolicz = false;
-
+  renderAlternativeRoutes([]);
   routeInfoEl.textContent = "Szukam trasy...";
-
   try {
-    const url = useMulti
-  ? "/api/route/multi"
-  : "/api/route";
-
-    const activePreset = document.querySelector(".vehicleBtn.active")?.dataset?.preset || "tir40";
-    const preset = (typeof VEHICLE_PRESETS !== "undefined" && VEHICLE_PRESETS[activePreset]) || {};
-
-    // Zbierz zaznaczone kraje do ominięcia
-    const avoidCountries = [...document.querySelectorAll(".avoidCountryChk:checked")]
-      .map(el => el.value);
-    console.log("avoidCountries:", avoidCountries);
-
     const truckParams = {
-      transportMode:  preset.transportMode  || "truck",
-      grossWeightKg: +document.getElementById("truck_grossWeight")?.value || 40000,
-      axleWeightKg:  +document.getElementById("truck_axleWeight")?.value  || 11500,
-      heightCm:      +document.getElementById("truck_height")?.value      || 400,
-      widthCm:       +document.getElementById("truck_width")?.value       || 255,
-      lengthCm:      +document.getElementById("truck_length")?.value      || 1360,
-      axleCount:     +document.getElementById("truck_axleCount")?.value   || 5,
-      avoidCountries,
+      transportMode: "truck",
+      grossWeightKg: +document.getElementById("truck_grossWeight").value,
+      axleWeightKg: +document.getElementById("truck_axleWeight").value,
+      heightCm: +document.getElementById("truck_height").value,
+      widthCm: +document.getElementById("truck_width").value,
+      lengthCm: +document.getElementById("truck_length").value,
+      axleCount: +document.getElementById("truck_axleCount").value,
+      allowApproximateRoute: !!document.getElementById("allowApproximateRoute")?.checked,
     };
-    const payload = useMulti
-      ? { origin, destination, stops, truckParams }
-      : { origin, destination, truckParams };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const res = await fetch(stops.length ? "/api/route/multi" : "/api/route", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({origin, destination, stops, truckParams}), signal:controller.signal,
     });
-
     const data = await res.json();
-	window.lastRouteTollsGeo = data.tolls_geo || null;
-	console.log("tolls_geo:", data.tolls_geo);
-	console.log("tolls(v0):", data.tolls);
-
-
-	const rui = getRouteFromUI();
-		window.lastRoutePayload = {
-		origin: rui.origin,
-		destination: rui.destination,
-		stops: rui.stops,
-		points_resolved: data.points_resolved || null,
-		title: (rui.origin && rui.destination) ? `${rui.origin} → ${rui.destination}` : "Wycena trasy"
-	};
-
+    if (controller !== routeRequestController) return;
+    if (fingerprint !== RouteQuality.fingerprint()) { RouteQuality.invalidate(); return; }
     if (!res.ok) {
-      if (res.status === 429) {
-        if (data.code === "RATE_LIMIT" || data.code === "GLOBAL_LIMIT") {
-          // Za szybkie/zbyt liczne zapytania — NIE pokazuj modala upgrade'u
-          routeInfoEl.textContent = data.error || "Za dużo zapytań. Odczekaj chwilę.";
-        } else {
-          // Dzienny limit kalkulacji trialu wyczerpany
-          routeInfoEl.textContent = "Dzienny limit kalkulacji wyczerpany.";
-          showQuotaModal(data);
-        }
-      } else if (res.status === 503) {
-        routeInfoEl.textContent = data.error || "Chwilowe przeciążenie. Spróbuj za minutę.";
-      } else {
-        routeInfoEl.textContent = data.error || "Błąd wyznaczania trasy.";
-      }
+      const error = data.error || "Błąd wyznaczania trasy.";
+      routeInfoEl.textContent = error;
+      RouteQuality.invalidate(error);
+      if (res.status === 429 && data.limit && !data.code) showQuotaModal(data);
       return;
     }
-
-    // Odśwież licznik z API — nagłówki HTTP mogą być gubione przez interceptory
-    fetch("/api/quota")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.limited) updateQuotaDisplay(d.remaining, d.limit); })
-      .catch(() => {});
-
-    baseInput.value = data.distance_km;
+    if (!RouteQuality.accept(data, fingerprint)) return;
+    window.lastRoutePayload = {origin, destination, stops,
+      origin_resolved:data.origin_resolved, destination_resolved:data.destination_resolved,
+      points_resolved:data.points_resolved || null, title:`${origin} → ${destination}`};
+    document.getElementById("base_distance_km").value = data.distance_km;
     updateMapFromRoute(data);
-
-    // === ALTERNATYWNE TRASY ===
     renderAlternativeRoutes(data.alternatives || []);
-
-const { base, empty, total } = updateTotalDistance();
-applyAutoFields();
-
-// --- MYTO Z HERE (jedno źródło prawdy) ---
-const tg0 = window.lastRouteTollsGeo;
-const driverDays = +document.getElementById("driver_days")?.value || 0;
-const gbpEur = +document.getElementById("gbp_eur")?.value || 1.17;
-
-const routeText =
-  (data.origin_resolved || origin || "") + " " +
-  (data.destination_resolved || destination || "") + " " +
-  (Array.isArray(data.points_resolved) ? data.points_resolved.join(" ") : "");
-
-const kmPerDayUi = +document.getElementById("km_per_day")?.value || 600;
-
-const v = calcDailyVignettesFromGeo(
-  tg0,
-  driverDays,
-  gbpEur,
-  routeText,
-  Number(data.distance_km || 0),
-  kmPerDayUi
-);
-
-window.lastRouteVignettes = v;
-const tgAdj = applyVignetteOverrides(tg0, v);
-window.lastRouteTollsGeoAdj = tgAdj;
-
-// Myto = HERE (per-km toll) + winiety NL/GB — jedno źródło, readonly
-const baseTolls = (tgAdj?.total_eur != null) ? Number(tgAdj.total_eur) : 0;
-const totalTolls = baseTolls + Number(v.total_eur || 0);
-const tollsEl = document.getElementById("tolls_eur");
-if (tollsEl) {
-  tollsEl.value = totalTolls.toFixed(2);
-}
-// Promy/tunel – pole manualne, nie nadpisujemy
-
-// Label źródła myto
-const sourceEl = document.getElementById("tollsSource");
-if (sourceEl) {
-  const hasHere = tg0?.by_country?.some(x => x.source === "HERE");
-  sourceEl.textContent = hasHere
-    ? `Źródło: HERE Routing API (${data.routing_engine || "HERE"})`
-    : "Źródło: offline €/km (brak danych HERE)";
-}
-	
-	run();
-
-    let pointsText = "";
-    if (Array.isArray(data.points_resolved) && data.points_resolved.length) {
-      pointsText = "Punkty:\n- " + data.points_resolved.join("\n- ") + "\n\n";
-    } else if (data.origin_resolved || data.destination_resolved) {
-      pointsText =
-        "Skąd: " + (data.origin_resolved || origin) + "\n" +
-        "Dokąd: " + (data.destination_resolved || destination) + "\n\n";
-    }
-
-    routeInfoEl.textContent =
-      pointsText +
-      `Trasa z mapy: ${base} km\n` +
-      `Pusty dolot: ${empty} km\n` +
-      `RAZEM do kalkulacji: ${total} km\n` +
-      `Czas (bazowy): ${data.duration_h} h`;
-
+    window._selectedAltIdx = 0;
+    const {base, empty, total} = updateTotalDistance();
+    applyAutoFields();
+    updateRouteTolls(data.tolls_geo);
+    run();
+    RouteQuality.render();
+    routeInfoEl.textContent = `Źródło trasy: ${data.routing_engine}\nTrasa: ${base} km | Pusty dolot: ${empty} km\nDo kalkulacji: ${total} km | Czas bazowy: ${data.duration_h} h`;
+    fetch("/api/quota").then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.limited) updateQuotaDisplay(d.remaining, d.limit); }).catch(() => {});
   } catch (e) {
-    console.error(e);
-    routeInfoEl.textContent = "Nie mogę połączyć się z serwerem (route).";
+    if (controller !== routeRequestController || e.name === "AbortError") return;
+    routeInfoEl.textContent = "Nie udało się pobrać trasy. Spróbuj ponownie.";
+    RouteQuality.invalidate(routeInfoEl.textContent);
+  } finally {
+    if (controller === routeRequestController) { routeRequestController = null; pendingRouteFingerprint = null; }
   }
+}
+
+function updateRouteTolls(tg) {
+  window.lastRouteTollsGeo = tg;
+  const v = calcDailyVignettesFromGeo(tg);
+  window.lastRouteVignettes = v;
+  window.lastRouteTollsGeoAdj = tg;
+  document.getElementById("tolls_eur").value = (Number(tg?.total_eur || 0) + Number(v.total_eur || 0)).toFixed(2);
 }
 
 /* =========================
@@ -304,7 +214,7 @@ function renderResult(input, result, fromPolicz = false) {
         const isVig    = isVignetteCountry(x.country);
         // Dla HERE: nie pokazuj stawki €/km (km są proporcjonalne, nie rzeczywiste)
         // Dla offline: pokaż stawkę
-        const kmCell   = isHere ? `<span style="opacity:.45;font-size:11px;">~${x.km ?? "—"}</span>` : (x.km ?? "—");
+        const kmCell   = x.toll_km != null ? x.toll_km : isHere ? `<span style="opacity:.45;font-size:11px;">~${x.km ?? "—"}</span>` : (x.km ?? "—");
         const rateCell = isHere
           ? `<span style="opacity:.4;font-size:10px;">${isVig ? "winieta" : "HERE"}</span>`
           : (x.rate_eur_per_km ?? "—");
@@ -313,7 +223,7 @@ function renderResult(input, result, fromPolicz = false) {
             <td>${x.country ?? "—"}</td>
             <td style="text-align:right;">${kmCell}</td>
             <td style="text-align:right;">${rateCell}</td>
-            <td style="text-align:right;font-weight:600;">${Number(x.cost_eur||0).toFixed(2)}</td>
+            <td style="text-align:right;font-weight:600;">${x.cost_eur == null ? "brak stawki" : Number(x.cost_eur).toFixed(2)}</td>
           </tr>
         `;
       });
@@ -338,7 +248,7 @@ function renderResult(input, result, fromPolicz = false) {
     // Podsumowanie
     const base = Number(tg?.total_eur || 0);
     const add  = Number(v?.total_eur  || 0);
-    const src  = tg?.by_country?.some(x => x.source === "HERE") ? "HERE" : "offline €/km";
+    const src = tg?.status === "unavailable" ? "brak danych" : "szacunek";
 
     if (tollsTotalEl) {
       tollsTotalEl.textContent = add > 0
@@ -348,6 +258,7 @@ function renderResult(input, result, fromPolicz = false) {
   }
 
   
+  RouteQuality.render();
   const ev = window.lastEvaluation;
 
 if (ev) {
@@ -683,6 +594,7 @@ function toggleHistoryPanel(forceOpen){
 }
 
 async function saveCurrentToHistory(){
+  if (!RouteQuality.canCalculate()) return;
   const calc = window.lastCalc;
   const input = window.lastInput;
   if (!calc || !input) {
@@ -1039,14 +951,8 @@ function hRestore(id, refreshRoute = false){
   window.lastRouteTollsGeoAdj = it.tolls_geo_adj || null;
   window.lastRouteVignettes = it.vignettes || null;
   
-  try{
-  const tg = window.lastRouteTollsGeoAdj || window.lastRouteTollsGeo;
-  const v = window.lastRouteVignettes;
-  const base = tg?.total_eur != null ? Number(tg.total_eur) : 0;
-  const add = v?.total_eur != null ? Number(v.total_eur) : 0;
-  const te = document.getElementById("tolls_eur");
-  if (te) te.value = (base + add).toFixed(2);
-}catch(e){ console.warn("restore tolls+vignettes failed", e); }
+  window.lastRoutePayload = { ...it.route, title:it.name || "Wycena z historii" };
+  RouteQuality.accept({tolls_geo:window.lastRouteTollsGeo});
 
   if (refreshRoute) {
     // 🗺 pełne przeliczenie trasy z backendu
@@ -1250,7 +1156,7 @@ function renderAlternativeRoutes(alternatives) {
       <div class="altMeta">
         📏 ${alt.distance_km} km &nbsp;•&nbsp;
         ⏱ ${alt.duration_h} h &nbsp;•&nbsp;
-        💰 myto: ${alt.tolls_geo?.total_eur ?? "—"} €
+        💰 szacunek myta: ${alt.tolls_geo?.status === "unavailable" ? "brak danych" : (alt.tolls_geo?.total_eur ?? "—") + " €"}
       </div>
     `;
 
@@ -1265,6 +1171,9 @@ window._selectedAltIdx = 0;
 function selectAltRoute(idx, alternatives, list) {
   window._selectedAltIdx = idx;
   const alt = alternatives[idx];
+  if (!RouteQuality.canCalculate() || !alt) return;
+  RouteQuality.accept(alt);
+  updateMapFromRoute(alt);
 
   // zaznacz kartę
   if (list) {
@@ -1296,17 +1205,12 @@ function selectAltRoute(idx, alternatives, list) {
   updateTotalDistance();
   applyAutoFields();
 
-  const rui = getRouteFromUI();
-  const driverDays = +document.getElementById("driver_days")?.value || 0;
-  const gbpEur = +document.getElementById("gbp_eur")?.value || 1.17;
-  const kmPerDayUi = +document.getElementById("km_per_day")?.value || 0;
-  const v = calcDailyVignettesFromGeo(alt.tolls_geo, driverDays, gbpEur, rui.origin + " " + rui.destination, alt.distance_km, kmPerDayUi);
-  window.lastRouteVignettes = v;
-  const tgAdj = applyVignetteOverrides(alt.tolls_geo, v);
-  window.lastRouteTollsGeoAdj = tgAdj;
-  const baseTolls = tgAdj?.total_eur != null ? Number(tgAdj.total_eur) : 0;
-  document.getElementById("tolls_eur").value = (baseTolls + Number(v.total_eur || 0)).toFixed(2);
+  updateRouteTolls(alt.tolls_geo);
+  const routeInfoEl = document.getElementById("routeInfo");
+  if (routeInfoEl) routeInfoEl.textContent = `Źródło trasy: ${alt.routing_engine} | Wariant ${idx + 1} | ${alt.distance_km} km | ${alt.duration_h} h`;
+
   run();
+  RouteQuality.render();
 }
 
 window.renderAlternativeRoutes = renderAlternativeRoutes;
@@ -1315,7 +1219,7 @@ window.renderAlternativeRoutes = renderAlternativeRoutes;
 // PRESETY POJAZDÓW
 // ============================================================
 const VEHICLE_PRESETS = {
-  tir40:  { label:"TIR 40t",        transportMode:"truck", grossWeightKg:40000, axleWeightKg:11500, heightCm:400, widthCm:255, lengthCm:1360, axleCount:5, info:"ciągnik 2 osie + naczepa 3 osie · 40 000 kg · 400×255×1360 cm" },
+  tir40:  { label:"TIR 40t",        transportMode:"truck", grossWeightKg:40000, axleWeightKg:11500, heightCm:400, widthCm:255, lengthCm:1650, axleCount:5, info:"ciągnik 2 osie + naczepa 3 osie · 40 000 kg · 400×255×1650 cm (cały zestaw)" },
   jumbo:  { label:"Tandem Jumbo 120m³", transportMode:"truck", grossWeightKg:22000, axleWeightKg:10000, heightCm:300, widthCm:248, lengthCm:1500, axleCount:5, info:"solo 3 osie + przyczepa 2 osie · do 22 000 kg · 120 m³" },
   solo:   { label:"Solo (firanka)", transportMode:"truck", grossWeightKg:12000, axleWeightKg:7500,  heightCm:340, widthCm:248, lengthCm:720,  axleCount:3, info:"skrzynia/firanka solo · 3 osie · do 12 000 kg · 340×248×720 cm" },
   bus35:  { label:"Bus do 3,5t",    transportMode:"truck", grossWeightKg:3500,  axleWeightKg:1800,  heightCm:270, widthCm:210, lengthCm:600,  axleCount:2, info:"do 3 500 kg · 2 osie · 270×210×600 cm" },
@@ -1352,7 +1256,7 @@ function applyVehiclePreset(preset) {
     b.style.borderColor = b.dataset.preset === preset ? "var(--accent, #6d7cff)" : "";
   });
 
-  // Odśwież trasę jeśli już była pobrana (żeby HERE przeliczył myto dla nowego pojazdu)
+  // Odśwież trasę jeśli już była pobrana (żeby routing uwzględnił nowy pojazd)
   const hasRoute = Number(document.getElementById("base_distance_km")?.value) > 0;
   if (hasRoute && typeof getRoute === "function") {
     const routeInfoEl = document.getElementById("routeInfo");
@@ -1369,5 +1273,3 @@ document.addEventListener("DOMContentLoaded", () => {
   // Domyślnie TIR 40t
   applyVehiclePreset("tir40");
 });
-
-

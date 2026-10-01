@@ -150,7 +150,11 @@ function calculateCosts(data){
 	price_eur = offer_price_eur;
 	} else {
   // Klasyczny tryb: liczę cenę sugerowaną z target marży
-	price_eur = total_cost_eur * (1 + safeNum(data.target_margin_pct) / 100);
+	const target = Number(data.target_margin_pct);
+	if (!Number.isFinite(target) || target < 0 || target >= 100) {
+	  throw new RangeError("Marża docelowa musi wynosić od 0% do mniej niż 100%.");
+	}
+	price_eur = total_cost_eur / (1 - target / 100);
 	}
 
 	const margin_eur = price_eur - total_cost_eur;
@@ -180,6 +184,7 @@ function calculateCosts(data){
 }
 
 function run(fromPolicz = false) {
+  if (!RouteQuality.canCalculate()) return;
 
 console.log("RUN CLICK", fromPolicz ? "(POLICZ)" : "(auto)");
 
@@ -214,8 +219,26 @@ console.log("RUN CLICK", fromPolicz ? "(POLICZ)" : "(auto)");
   
   console.log("MODE:", data.calc_mode, "OFFER:", data.offer_price_eur);
 
-  const result = calculateCosts(data);
+  let result;
+  try {
+    result = calculateCosts(data);
+  } catch (error) {
+    window.lastCalc = null;
+    window.lastInput = null;
+    clearTimeout(window._deferredSaveTimer);
+    const info = document.getElementById("routeInfo");
+    if (info) info.textContent = error.message;
+    for (const id of ["kpi_total", "kpi_price", "kpi_margin", "routeScore"]) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = "—";
+    }
+    const table = document.getElementById("costTable");
+    if (table) table.textContent = "";
+    return;
+  }
 
+  result.requires_review = true;
+  result.route_quality = window.lastRouteTollsGeo?.routing?.quality || "unverified";
   result.base_distance_km = round2(base);
   result.empty_km = round2(empty);
   result.distance_km = round2(total);
