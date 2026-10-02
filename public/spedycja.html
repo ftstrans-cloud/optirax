@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#142c32"><title>Spedycja — Optirax</title>
+  <link rel="stylesheet" href="/forwarding.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="/auth.js"></script>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="/forwarding.js"></script>
+</head>
+<body>
+  <a class="skip" href="#workspace">Przejdź do wyceny</a>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="Optirax — kalkulator przewoźnika"><span class="brand-symbol" aria-hidden="true">↗</span> OPTIRAX</a>
+    <nav aria-label="Obszar pracy"><a href="/">Przewoźnik</a><a href="/spedycja" aria-current="page">Spedycja</a></nav>
+    <div class="account"><span id="accountLabel">Twoje konto</span><button type="button" id="logout" class="quiet">Wyloguj</button></div>
+  </header>
+  <main>
+    <div class="page-heading"><div><p class="eyebrow">CENTRUM WYCEN / SPEDYCJA</p><h1>Od przesyłki do oferty.</h1><p class="muted">Bus i solo · transport bezpośredni · wszystkie kwoty w EUR netto</p></div><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
+    <div class="notice"><span class="notice-dot" aria-hidden="true"></span><span><strong>Model negocjacyjny.</strong> Przykładowe założenia kosztowe wymagają dopasowania do Twoich zakupów. Wynik nie jest bieżącą stawką z rynku.</span></div>
+    <div id="message" role="status" aria-live="polite" hidden></div>
+    <form id="workspace" novalidate>
+      <div class="form-column">
+        <section class="card">
+          <div class="section-top"><h2><span class="step">01</span> Zlecenie</h2><button type="button" id="pasteOpen" class="text-button">Wklej zapytanie ↗</button></div>
+          <div class="fields two"><label>Klient<input id="client" maxlength="200" placeholder="Nazwa firmy"></label><label>Referencja<input id="reference" maxlength="120" placeholder="np. OF/10/001"></label></div>
+          <div class="route-fields"><label><span class="route-label"><b>A</b> Załadunek</span><input id="origin" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label><label><span class="route-label"><b>B</b> Rozładunek</span><input id="destination" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label></div>
+          <div class="fields two"><label>Data załadunku<input id="pickup" type="date"></label><label>Data dostawy<input id="delivery" type="date"></label></div>
+          <div class="fields route-controls"><label>Dystans (km)<input id="distanceKm" type="number" min="1" max="20000" step="0.1" placeholder="np. 650" inputmode="decimal"></label><button id="fetchRoute" type="button" class="secondary">Pobierz trasę</button></div>
+          <p id="routeStatus" class="hint">Wpisz adresy i pobierz trasę albo podaj sprawdzony dystans ręcznie.</p>
+        </section>
+        <section class="card">
+          <div class="section-top"><h2><span class="step">02</span> Przesyłka</h2><span class="tag">kg / szt.</span></div>
+          <p class="hint">Wymiary jednej sztuki w cm. Waga jednej sztuki z opakowaniem.</p>
+          <div id="cargoRows"></div>
+          <button type="button" id="addCargo" class="add-button">+ Dodaj pozycję</button>
+          <div class="fields checks"><label><input type="checkbox" id="tailLift"> Winda</label><label><input type="checkbox" id="palletJack"> Paleciak</label></div>
+          <label>Warunki przewozu i zakres ceny<textarea id="notes" maxlength="3000" rows="2" placeholder="np. załadunek bokiem, godziny 8–14, odprawa po stronie klienta"></textarea></label>
+          <p class="hint">Winda i paleciak są wymaganiami. Ich cenę wpisz w dopłatach poniżej.</p>
+        </section>
+        <section class="card">
+          <h2><span class="step">03</span> Sposób przewozu</h2>
+          <div class="mode-options"><label><input type="radio" name="mode" value="dedicated" checked><span><strong>Dedykowany</strong><small>Całe auto dla przesyłki</small></span></label><label><input type="radio" name="mode" value="partload"><span><strong>Doładunek</strong><small>Udział w koszcie trasy</small></span></label></div>
+          <label>Pojazd<select id="profile"><option value="bus">Bus plandeka 3,5 t</option><option value="solo75">Solo 7,5 t</option><option value="solo12">Solo 12 t</option></select></label>
+          <details id="vehicleDetails"><summary>Ładownia i parametry auta <span>Edytuj</span></summary><p class="hint">Profile są przykładowe. Potwierdź rzeczywistą ładowność, drzwi i wymiary auta, zwłaszcza z windą.</p><div id="vehicleFields" class="fields two"></div></details>
+        </section>
+      </div>
+      <div class="context-column">
+        <section class="card load-card"><div class="section-top"><h2>Kontrola ładunku</h2><span class="tag" id="fitTag">Uzupełnij dane</span></div><div class="load-metrics" id="loadMetrics"><p class="muted">Wynik pojawi się po obliczeniu.</p></div><p class="hint">Kontrola wagowa i wymiarowa. Bez automatycznego planowania rozmieszczenia i piętrowania.</p></section>
+        <details class="card map-card" id="mapDetails" open><summary>Przebieg trasy <span>Mapa</span></summary><div id="routeMap"><div class="map-placeholder">A <span>················</span> B<p>Wyznacz trasę dla wybranego auta.</p></div></div><p id="mapCaption" class="hint">Routing TomTom z parametrami pojazdu. Myto dla busa i solo wpisujesz samodzielnie.</p></details>
+        <section class="card assumptions-card"><h2>Założenia wyceny</h2><p class="hint">Kwoty startowe to przykład modelu, do edycji. Nie są taryfą przewoźników.</p><div id="keyAssumptions" class="fields two"></div><details><summary>Koszty, dojazd i doładunek <span>Edytuj</span></summary><div id="otherAssumptions" class="fields two"></div></details><label class="review-check"><input id="reviewed" type="checkbox"><span>Sprawdziłem stawki, myto, przeprawę, parametry auta i warunki zlecenia.</span></label></section>
+      </div>
+      <aside class="decision-column">
+        <section class="decision-card" aria-labelledby="decisionTitle"><div class="section-top"><p class="eyebrow">TWOJA DECYZJA</p><span class="tag" id="resultTag">Szkic</span></div><h2 id="decisionTitle">Zakup. Sprzedaż. Marża.</h2>
+          <div id="emptyResult" class="empty-result"><span aria-hidden="true">↗</span><h3>Ile zapłacić, ile zaproponować?</h3><p>Dodaj trasę i przesyłkę. Porównaj koszt modelowy z realną ofertą przewoźnika.</p></div>
+          <div id="result" hidden aria-live="polite"></div>
+          <label class="sell-label">Twoja cena dla klienta (EUR)<input id="sellPrice" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" placeholder="Puste = cena z marży docelowej"></label>
+          <div class="calculate-bar"><button type="submit" id="calculate" class="primary">Wyceń przesyłkę <span>↗</span></button></div>
+          <div class="result-actions"><button type="button" id="saveQuote" class="secondary" disabled>Zapisz wersję</button><button type="button" id="offerOpen" class="secondary" disabled>Oferta klienta</button></div><p id="saveState" class="hint">Wersje zapisujesz na swoim koncie.</p>
+        </section>
+        <section class="card"><div class="section-top"><h2>Oferty przewoźników</h2><button type="button" id="addOffer" class="text-button">+ Dodaj</button></div><p class="hint">Oferta „Przyjęta” zastępuje modelowy zakup w wyniku. „Otrzymana” służy do porównania.</p><div id="offerRows"></div></section>
+        <details class="card" id="warningsCard"><summary>Co trzeba potwierdzić <span id="warningsCount">—</span></summary><ul id="warnings"></ul></details>
+      </aside>
+    </form>
+    <section class="history-section"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
+    <footer>OPTIRAX / Spedycja <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+  </main>
+  <dialog id="pasteDialog"><div class="section-top"><h2>Wklej zapytanie</h2><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div><p class="hint">Odczyt lokalny, bez wysyłania treści do AI. Rozpoznaje opisane adresy i pozycje w cm, np.:</p><pre>Załadunek: PL 60-101 Poznań
+Rozładunek: DE 10115 Berlin
+2 x 120x80x150 cm, 200 kg/szt.</pre><label>Treść zapytania<textarea id="enquiry" rows="7" maxlength="12000" placeholder="Wklej treść tutaj…"></textarea></label><button type="button" id="parseEnquiry" class="primary">Odczytaj dane</button><div id="parsePreview" hidden></div><button type="button" id="applyEnquiry" class="secondary" hidden>Zastosuj odczytane pola</button></dialog>
+  <dialog id="offerDialog"><div class="section-top"><h2>Oferta dla klienta</h2><button type="button" class="quiet" data-close="offerDialog" aria-label="Zamknij">✕</button></div><p class="hint">Tylko cena sprzedaży i warunki. Sprawdź tekst przed wysłaniem.</p><label>Treść oferty<textarea id="customerText" rows="15"></textarea></label><div class="fields two"><button type="button" id="copyOffer" class="primary">Kopiuj treść</button><button type="button" id="printOffer" class="secondary">Drukuj / zapisz PDF</button></div><p id="copyStatus" role="status"></p></dialog>
+  <div id="printArea" aria-hidden="true"></div>
+</body>
+</html>

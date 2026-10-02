@@ -177,6 +177,7 @@
       <div class="section-label"><svg viewBox="0 0 24 24"><use href="#i-calc"/></svg> Kalkulator</div>
       <div class="panel-h"><svg class="ic-lg" viewBox="0 0 24 24" style="color:var(--signal)"><use href="#i-route"/></svg> Kalkulator kosztów trasy</div>
       <div class="panel-sub">Wpisz trasę albo wklej z maila</div>
+      <a class="btn" href="/spedycja" style="display:flex;justify-content:space-between;align-items:center;min-height:44px;margin:12px 0;text-decoration:none;">Spedycja: wyceń busa lub solo <span aria-hidden="true">→</span></a>
 
       <!-- TRYB PRACY: id+klasy wymagane przez setCalcMode() w route.js -->
       <div class="modeBox">
@@ -655,6 +656,7 @@
       '<div class="dd-row dd-email">'+email+'</div>'+
       '<div class="dd-row">Plan: <span class="dd-badge" style="background:'+pc+'22;color:'+pc+';border:1px solid '+pc+'44;">'+plan+'</span></div>'+
       trialRow+
+      '<a class="dd-row" href="/spedycja" style="display:block;min-height:44px;color:var(--ink);text-decoration:none;">Spedycja — wycena przesyłki →</a>'+
       '<div class="dd-sep"></div>'+
       '<button type="button" class="dd-logout" id="optLogout">Wyloguj</button>';
     document.body.appendChild(drop);

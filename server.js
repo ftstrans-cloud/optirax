@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { Resend } from "resend";
 import { createRouteService, RoutingError } from "./lib/routing.js";
+import { registerForwarding, CARRIER_QUOTE_FILTER } from "./lib/forwarding.js";
 
 dotenv.config();
 
@@ -1214,7 +1215,7 @@ app.get("/api/history", requireAuth, requireActiveSubscription, async (req, res)
     // ?include_drafts=1 zwraca wszystko (do debug/admin).
     const draftFilter = req.query.include_drafts === "1" ? "" : "&is_draft=eq.false";
     const data = await sbFetch("quotes", "GET", null,
-      `?auth_user_id=eq.${uid}${draftFilter}&order=ts.desc&limit=200`);
+      `?auth_user_id=eq.${uid}${draftFilter}${CARRIER_QUOTE_FILTER}&order=ts.desc&limit=200`);
     res.json(data || []);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -1251,6 +1252,8 @@ function buildQuoteRow(item, userId, { isDraft = false } = {}) {
     vehicle_reg:  item.vehicle_reg || null,
   };
 }
+
+registerForwarding(app, {requireAuth, requireActiveSubscription, sbFetch, buildQuoteRow});
 
 // Helper: znajdź draft dla danej trasy (origin + destination, te same stops)
 // Zwraca id draftu albo null. Stops porównujemy luźno (po stringified arr).
