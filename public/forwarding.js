@@ -1,9 +1,15 @@
-import {PROFILES,DEFAULT_ASSUMPTIONS,calculate,parseEnquiry,customerOffer} from './forwarding-engine.js';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(n,d=2)=>Number(n).toLocaleString('pl-PL',{minimumFractionDigits:d,maximumFractionDigits:d});
-const money=n=>`${fmt(n)} EUR`;
+let currentCurrency='EUR',currentProfile='bus',fxMeta=null;
+function applyTheme(theme){document.documentElement.dataset.theme=theme;$('themeToggle').textContent=theme==='dark'?'Tryb jasny':'Tryb ciemny';try{localStorage.setItem('optirax_theme',theme);}catch{}}
+let storedTheme;try{storedTheme=localStorage.getItem('optirax_theme');}catch{}
+applyTheme(storedTheme==='light'?'light':'dark');
+$('themeToggle').onclick=()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+const currencySymbol=code=>code==='PLN'?'zł':'EUR';
+const money=(n,currency=currentCurrency)=>`${fmt(n)} ${currencySymbol(currency)}`;
 let result=null,routeData=null,routeRequest=null,routeSequence=0,dirty=false,saving=false,revision=0,historyRows=[],parsed=null,map=null,mapLine=null,mapMarkers=[],tilesKey='';
 const A={
   targetMargin:['Marża docelowa (%)',0,80],minimumMargin:['Marża minimalna (%)',0,80],
@@ -16,14 +22,46 @@ const A={
   minimumBuy:['Minimalny zakup (EUR)',0,10000],minimumShare:['Min. udział doładunku (%)',1,100],
 };
 const V={length:['Długość ładowni (cm)',100,1400],width:['Szerokość ładowni (cm)',100,300],height:['Wysokość ładowni (cm)',100,400],payload:['Ładowność (kg)',100,20000],grossWeightKg:['DMC do routingu (kg)',1000,40000],axleWeightKg:['Nacisk osi (kg)',500,20000],lengthCm:['Długość auta (cm)',200,2000],widthCm:['Szerokość auta (cm)',100,300],heightCm:['Wysokość auta (cm)',100,500],axleCount:['Liczba osi',2,6]};
-function fields(spec,prefix,values){return Object.entries(spec).map(([k,[label,min,max]])=>`<label>${label}<input id="${prefix}-${k}" data-${prefix}="${k}" type="number" inputmode="decimal" min="${min}" max="${max}" step="${k==='axleCount'?'1':'0.01'}" value="${esc(values[k])}"></label>`).join('');}
+function fields(spec,prefix,values){return Object.entries(spec).map(([k,[label,min,max]])=>`<label>${label}<input id="${prefix}-${k}" data-${prefix}="${k}" ${prefix==='a'&&MONEY_ASSUMPTIONS.includes(k)?'data-money="assumption"':''} type="number" inputmode="decimal" min="${min}" max="${max}" step="${k==='axleCount'?'1':prefix==='a'&&MONEY_ASSUMPTIONS.includes(k)?'any':'0.01'}" value="${esc(values[k])}"></label>`).join('');}
+function clearMoneyAnchor(el){for(const key of ['anchorAmount','anchorCurrency','anchorRate','renderedAmount'])delete el.dataset[key];}
+function syncCurrencyLabels(){
+  let rate=null;try{rate=normalizeExchangeRate($('eurPln').value);}catch{}
+  const scale=currentCurrency==='PLN'&&rate?rate:1;
+  document.querySelectorAll('[data-money]').forEach(el=>{
+    const label=el.closest('label');label.dataset.currencyLabel??=label.firstChild.textContent;
+    label.firstChild.textContent=label.dataset.currencyLabel.replace(/EUR/g,currentCurrency);
+    el.dataset.maxEur??=el.max;el.max=Number(el.dataset.maxEur)*scale;
+  });
+  $('currencyCaption').textContent=`Bus i solo · transport bezpośredni · kwoty w ${currentCurrency} netto`;
+}
+function switchCurrency(){
+  const target=$('quoteCurrency').value,hadResult=!!result;
+  try{
+    normalizeCurrency(target);const rate=normalizeExchangeRate($('eurPln').value,target!==currentCurrency);
+    const changes=[...document.querySelectorAll('[data-money]')].map(el=>{
+      if(el.value==='')return {el,value:'',anchor:null};
+      const anchor=el.dataset.renderedAmount===el.value&&Number(el.dataset.anchorRate)===rate
+        ?{amount:Number(el.dataset.anchorAmount),currency:el.dataset.anchorCurrency}
+        :{amount:Number(el.value),currency:currentCurrency};
+      const value=convertMoney(anchor.amount,anchor.currency,target,rate);
+      return {el,value:target===anchor.currency?String(anchor.amount):String(Number(value.toFixed(el.dataset.money==='price'?2:8))),anchor};
+    });
+    changes.forEach(({el,value,anchor})=>{el.value=value;if(anchor){el.dataset.anchorAmount=anchor.amount;el.dataset.anchorCurrency=anchor.currency;el.dataset.anchorRate=rate;el.dataset.renderedAmount=el.value;}else clearMoneyAnchor(el);});
+    currentCurrency=target;syncCurrencyLabels();$('reviewed').checked=false;invalidate();$('message').hidden=true;if(hadResult)runCalculation();
+  }catch(e){$('quoteCurrency').value=currentCurrency;message(e.message,true);$('eurPln').focus();}
+}
 function initFields(){
   const main=['targetMargin','minimumMargin','tolls','crossing'];
   $('keyAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>main.includes(k))),'a',DEFAULT_ASSUMPTIONS);
   $('otherAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>!main.includes(k))),'a',DEFAULT_ASSUMPTIONS);
   setProfile();
 }
-function setProfile(){const v=PROFILES[$('profile').value];$('vehicleFields').innerHTML=fields(V,'v',v);$('a-kmRate').value=v.kmRate;$('a-hourRate').value=v.hourRate;}
+function setProfile(){
+  const v=PROFILES[$('profile').value],rate=currentCurrency==='PLN'?normalizeExchangeRate($('eurPln').value,true):null;
+  $('vehicleFields').innerHTML=fields(V,'v',v);
+  for(const k of ['kmRate','hourRate']){const el=$(`a-${k}`);el.value=Number(convertMoney(v[k],'EUR',currentCurrency,rate).toFixed(8));clearMoneyAnchor(el);}
+  currentProfile=$('profile').value;
+}
 function cargoRow(data={qty:1,length:120,width:80,height:'',weight:'',stackable:false}){
   if($('cargoRows').children.length>=30){message('Maksymalnie 30 pozycji ładunku.',true);return;}
   const row=document.createElement('div');row.className='cargo-row';
@@ -35,11 +73,11 @@ function offerRow(data={carrier:'',price:'',status:'received'}){
   if($('offerRows').children.length>=50){message('Maksymalnie 50 ofert przewoźników.',true);return;}
   const row=document.createElement('div');row.className='offer-row';
   row.dataset.needsConfirmation=String(data.needsConfirmation===true);
-  row.innerHTML=`<div class="cargo-title"><span>PRZEWOŹNIK</span><button type="button" class="quiet remove-offer" aria-label="Usuń ofertę przewoźnika">×</button></div><label>Nazwa<input data-offer="carrier" maxlength="120" value="${esc(data.carrier)}" placeholder="Nazwa przewoźnika"></label><div class="fields two"><label>Cena EUR netto<input data-offer="price" type="number" min="0.01" max="1000000" step="0.01" value="${esc(data.price)}" inputmode="decimal"></label><label>Status<select data-offer="status"><option value="received">Otrzymana</option><option value="accepted">Przyjęta</option><option value="rejected">Odrzucona</option></select></label></div><p class="offer-compare">Przelicz, aby porównać ofertę z limitem zakupu.</p>`;
-  row.querySelector('select').value=data.status;$('offerRows').appendChild(row);
+  row.innerHTML=`<div class="cargo-title"><span>PRZEWOŹNIK</span><button type="button" class="quiet remove-offer" aria-label="Usuń ofertę przewoźnika">×</button></div><label>Nazwa<input data-offer="carrier" maxlength="120" value="${esc(data.carrier)}" placeholder="Nazwa przewoźnika"></label><div class="fields two"><label>Cena EUR netto<input data-offer="price" data-money="price" type="number" min="0.01" max="1000000" step="0.01" value="${esc(data.price)}" inputmode="decimal"></label><label>Status<select data-offer="status"><option value="received">Otrzymana</option><option value="accepted">Przyjęta</option><option value="rejected">Odrzucona</option></select></label></div><p class="offer-compare">Przelicz, aby porównać ofertę z limitem zakupu.</p>`;
+  row.querySelector('select').value=data.status;$('offerRows').appendChild(row);syncCurrencyLabels();
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
-function collect(){return {profile:$('profile').value,mode:document.querySelector('[name=mode]:checked').value,
+function collect(){return {currency:currentCurrency,eurPln:$('eurPln').value,fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,mode:document.querySelector('[name=mode]:checked').value,
   route:{origin:$('origin').value,destination:$('destination').value,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
@@ -68,8 +106,11 @@ function runCalculation(scroll=false){
   catch(e){result=null;$('saveQuote').disabled=true;$('offerOpen').disabled=true;message(e.message,true);$('message').scrollIntoView({behavior:'smooth',block:'center'});return false;}
 }
 function render(){
-  const r=result;$('result').hidden=false;$('emptyResult').hidden=true;$('resultTag').textContent=r.blockers.length?'Sprawdź auto':r.input.reviewed?'Szacunek':'Sprawdź założenia';
-  $('result').innerHTML=`${r.blockers.length?`<div class="blocker"><strong>Ładunek wymaga zmiany pojazdu lub danych.</strong><br>${r.blockers.map(esc).join('<br>')}</div>`:''}<div class="price-label">Cena dla klienta${r.input.sellPrice===null?' · sugerowana':''}</div><div class="price-value">${fmt(r.sell)} <small>EUR</small></div><p class="price-range">Zakup: ${money(r.buy)} · ${r.buySource==='accepted'?'przyjęta oferta':'model'}</p><div class="decision-stats"><div class="price-label">Zysk na zleceniu<strong>${money(r.profit)}</strong></div><div class="price-label">Marża od sprzedaży<strong>${fmt(r.margin,1)}%</strong></div></div><div class="decision-line"><span>Zakres zakupu z modelu</span><strong>${fmt(r.low,0)}–${fmt(r.high,0)} EUR</strong></div><div class="decision-line"><span>Propozycja na start</span><strong>${money(r.opening)}</strong></div><div class="decision-line"><span>Limit zakupu (${fmt(r.input.assumptions.minimumMargin,0)}% marży)</span><strong>${money(r.maxBuy)}</strong></div><div class="status-note ${r.overBudget?'bad':''}">${r.overBudget?'Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.':'Zakup mieści się w limicie przy aktualnej cenie sprzedaży.'}</div><details><summary>Skąd ta cena?</summary><div class="decision-line"><span>Koszt całej relacji</span><strong>${money(r.costs.linehaul)}</strong></div><div class="decision-line"><span>Udział przesyłki</span><strong>${fmt(r.share*100,1)}%</strong></div><div class="decision-line"><span>Dojazd + obsługa + dopłaty</span><strong>${money(r.costs.shipment)}</strong></div><div class="decision-line"><span>Koszt modelowy</span><strong>${money(r.costs.operating)}</strong></div><p class="hint">Koszt modelowy × (1 + narzut przewoźnika), z minimum zakupu. Cena sprzedaży = zakup ÷ (1 − marża docelowa). Doładunek: największy udział wagi, objętości lub podłogi, nie mniej niż ustawione minimum. Koszty dojazdu i obsługi przypisane w całości.</p></details>`;
+  const r=result,symbol=currencySymbol(r.currency),otherCurrency=r.currency==='PLN'?'EUR':'PLN';
+  const fxLabel=r.input.fxSource==='NBP'?`NBP · ${r.input.fxDate||''} · ${r.input.fxTable||''}`:'kurs ręczny';
+  const equivalent=r.eurPln?`<div class="currency-equivalent ${otherCurrency==='PLN'?'pln':''}"><strong>≈ ${money(convertMoney(r.sell,r.currency,otherCurrency,r.eurPln),otherCurrency)}</strong><span>1 EUR = ${fmt(r.eurPln,4)} PLN · ${esc(fxLabel)}</span></div>`:'';
+  $('result').hidden=false;$('emptyResult').hidden=true;$('resultTag').textContent=r.blockers.length?'Sprawdź auto':r.input.reviewed?'Szacunek':'Sprawdź założenia';
+  $('result').innerHTML=`${r.blockers.length?`<div class="blocker"><strong>Ładunek wymaga zmiany pojazdu lub danych.</strong><br>${r.blockers.map(esc).join('<br>')}</div>`:''}<div class="price-label">Cena dla klienta${r.input.sellPrice===null?' · sugerowana':''}</div><div class="price-value ${r.currency==='PLN'?'pln':''}">${fmt(r.sell)} <small>${symbol}</small></div>${equivalent}<p class="price-range">Zakup: ${money(r.buy)} · ${r.buySource==='accepted'?'przyjęta oferta':'model'}</p><div class="decision-stats"><div class="price-label">Zysk na zleceniu<strong>${money(r.profit)}</strong></div><div class="price-label">Marża od sprzedaży<strong>${fmt(r.margin,1)}%</strong></div></div><div class="decision-line"><span>Zakres zakupu z modelu</span><strong>${fmt(r.low,0)}–${fmt(r.high,0)} ${symbol}</strong></div><div class="decision-line"><span>Propozycja na start</span><strong>${money(r.opening)}</strong></div><div class="decision-line"><span>Limit zakupu (${fmt(r.input.assumptions.minimumMargin,0)}% marży)</span><strong>${money(r.maxBuy)}</strong></div><div class="status-note ${r.overBudget?'bad':''}">${r.overBudget?'Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.':'Zakup mieści się w limicie przy aktualnej cenie sprzedaży.'}</div><details><summary>Skąd ta cena?</summary><div class="decision-line"><span>Koszt całej relacji</span><strong>${money(r.costs.linehaul)}</strong></div><div class="decision-line"><span>Udział przesyłki</span><strong>${fmt(r.share*100,1)}%</strong></div><div class="decision-line"><span>Dojazd + obsługa + dopłaty</span><strong>${money(r.costs.shipment)}</strong></div><div class="decision-line"><span>Koszt modelowy</span><strong>${money(r.costs.operating)}</strong></div><p class="hint">Koszt modelowy × (1 + narzut przewoźnika), z minimum zakupu. Cena sprzedaży = zakup ÷ (1 − marża docelowa). Doładunek: największy udział wagi, objętości lub podłogi, nie mniej niż ustawione minimum. Koszty dojazdu i obsługi przypisane w całości.</p></details>`;
   $('loadMetrics').innerHTML=`<div class="load-total"><div><strong>${r.summary.pieces}</strong><small>sztuk</small></div><div><strong>${fmt(r.summary.volume,2)}</strong><small>m³</small></div><div><strong>${fmt(r.summary.ldm,2)}</strong><small>LDM / szer. 2,4 m</small></div></div>${[['weight','Ładowność',`${fmt(r.summary.weight,0)} / ${fmt(r.input.vehicle.payload,0)} kg`],['floor','Podłoga',`${fmt(r.summary.area,2)} m²`],['volume','Objętość',`${fmt(r.summary.volume,2)} m³`]].map(([key,label,detail])=>`<div class="capacity ${r.shares[key]>1?'over':''}"><div><span>${label} · ${esc(detail)}</span><strong>${fmt(r.shares[key]*100,0)}%</strong></div><progress max="1" value="${Math.min(1,r.shares[key])}" aria-label="${label}"></progress></div>`).join('')}`;
   $('fitTag').textContent=r.blockers.length?'Przekroczone limity':'Wstępna kontrola';
   $('warnings').innerHTML=[...r.blockers,...r.warnings,...(!r.input.pickup||!r.input.delivery?['Uzupełnij daty przed przygotowaniem oferty dla klienta.']:[])].map(w=>`<li>${esc(w)}</li>`).join('');$('warningsCount').textContent=$('warnings').children.length;
@@ -120,9 +161,11 @@ async function loadHistory(){
 }
 function renderHistory(){
   if(!historyRows.length){$('history').innerHTML='<div class="history-empty">Pierwsza wycena czeka na zapis. Tutaj zbudujesz własny punkt odniesienia do kolejnych zakupów.</div>';return;}
-  $('history').innerHTML=`<div class="history-table"><table><thead><tr><th>ZAPIS / KLIENT</th><th>RELACJA</th><th>ZAKUP</th><th>SPRZEDAŻ</th><th>MARŻA</th><th><span class="muted">WERSJA</span></th></tr></thead><tbody>${historyRows.map((row,index)=>{const s=row.calc?.forwarding;return `<tr><td>${esc(new Date(Number(row.ts)).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))}<small>${esc(row.client||row.name||'Bez nazwy')}</small></td><td class="history-route">${esc(row.origin)} → ${esc(row.destination)}<small>${esc(PROFILES[row.input?.profile]?.name||'')} · ${row.input?.mode==='partload'?'Doładunek':'Dedykowany'}</small></td><td class="numeric">${money(s?.buy??row.total_cost??0)}<small>${s?.buySource==='accepted'?'Przyjęta oferta':'Model'}</small></td><td class="numeric">${money(row.price_eur??0)}</td><td class="numeric">${fmt(row.margin_pct??0,1)}%</td><td><button type="button" class="secondary" data-load="${index}">Wczytaj</button></td></tr>`;}).join('')}</tbody></table></div>`;
+  $('history').innerHTML=`<div class="history-table"><table><thead><tr><th>ZAPIS / KLIENT</th><th>RELACJA</th><th>ZAKUP</th><th>SPRZEDAŻ</th><th>MARŻA</th><th><span class="muted">WERSJA</span></th></tr></thead><tbody>${historyRows.map((row,index)=>{const s=row.calc?.forwarding,currency=row.input?.currency||'EUR',rate=row.input?.eurPln,fx=row.input?.fxSource==='NBP'?`NBP ${row.input.fxDate||''}`:'';const rowMoney=n=>money(n,currency);return `<tr><td>${esc(new Date(Number(row.ts)).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))}<small>${esc(row.client||row.name||'Bez nazwy')}</small></td><td class="history-route">${esc(row.origin)} → ${esc(row.destination)}<small>${esc(PROFILES[row.input?.profile]?.name||'')} · ${row.input?.mode==='partload'?'Doładunek':'Dedykowany'}</small></td><td class="numeric">${rowMoney(s?.buy??convertMoney(row.total_cost??0,'EUR',currency,rate))}<small>${s?.buySource==='accepted'?'Przyjęta oferta':'Model'}</small></td><td class="numeric">${rowMoney(s?.sell??convertMoney(row.price_eur??0,'EUR',currency,rate))}${rate?`<small>1 EUR = ${fmt(rate,4)} PLN${fx?` · ${esc(fx)}`:''}</small>`:''}</td><td class="numeric">${fmt(row.margin_pct??0,1)}%</td><td><button type="button" class="secondary" data-load="${index}">Wczytaj</button></td></tr>`;}).join('')}</tbody></table></div>`;
 }
 function loadInput(input){
+  currentCurrency=normalizeCurrency(input.currency||'EUR');fxMeta=input.fxSource==='NBP'?{fxSource:'NBP',fxDate:input.fxDate,fxTable:input.fxTable}:null;$('quoteCurrency').value=currentCurrency;$('eurPln').value=input.eurPln??'';renderFxStatus();
+  document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);
   invalidateRoute();$('profile').value=input.profile;setProfile();
   for(const key of Object.keys(V))$(`v-${key}`).value=input.vehicle[key];
   for(const key of Object.keys(A))$(`a-${key}`).value=input.assumptions[key];
@@ -131,7 +174,7 @@ function loadInput(input){
   $('reviewed').checked=false;
   document.querySelector(`[name=mode][value="${input.mode==='partload'?'partload':'dedicated'}"]`).checked=true;
   $('origin').value=input.route.origin;$('destination').value=input.route.destination;$('distanceKm').value=input.route.distanceKm;
-  $('cargoRows').replaceChildren();input.cargo.forEach(cargoRow);$('offerRows').replaceChildren();(input.offers||[]).forEach(offerRow);
+  $('cargoRows').replaceChildren();input.cargo.forEach(cargoRow);$('offerRows').replaceChildren();(input.offers||[]).forEach(offerRow);syncCurrencyLabels();
   // Preserve the stored cost inputs; an archived distance/time does not imply a current map.
   routeData={duration_h:input.route.durationHours,routing_engine:input.route.source,archived:true};
   invalidate();runCalculation();dirty=false;
@@ -140,11 +183,31 @@ function loadInput(input){
   $('workspace').scrollIntoView({behavior:'smooth'});
 }
 
-initFields();cargoRow();
+function renderFxStatus(){
+  $('fxStatus').textContent=fxMeta?`Kurs NBP: ${fmt($('eurPln').value,4)} PLN za 1 EUR · tabela ${fxMeta.fxTable} · data publikacji ${fxMeta.fxDate}`:$('eurPln').value?'Kurs ręczny — zapisze się z tą wersją wyceny.':'Pobierz kurs NBP lub wpisz własny kurs EUR/PLN.';
+}
+async function fetchFx(){
+  const button=$('fetchFx'),status=$('fxStatus'),requestRevision=revision,hadResult=!!result;
+  button.disabled=true;button.textContent='Pobieranie…';status.textContent='Pobieram średni kurs EUR/PLN z NBP…';
+  try{
+    const data=await api('/api/forwarding/exchange-rate');
+    if(revision!==requestRevision){renderFxStatus();message('Dane wyceny zmieniły się podczas pobierania. Kurs nie został nadpisany. Kliknij ponownie, aby go zaktualizować.');return;}
+    normalizeExchangeRate(data.eurPln,true);
+    $('eurPln').value=data.eurPln;fxMeta={fxSource:'NBP',fxDate:data.fxDate,fxTable:data.fxTable};
+    document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);
+    syncCurrencyLabels();$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();
+    renderFxStatus();
+  }catch(e){renderFxStatus();message(e.message,true);}
+  finally{button.disabled=false;button.textContent='Pobierz kurs NBP';}
+}
+
+initFields();cargoRow();syncCurrencyLabels();renderFxStatus();
 if(matchMedia('(max-width:700px)').matches)$('mapDetails').open=false;
 $('workspace').addEventListener('submit',e=>{e.preventDefault();runCalculation(true);});
 $('workspace').addEventListener('input',e=>{
-  if(e.target.id==='profile')return;
+  if(['profile','quoteCurrency'].includes(e.target.id))return;
+  if(e.target.matches('[data-money]'))clearMoneyAnchor(e.target);
+  if(e.target.id==='eurPln'){fxMeta=null;renderFxStatus();document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);syncCurrencyLabels();}
   if(['origin','destination','pickup','delivery','notes','tailLift','palletJack'].includes(e.target.id)||e.target.dataset.cargo||e.target.dataset.v||e.target.name==='mode')resetOfferScope();
   if(['origin','destination'].includes(e.target.id)||['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'].includes(e.target.dataset.v))invalidateRoute();
   if(e.target.id==='distanceKm')invalidateRoute(false);
@@ -152,7 +215,8 @@ $('workspace').addEventListener('input',e=>{
   invalidate();
 });
 $('workspace').addEventListener('change',e=>{
-  if(e.target.id==='profile'){setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}
+  if(e.target.id==='quoteCurrency'){switchCurrency();return;}
+  if(e.target.id==='profile'){try{setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;message(err.message,true);}}
   if(e.target.dataset.offer==='status'&&e.target.value==='accepted'){e.target.closest('.offer-row').dataset.needsConfirmation='false';document.querySelectorAll('[data-offer=status]').forEach(el=>{if(el!==e.target&&el.value==='accepted')el.value='received';});invalidate();}
 });
 $('workspace').addEventListener('click',e=>{
@@ -163,6 +227,7 @@ $('workspace').addEventListener('click',e=>{
 $('addCargo').onclick=()=>{cargoRow();resetOfferScope();$('reviewed').checked=false;invalidate();};
 $('addOffer').onclick=()=>{offerRow();invalidate();};
 $('fetchRoute').onclick=fetchRoute;$('saveQuote').onclick=saveQuote;$('refreshHistory').onclick=loadHistory;
+$('fetchFx').onclick=fetchFx;
 $('mapDetails').addEventListener('toggle',()=>{if(map&&$('mapDetails').open){map.invalidateSize();if(mapLine)map.fitBounds(mapLine.getBounds(),{padding:[22,22]});}});
 $('newQuote').onclick=()=>{if(!dirty||confirm('Odrzucić niezapisane zmiany i rozpocząć nową wycenę?')){dirty=false;location.reload();}};
 $('logout').onclick=()=>{if(dirty&&!confirm('Wylogować i odrzucić niezapisane zmiany?'))return;dirty=false;for(const k of ['optirax_token','optirax_refresh','optirax_profile','optirax_user'])localStorage.removeItem(k);location.href='/login';};

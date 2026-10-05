@@ -1,5 +1,7 @@
-// Shared by browser and server. EUR net; explicit planning assumptions, not market tariffs.
-export const ENGINE_VERSION = 'forwarding-1.0';
+// Shared by browser and server. Net amounts in input.currency (legacy input defaults to EUR).
+// Profile defaults are EUR; FX is a user-entered quote snapshot, not a live market rate.
+export const ENGINE_VERSION = 'forwarding-1.2';
+export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
   solo75: { name:'Solo 7,5 t', length:600, width:245, height:240, payload:2500, grossWeightKg:7500, axleWeightKg:4500, lengthCm:820, widthCm:255, heightCm:350, axleCount:2, kmRate:0.55, hourRate:18 },
@@ -20,6 +22,26 @@ function num(value, label, min=0, max=1e6, integer=false) {
   if (!Number.isFinite(n) || n<min || n>max || (integer && !Number.isInteger(n))) fail(`Sprawdź pole: ${label} (${min}–${max}).`);
   return n;
 }
+export function normalizeCurrency(value='EUR') {
+  if (!['EUR','PLN'].includes(value)) fail('Wybierz walutę EUR albo PLN.');
+  return value;
+}
+export function normalizeExchangeRate(value, required=false) {
+  if (value==='' || value==null) {
+    if (required) fail('Podaj kurs: ile PLN kosztuje 1 EUR.');
+    return null;
+  }
+  const rate=num(value,'kurs 1 EUR w PLN',0.01,100);
+  if (Math.abs(rate*10000-Math.round(rate*10000))>1e-7) fail('Podaj kurs z maksymalnie 4 miejscami po przecinku.');
+  return rate;
+}
+export function convertMoney(amount, from, to, eurPln) {
+  normalizeCurrency(from);normalizeCurrency(to);
+  if (!Number.isFinite(amount)) fail('Nieprawidłowa kwota do przeliczenia.');
+  if (from===to) return amount;
+  const rate=normalizeExchangeRate(eurPln,true);
+  return from==='EUR'?amount*rate:amount/rate;
+}
 function str(value, label, max=300, required=false) {
   if (value != null && typeof value!=='string') fail(`Sprawdź pole: ${label}.`);
   const s=(value||'').trim();
@@ -33,6 +55,12 @@ function date(value,label) {
 }
 export function normalizeInput(raw) {
   if (!raw || typeof raw!=='object' || Array.isArray(raw)) fail('Brak danych przesyłki.');
+  const currency=normalizeCurrency(raw.currency||'EUR'),eurPln=normalizeExchangeRate(raw.eurPln,currency==='PLN');
+  const fxSource=eurPln?(raw.fxSource==='NBP'?'NBP':'manual'):null;
+  const fxDate=fxSource==='NBP'?date(raw.fxDate,'data kursu NBP'):null;
+  const fxTable=fxSource==='NBP'?str(raw.fxTable,'numer tabeli NBP',30,true):null;
+  if(fxSource==='NBP'&&(!fxDate||!/^\d{1,3}\/A\/NBP\/\d{4}$/.test(fxTable)))fail('Brak poprawnej daty lub tabeli kursu NBP. Pobierz kurs ponownie albo wpisz go ręcznie.');
+  const moneyScale=currency==='PLN'?eurPln:1;
   const profile=Object.hasOwn(PROFILES,raw.profile)?PROFILES[raw.profile]:null;
   if (!profile) fail('Wybierz busa lub solo.');
   if (!['dedicated','partload'].includes(raw.mode)) fail('Wybierz sposób przewozu.');
@@ -47,7 +75,8 @@ export function normalizeInput(raw) {
   const assumptions={};
   for (const key of Object.keys(DEFAULT_ASSUMPTIONS)) {
     const bounds={averageSpeed:[10,100],targetMargin:[0,80],minimumMargin:[0,80],uncertainty:[0,50],carrierMarkup:[0,100],minimumShare:[1,100],kmRate:[0,10],hourRate:[0,200],deadheadKm:[0,5000],waitingHours:[0,200]}[key]||[0,10000];
-    assumptions[key]=num(a[key],`założenie ${key}`,...bounds);
+    const scale=MONEY_ASSUMPTIONS.includes(key)?moneyScale:1;
+    assumptions[key]=num(a[key],`założenie ${key}`,bounds[0]*scale,bounds[1]*scale);
   }
   if (!assumptions.kmRate && !assumptions.hourRate) fail('Koszt kilometra lub godziny musi być większy od zera.');
   if (assumptions.minimumMargin>assumptions.targetMargin) fail('Marża minimalna nie może przekraczać docelowej.');
@@ -71,13 +100,13 @@ export function normalizeInput(raw) {
   if (pickup&&delivery&&delivery<pickup) fail('Dostawa nie może być przed załadunkiem.');
   if (raw.offers!=null && (!Array.isArray(raw.offers)||raw.offers.length>50)) fail('Limit wynosi 50 ofert przewoźników.');
   if ((raw.offers||[]).some(o=>!o||typeof o!=='object'||Array.isArray(o))) fail('Nieprawidłowa oferta przewoźnika.');
-  const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,'cena przewoźnika',0.01,1e6),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true}));
+  const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true}));
   if (offers.some(o=>o.status==='accepted'&&o.needsConfirmation)) fail('Po zmianie przesyłki ponownie potwierdź ofertę przewoźnika.');
   if (offers.filter(o=>o.status==='accepted').length>1) fail('Możesz przyjąć tylko jedną ofertę przewoźnika.');
-  return {module:'forwarding',version:ENGINE_VERSION,profile:raw.profile,mode:raw.mode,vehicle,assumptions,cargo,route,pickup,delivery,
+  return {module:'forwarding',version:ENGINE_VERSION,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,assumptions,cargo,route,pickup,delivery,
     client:str(raw.client,'klient',200),reference:str(raw.reference,'referencja',120),notes:str(raw.notes,'warunki przewozu',3000),
     tailLift:raw.tailLift===true,palletJack:raw.palletJack===true,reviewed:raw.reviewed===true,
-    sellPrice:raw.sellPrice===''||raw.sellPrice==null?null:num(raw.sellPrice,'cena dla klienta',0.01,1e6),offers,
+    sellPrice:raw.sellPrice===''||raw.sellPrice==null?null:num(raw.sellPrice,`cena dla klienta (${currency})`,0.01,1e6*moneyScale),offers,
   };
 }
 
@@ -112,7 +141,7 @@ export function calculate(raw) {
   const suggestedSell=round(buy/(1-a.targetMargin/100));
   const sell=input.sellPrice??suggestedSell;
   const profit=sell-buy,margin=profit/sell*100,maxBuy=sell*(1-a.minimumMargin/100);
-  return {version:ENGINE_VERSION,input,summary:{...summary,ldm:summary.area/2.4},shares,blockers,warnings,drivingHours,share,
+  return {version:ENGINE_VERSION,currency:input.currency,eurPln:input.eurPln,input,summary:{...summary,ldm:summary.area/2.4},shares,blockers,warnings,drivingHours,share,
     costs:{linehaul:round(linehaul),shipment:round(shipmentCosts),operating:round(operatingCost)},
     modelBuy:round(modelBuy),low:round(low),high:round(high),opening:round(low),buy:round(buy),buySource:accepted?'accepted':'model',
     suggestedSell,sell:round(sell),profit:round(profit),margin:round(margin),maxBuy:round(maxBuy),
@@ -146,7 +175,7 @@ export function customerOffer(result) {
     ...i.cargo.map(c=>`${c.qty} szt. × ${c.length} × ${c.width} × ${c.height} cm; ${c.weight} kg/szt.; ${c.stackable?'piętrowalne po uzgodnieniu':'bez piętrowania'}`),
     `Łącznie: ${round(result.summary.weight)} kg | ${round(result.summary.volume)} m³`,
     i.tailLift?'Wymagana winda.':'',i.palletJack?'Wymagany paleciak.':'',
-    `Cena: ${result.sell.toFixed(2)} EUR netto. VAT zgodnie z właściwymi zasadami rozliczenia.`,
+    `Cena: ${result.sell.toFixed(2)} ${i.currency||'EUR'} netto. VAT zgodnie z właściwymi zasadami rozliczenia.`,
     i.notes?`Uzgodnione warunki / zakres ceny: ${i.notes}`:'',
     'Oferta wstępna, wymaga potwierdzenia dostępności pojazdu, terminów i warunków załadunku. Zmiana danych przesyłki wymaga ponownej wyceny.',
   ].filter(Boolean).join('\n');

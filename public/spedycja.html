@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="pl">
+<html lang="pl" data-theme="dark">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#142c32"><title>Spedycja — Optirax</title>
+  <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <link rel="stylesheet" href="/forwarding.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
@@ -12,12 +12,12 @@
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
   <header class="app-header">
-    <a class="brand" href="/" aria-label="Optirax — kalkulator przewoźnika"><span class="brand-symbol" aria-hidden="true">↗</span> OPTIRAX</a>
+    <a class="brand" href="/" aria-label="Optirax — kalkulator przewoźnika"><img class="brand-logo" src="/optirax-brand.png" width="589" height="125" alt="OPTIRAX — Smart routes. Better business."></a>
     <nav aria-label="Obszar pracy"><a href="/">Przewoźnik</a><a href="/spedycja" aria-current="page">Spedycja</a></nav>
-    <div class="account"><span id="accountLabel">Twoje konto</span><button type="button" id="logout" class="quiet">Wyloguj</button></div>
+    <div class="account"><span id="accountLabel">Twoje konto</span><button type="button" id="themeToggle" class="quiet">Tryb jasny</button><button type="button" id="logout" class="quiet">Wyloguj</button></div>
   </header>
   <main>
-    <div class="page-heading"><div><p class="eyebrow">CENTRUM WYCEN / SPEDYCJA</p><h1>Od przesyłki do oferty.</h1><p class="muted">Bus i solo · transport bezpośredni · wszystkie kwoty w EUR netto</p></div><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
+    <div class="page-heading"><div><p class="eyebrow">OPTIRAX / SPEDYCJA</p><h1>Wycena przesyłki</h1><p class="muted" id="currencyCaption">Bus i solo · transport bezpośredni · kwoty w EUR netto</p></div><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
     <div class="notice"><span class="notice-dot" aria-hidden="true"></span><span><strong>Model negocjacyjny.</strong> Przykładowe założenia kosztowe wymagają dopasowania do Twoich zakupów. Wynik nie jest bieżącą stawką z rynku.</span></div>
     <div id="message" role="status" aria-live="polite" hidden></div>
     <form id="workspace" novalidate>
@@ -25,6 +25,7 @@
         <section class="card">
           <div class="section-top"><h2><span class="step">01</span> Zlecenie</h2><button type="button" id="pasteOpen" class="text-button">Wklej zapytanie ↗</button></div>
           <div class="fields two"><label>Klient<input id="client" maxlength="200" placeholder="Nazwa firmy"></label><label>Referencja<input id="reference" maxlength="120" placeholder="np. OF/10/001"></label></div>
+          <div class="currency-controls"><div class="fields two"><label>Waluta wyceny<select id="quoteCurrency"><option value="EUR">EUR · €</option><option value="PLN">PLN · zł</option></select></label><label>Kurs · 1 EUR = PLN<input id="eurPln" type="number" min="0.01" max="100" step="0.0001" inputmode="decimal" placeholder="Wpisz swój kurs"></label></div><div class="fx-actions"><button type="button" id="fetchFx" class="secondary">Pobierz kurs NBP</button><span id="fxStatus" class="hint" role="status" aria-live="polite">Pobierz kurs NBP lub wpisz własny kurs.</span></div><p class="hint">Kurs NBP jest używany tylko po świadomym pobraniu. Zmiana waluty przelicza wszystkie kwoty, a zmiana samego kursu zachowuje kwoty w wybranej walucie.</p></div>
           <div class="route-fields"><label><span class="route-label"><b>A</b> Załadunek</span><input id="origin" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label><label><span class="route-label"><b>B</b> Rozładunek</span><input id="destination" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label></div>
           <div class="fields two"><label>Data załadunku<input id="pickup" type="date"></label><label>Data dostawy<input id="delivery" type="date"></label></div>
           <div class="fields route-controls"><label>Dystans (km)<input id="distanceKm" type="number" min="1" max="20000" step="0.1" placeholder="np. 650" inputmode="decimal"></label><button id="fetchRoute" type="button" class="secondary">Pobierz trasę</button></div>
@@ -55,7 +56,7 @@
         <section class="decision-card" aria-labelledby="decisionTitle"><div class="section-top"><p class="eyebrow">TWOJA DECYZJA</p><span class="tag" id="resultTag">Szkic</span></div><h2 id="decisionTitle">Zakup. Sprzedaż. Marża.</h2>
           <div id="emptyResult" class="empty-result"><span aria-hidden="true">↗</span><h3>Ile zapłacić, ile zaproponować?</h3><p>Dodaj trasę i przesyłkę. Porównaj koszt modelowy z realną ofertą przewoźnika.</p></div>
           <div id="result" hidden aria-live="polite"></div>
-          <label class="sell-label">Twoja cena dla klienta (EUR)<input id="sellPrice" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" placeholder="Puste = cena z marży docelowej"></label>
+          <label class="sell-label">Twoja cena dla klienta (EUR)<input id="sellPrice" data-money="price" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" placeholder="Puste = cena z marży docelowej"></label>
           <div class="calculate-bar"><button type="submit" id="calculate" class="primary">Wyceń przesyłkę <span>↗</span></button></div>
           <div class="result-actions"><button type="button" id="saveQuote" class="secondary" disabled>Zapisz wersję</button><button type="button" id="offerOpen" class="secondary" disabled>Oferta klienta</button></div><p id="saveState" class="hint">Wersje zapisujesz na swoim koncie.</p>
         </section>
