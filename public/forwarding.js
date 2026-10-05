@@ -1,4 +1,5 @@
-import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.3.1';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.5.0';
+import {setupEnquiryImport} from './enquiry-import.js?v=1.5.0';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,7 +11,7 @@ applyTheme(storedTheme==='light'?'light':'dark');
 $('themeToggle').onclick=()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 const currencySymbol=code=>code==='PLN'?'zł':'EUR';
 const money=(n,currency=currentCurrency)=>`${fmt(n)} ${currencySymbol(currency)}`;
-let result=null,routeData=null,routeRequest=null,routeSequence=0,dirty=false,saving=false,revision=0,historyRows=[],parsed=null,map=null,mapLine=null,mapMarkers=[],tilesKey='';
+let result=null,routeData=null,routeRequest=null,routeSequence=0,dirty=false,saving=false,revision=0,historyRows=[],map=null,mapLine=null,mapMarkers=[],tilesKey='';
 const A={
   targetMargin:['Marża docelowa (%)',0,80],minimumMargin:['Marża minimalna (%)',0,80],
   tolls:['Myto (EUR)',0,10000],crossing:['Przeprawa (EUR)',0,10000],
@@ -73,7 +74,9 @@ function offerRow(data={carrier:'',price:'',status:'received'}){
   if($('offerRows').children.length>=50){message('Maksymalnie 50 ofert przewoźników.',true);return;}
   const row=document.createElement('div');row.className='offer-row';
   row.dataset.needsConfirmation=String(data.needsConfirmation===true);
+  row.dataset.importSource=data.importSource||'';
   row.innerHTML=`<div class="cargo-title"><span>PRZEWOŹNIK</span><button type="button" class="quiet remove-offer" aria-label="Usuń ofertę przewoźnika">×</button></div><label>Nazwa<input data-offer="carrier" maxlength="120" value="${esc(data.carrier)}" placeholder="Nazwa przewoźnika"></label><div class="fields two"><label>Cena EUR netto<input data-offer="price" data-money="price" type="number" min="0.01" max="1000000" step="0.01" value="${esc(data.price)}" inputmode="decimal"></label><label>Status<select data-offer="status"><option value="received">Otrzymana</option><option value="accepted">Przyjęta</option><option value="rejected">Odrzucona</option></select></label></div><p class="offer-compare">Przelicz, aby porównać ofertę z limitem zakupu.</p>`;
+  row.insertAdjacentHTML('beforeend',`<label>Warunki oferty<textarea data-offer="terms" maxlength="1500" rows="2" placeholder="Termin, winda, dopłaty…">${esc(data.terms||'')}</textarea></label>${data.importSource?`<details><summary>Oryginalny odczyt oferty</summary><pre>${esc(data.importSource)}</pre></details>`:''}`);
   row.querySelector('select').value=data.status;$('offerRows').appendChild(row);syncCurrencyLabels();
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
@@ -81,7 +84,7 @@ function collect(){return {currency:currentCurrency,eurPln:$('eurPln').value,fxS
   route:{origin:$('origin').value,destination:$('destination').value,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
-  offers:[...document.querySelectorAll('.offer-row')].map(row=>({...Object.fromEntries([...row.querySelectorAll('[data-offer]')].map(e=>[e.dataset.offer,e.value])),needsConfirmation:row.dataset.needsConfirmation==='true'})),
+  offers:[...document.querySelectorAll('.offer-row')].map(row=>({...Object.fromEntries([...row.querySelectorAll('[data-offer]')].map(e=>[e.dataset.offer,e.value])),needsConfirmation:row.dataset.needsConfirmation==='true',importSource:row.dataset.importSource||''})),
   ...Object.fromEntries(['client','reference','pickup','delivery','notes','sellPrice'].map(id=>[id,$(id).value])),
   ...Object.fromEntries(['tailLift','palletJack','reviewed'].map(id=>[id,$(id).checked])),
 };}
@@ -233,18 +236,28 @@ $('newQuote').onclick=()=>{if(!dirty||confirm('Odrzucić niezapisane zmiany i ro
 $('logout').onclick=()=>{if(dirty&&!confirm('Wylogować i odrzucić niezapisane zmiany?'))return;dirty=false;for(const k of ['optirax_token','optirax_refresh','optirax_profile','optirax_user'])localStorage.removeItem(k);location.href='/login';};
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
-$('pasteOpen').onclick=()=>{$('pasteDialog').showModal();};
-$('enquiry').addEventListener('input',()=>{parsed=null;$('parsePreview').hidden=true;$('applyEnquiry').hidden=true;});
-$('parseEnquiry').onclick=()=>{
-  try{parsed=parseEnquiry($('enquiry').value);$('parsePreview').textContent=[`A: ${parsed.origin||'nie odczytano'}`,`B: ${parsed.destination||'nie odczytano'}`,...parsed.cargo.map(c=>`${c.qty||'?'} szt. × ${c.length}×${c.width}×${c.height} cm; ${c.weight||'?'} kg/szt.`),parsed.warning].join('\n');$('parsePreview').hidden=false;$('applyEnquiry').hidden=!(parsed.origin||parsed.destination||parsed.cargo.length);}
-  catch(e){$('parsePreview').textContent=e.message;$('parsePreview').hidden=false;$('applyEnquiry').hidden=true;}
-};
-$('applyEnquiry').onclick=()=>{
-  if(!parsed)return;if(dirty&&!confirm('Zastąpić odczytane adresy i pozycje przesyłki danymi z zapytania? Pozostałe pola pozostaną bez zmian.'))return;
-  invalidateRoute();if(parsed.origin)$('origin').value=parsed.origin;if(parsed.destination)$('destination').value=parsed.destination;
-  if(parsed.cargo.length){$('cargoRows').replaceChildren();parsed.cargo.forEach(cargoRow);}
-  resetOfferScope();$('reviewed').checked=false;invalidate();$('pasteDialog').close();message(parsed.warning);
-};
+setupEnquiryImport({api,parseLocal:parseEnquiry,offerContext:()=>{
+  const input=collect();return {origin:input.route.origin,destination:input.route.destination,pickup:input.pickup,delivery:input.delivery,reference:input.reference,tailLift:input.tailLift,currency:currentCurrency,eurPln:input.eurPln,existingCount:input.offers.length,scope:JSON.stringify([input.route.origin,input.route.destination,input.cargo,input.pickup,input.delivery,input.reference,input.tailLift,input.palletJack,input.notes,input.profile,input.mode])};
+},applyOffers:offers=>{
+  if(saving){message('Poczekaj na zakończenie zapisu wyceny.',true);return false;}
+  offers.forEach(offerRow);invalidate();message(`Dodano ${offers.length} ofert do bieżącego zlecenia. Przelicz porównanie i potwierdź warunki przed przyjęciem oferty.`);return true;
+},apply:(data,autoRoute)=>{
+  if(saving){message('Poczekaj na zakończenie zapisu wyceny.',true);return false;}
+  if(dirty&&!confirm('Rozpocząć nowe zapytanie z odczytanych danych? Niezapisana wycena, ceny i oferty przewoźników zostaną zastąpione.'))return false;
+  invalidateRoute();
+  for(const id of ['origin','destination','client','reference','pickup','delivery','notes'])$(id).value=data[id]||'';
+  $('sellPrice').value='';clearMoneyAnchor($('sellPrice'));$('offerRows').replaceChildren();
+  $('cargoRows').replaceChildren();(data.cargo.length?data.cargo:[{}]).forEach(cargoRow);
+  for(const id of ['tailLift','palletJack'])$(id).checked=data[id]===true;
+  // Preserve selected vehicle, currency and base rates, but not previous job's charges.
+  for(const key of ['tolls','crossing','extra','waitingHours','deadheadKm']){const el=$(`a-${key}`);el.value=DEFAULT_ASSUMPTIONS[key];clearMoneyAnchor(el);}
+  $('reviewed').checked=false;invalidate();
+  const warnings=data.warnings||[data.warning];
+  message(['Wczytano nowe zapytanie. Sprawdź auto, sposób przewozu i koszty dla tej relacji.',...warnings.filter(Boolean)].join(' '));
+  if(autoRoute&&data.origin&&data.destination)fetchRoute();
+  else $('origin').focus();
+  return true;
+}});
 $('offerOpen').onclick=()=>{try{$('customerText').value=customerOffer(result);$('copyStatus').textContent='';$('offerDialog').showModal();}catch(e){message(e.message,true);}};
 $('copyOffer').onclick=async()=>{try{await navigator.clipboard.writeText($('customerText').value);$('copyStatus').textContent='Skopiowano treść oferty.';}catch{$('customerText').focus();$('customerText').select();$('copyStatus').textContent='Zaznaczono treść. Skopiuj ją ręcznie (Ctrl/Cmd+C).';}};
 $('printOffer').onclick=()=>{$('printArea').textContent=$('customerText').value;$('offerDialog').close();window.print();};

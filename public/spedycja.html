@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
-  <link rel="stylesheet" href="/forwarding.css?v=1.3.1">
+  <link rel="stylesheet" href="/forwarding.css?v=1.5.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js?v=1.3.1"></script>
+  <script type="module" src="/forwarding.js?v=1.5.0"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
@@ -24,7 +24,7 @@
     <form id="workspace" novalidate>
       <div class="form-column">
         <section class="card">
-          <div class="section-top"><h2><span class="step">01</span> Zlecenie</h2><button type="button" id="pasteOpen" class="text-button">Wklej zapytanie ↗</button></div>
+          <div class="section-top"><h2><span class="step">01</span> Zlecenie</h2><button type="button" id="pasteOpen" class="text-button">Wklej tekst / screen ↗</button></div>
           <div class="fields two"><label>Klient<input id="client" maxlength="200" placeholder="Nazwa firmy"></label><label>Referencja<input id="reference" maxlength="120" placeholder="np. OF/10/001"></label></div>
           <div class="currency-controls"><div class="fields two"><label>Waluta wyceny<select id="quoteCurrency"><option value="EUR">EUR · €</option><option value="PLN">PLN · zł</option></select></label><label>Kurs · 1 EUR = PLN<input id="eurPln" type="number" min="0.01" max="100" step="0.0001" inputmode="decimal" placeholder="Wpisz swój kurs"></label></div><div class="fx-actions"><button type="button" id="fetchFx" class="secondary">Pobierz kurs NBP</button><span id="fxStatus" class="hint" role="status" aria-live="polite">Pobierz kurs NBP lub wpisz własny kurs.</span></div><p class="hint">Kurs NBP jest używany tylko po świadomym pobraniu. Zmiana waluty przelicza wszystkie kwoty, a zmiana samego kursu zachowuje kwoty w wybranej walucie.</p></div>
           <div class="route-fields"><label><span class="route-label"><b>A</b> Załadunek</span><input id="origin" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label><label><span class="route-label"><b>B</b> Rozładunek</span><input id="destination" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label></div>
@@ -61,16 +61,28 @@
           <div class="calculate-bar"><button type="submit" id="calculate" class="primary">Wyceń przesyłkę <span>↗</span></button></div>
           <div class="result-actions"><button type="button" id="saveQuote" class="secondary" disabled>Zapisz wersję</button><button type="button" id="offerOpen" class="secondary" disabled>Oferta klienta</button></div><p id="saveState" class="hint">Wersje zapisujesz na swoim koncie.</p>
         </section>
-        <section class="card"><div class="section-top"><h2>Oferty przewoźników</h2><button type="button" id="addOffer" class="text-button">+ Dodaj</button></div><p class="hint">Oferta „Przyjęta” zastępuje modelowy zakup w wyniku. „Otrzymana” służy do porównania.</p><div id="offerRows"></div></section>
+        <section class="card"><div class="section-top"><h2>Oferty przewoźników</h2><button type="button" id="addOffer" class="text-button">+ Dodaj</button></div><p class="hint">Oferta „Przyjęta” zastępuje modelowy zakup w wyniku. „Otrzymana” służy do porównania.</p><button type="button" id="offersImportOpen" class="add-button">Wklej oferty przewoźników / screeny</button><div id="offerRows"></div></section>
         <details class="card" id="warningsCard"><summary>Co trzeba potwierdzić <span id="warningsCount">—</span></summary><ul id="warnings"></ul></details>
       </aside>
     </form>
     <section class="history-section"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja · 1.3.1 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.5.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
-  <dialog id="pasteDialog"><div class="section-top"><h2>Wklej zapytanie</h2><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div><p class="hint">Odczyt lokalny, bez wysyłania treści do AI. Rozpoznaje opisane adresy i pozycje w cm, np.:</p><pre>Załadunek: PL 60-101 Poznań
+  <dialog id="pasteDialog" aria-labelledby="importTitle">
+    <div class="section-top"><div><p class="eyebrow">OPTIRAX / SZYBKI IMPORT</p><h2 id="importTitle">Zapytanie → wycena</h2></div><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div>
+    <p id="importIntro" class="hint">Wklej treść maila, screen z Trans.eu / Clicktrans lub dodaj zlecenie PDF. Jedno zapytanie naraz; do 3 screenów tego samego zlecenia.</p>
+    <label>Treść lub screenshot ze schowka<textarea id="enquiry" rows="5" maxlength="20000" placeholder="Ctrl+V / ⌘V — wklej tekst albo screenshot…"></textarea></label>
+    <div class="import-drop"><label>Załączniki — przeciągnij tutaj lub wybierz plik<input id="importFiles" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" multiple></label><p class="hint">PNG, JPG, WEBP lub jeden PDF · razem do 6 MB</p><div id="importFilesList"></div></div>
+    <p id="importDisclosure" class="hint import-disclosure">„Odczytaj przez AI” wysyła treść i załączniki do OpenAI. Kwoty wpisujesz po imporcie. Odczyt nie zapisuje wyceny ani nie wysyła oferty.</p>
+    <div class="import-actions"><button type="button" id="parseEnquiry" class="primary">Odczytaj przez AI</button><button type="button" id="clearImport" class="secondary">Wyczyść</button></div>
+    <details class="import-fallback"><summary>Prosty odczyt tekstu bez AI</summary><p class="hint">Bez wysyłania danych. Obsługuje opisane adresy i pozycje w formacie:</p><pre>Załadunek: PL 60-101 Poznań
 Rozładunek: DE 10115 Berlin
-2 x 120x80x150 cm, 200 kg/szt.</pre><label>Treść zapytania<textarea id="enquiry" rows="7" maxlength="12000" placeholder="Wklej treść tutaj…"></textarea></label><button type="button" id="parseEnquiry" class="primary">Odczytaj dane</button><div id="parsePreview" hidden></div><button type="button" id="applyEnquiry" class="secondary" hidden>Zastosuj odczytane pola</button></dialog>
+2 x 120x80x150 cm, 200 kg/szt.</pre><button type="button" id="parseLocal" class="secondary">Odczytaj sam tekst</button></details>
+    <p id="importStatus" class="hint" role="status" aria-live="polite"></p>
+    <div id="parsePreview" hidden></div>
+    <label class="inline-check"><input id="importAutoRoute" type="checkbox" checked> Po imporcie pobierz trasę dla wybranego auta</label>
+    <button type="button" id="applyEnquiry" class="primary" hidden>Użyj danych w nowej wycenie</button>
+  </dialog>
   <dialog id="offerDialog"><div class="section-top"><h2>Oferta dla klienta</h2><button type="button" class="quiet" data-close="offerDialog" aria-label="Zamknij">✕</button></div><p class="hint">Tylko cena sprzedaży i warunki. Sprawdź tekst przed wysłaniem.</p><label>Treść oferty<textarea id="customerText" rows="15"></textarea></label><div class="fields two"><button type="button" id="copyOffer" class="primary">Kopiuj treść</button><button type="button" id="printOffer" class="secondary">Drukuj / zapisz PDF</button></div><p id="copyStatus" role="status"></p></dialog>
   <div id="printArea" aria-hidden="true"></div>
 </body>

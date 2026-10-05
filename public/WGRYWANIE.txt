@@ -1,0 +1,19 @@
+OPTIRAX — pliki do wgrania na Railway
+======================================
+
+Wgraj te 5 plików do katalogu  public/  w repo (nadpisując istniejące):
+
+  • index.html       (nowy UI + logo + ikony pojazdów base64)
+  • styles.css       (NOWY plik — cały arkusz stylów nowego UI)
+  • app.js           (presety pojazdów, stawka €/km, render wyników)
+  • calculator.js    (koszty stałe €/mc, chłodnia=spalanie agregatu)
+  • autocomplete.js  (drobny fix toggle wklejania tras)
+
+NIE RUSZAJ (bez zmian):  route.js, ai.js  oraz reszty backendu.
+
+UWAGA: index.html w nowym UI ładuje styles.css — upewnij się, że
+styles.css trafił do tego samego katalogu public/ co index.html.
+
+Po wgraniu: commit + push → Railway przebuduje automatycznie.
+HERE API key i mapy działają na serwerze (lokalnie w preview pokazują
+fallback OSM i "nie mogę połączyć z serwerem" — to normalne).

@@ -100,7 +100,7 @@ export function normalizeInput(raw) {
   if (pickup&&delivery&&delivery<pickup) fail('Dostawa nie może być przed załadunkiem.');
   if (raw.offers!=null && (!Array.isArray(raw.offers)||raw.offers.length>50)) fail('Limit wynosi 50 ofert przewoźników.');
   if ((raw.offers||[]).some(o=>!o||typeof o!=='object'||Array.isArray(o))) fail('Nieprawidłowa oferta przewoźnika.');
-  const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true}));
+  const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true,terms:str(o.terms,'warunki oferty',1500),importSource:str(o.importSource,'źródło oferty',3000)}));
   if (offers.some(o=>o.status==='accepted'&&o.needsConfirmation)) fail('Po zmianie przesyłki ponownie potwierdź ofertę przewoźnika.');
   if (offers.filter(o=>o.status==='accepted').length>1) fail('Możesz przyjąć tylko jedną ofertę przewoźnika.');
   return {module:'forwarding',version:ENGINE_VERSION,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,assumptions,cargo,route,pickup,delivery,

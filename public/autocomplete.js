@@ -459,6 +459,10 @@ async function parseNlpStops() {
 
     // === Dodatkowe dane ze zlecenia ===
     const extras = [];
+    // Never leave a previous enquiry's price behind or silently convert currencies.
+    const previousPrice=document.getElementById('offer_price_eur');
+    if(previousPrice)previousPrice.value='';
+    if(data.offer_price_original!=null&&data.offer_currency&&data.offer_currency!=='EUR')extras.push(`Kwota źródłowa ${data.offer_price_original} ${data.offer_currency} netto — przelicz i wpisz cenę EUR ręcznie`);
 
     // Cena zlecenia -> ustaw + przełącz tryb na "Marża ze zlecenia"
     if (data.offer_price_eur != null && !isNaN(Number(data.offer_price_eur))) {

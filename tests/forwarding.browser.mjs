@@ -5,9 +5,11 @@ import {fork} from 'node:child_process';
 import {once} from 'node:events';
 import {mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
+import {png,extracted} from './enquiry-fixture.mjs';
+import {normalizeExtraction} from '../lib/enquiry-parser.js';
 const require=createRequire(import.meta.url),{chromium}=require('playwright');
 const out=process.env.QA_ARTIFACT_DIR||'/tmp/optirax-forwarding-qa';await mkdir(out,{recursive:true});
-const child=fork(new URL('../server.js',import.meta.url),[],{cwd:new URL('..',import.meta.url),execArgv:['--import',new URL('./server-fixture.mjs',import.meta.url).pathname],env:{PATH:process.env.PATH,NODE_ENV:'test',PORT:'0',TOMTOM_API_KEY:'test-routing-key',OPENAI_API_KEY:'',RESEND_API_KEY:'',SUPABASE_URL:'https://test.supabase.invalid',SUPABASE_SERVICE_KEY:'test-supabase-key'},stdio:['ignore','ignore','ignore','ipc']});
+const child=fork(new URL('../server.js',import.meta.url),[],{cwd:new URL('..',import.meta.url),execArgv:['--import',new URL('./server-fixture.mjs',import.meta.url).pathname],env:{PATH:process.env.PATH,NODE_ENV:'test',PORT:'0',TOMTOM_API_KEY:'test-routing-key',OPENAI_API_KEY:'test-parser-key',RESEND_API_KEY:'',SUPABASE_URL:'https://test.supabase.invalid',SUPABASE_SERVICE_KEY:'test-supabase-key'},stdio:['ignore','ignore','ignore','ipc']});
 let browser;
 try{
   const [{port}]=await once(child,'message',{signal:AbortSignal.timeout(10000)}),base=`http://127.0.0.1:${port}`;
@@ -91,8 +93,42 @@ try{
   await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
   await page.locator('#refreshHistory').click();await page.waitForFunction(()=>document.getElementById('history').textContent.includes('<img src=x'));
   assert.equal(await page.locator('#history img').count(),0);assert.equal(await page.locator('#distanceKm').inputValue(),'320');
-  await page.locator('#pasteOpen').click();await page.locator('#enquiry').fill('Załadunek: PL Poznań\nRozładunek: DE Berlin\n3 x 120x80x100 cm, 100 kg/szt.');await page.locator('#parseEnquiry').click();assert.match(await page.locator('#parsePreview').textContent(),/3 szt/);await page.locator('#applyEnquiry').click();assert.equal(await page.locator('[data-cargo=qty]').inputValue(),'3');assert.equal(await page.locator('#distanceKm').inputValue(),'');
+  await page.locator('#pasteOpen').click();await page.locator('#enquiry').fill('Załadunek: PL Poznań\nRozładunek: DE Berlin\n3 x 120x80x100 cm, 100 kg/szt.');await page.locator('.import-fallback summary').click();await page.locator('#parseLocal').click();assert.match(await page.locator('#parsePreview').textContent(),/3 szt/);await page.locator('#importAutoRoute').uncheck();await page.locator('#applyEnquiry').click();assert.equal(await page.locator('[data-cargo=qty]').inputValue(),'3');assert.equal(await page.locator('#distanceKm').inputValue(),'');
+  assert.equal(await page.locator('#client').inputValue(),'');assert.equal(await page.locator('#sellPrice').inputValue(),'');assert.equal(await page.locator('#pickup').inputValue(),'');assert.equal(await page.locator('.offer-row').count(),0);
+  await page.unroute('**/api/route');
+  // Paste an image from the clipboard. The AI service is mocked; no live document upload.
+  await page.locator('#sellPrice').fill('999');await page.locator('#client').fill('Poprzedni klient');await page.locator('#addOffer').click();
+  await page.locator('#pasteOpen').click();
+  await page.evaluate(data=>{const raw=atob(data.split(',')[1]),bytes=Uint8Array.from(raw,c=>c.charCodeAt(0)),clipboard=new DataTransfer();clipboard.items.add(new File([bytes],'screen.png',{type:'image/png'}));document.getElementById('enquiry').dispatchEvent(new ClipboardEvent('paste',{clipboardData:clipboard,bubbles:true,cancelable:true}));},png);
+  await page.locator('.import-file img').waitFor();assert.equal(await page.locator('#parseLocal').isDisabled(),true);
+  const aiResponse=page.waitForResponse('**/api/forwarding/parse');await page.locator('#parseEnquiry').click();assert.equal((await aiResponse).status(),200);await page.locator('#applyEnquiry').waitFor();
+  assert.match(await page.locator('#parsePreview').textContent(),/200 kg\/szt/);assert.equal(await page.locator('#client').inputValue(),'Poprzedni klient');
+  await page.setViewportSize({width:1440,height:1100});await page.locator('#pasteDialog').evaluate(el=>el.scrollTop=0);await page.screenshot({path:out+'/import-dark.png'});
+  await page.locator('#importAutoRoute').uncheck();await page.locator('#applyEnquiry').click();assert.equal(await page.locator('[data-cargo=weight]').inputValue(),'200');assert.equal(await page.locator('#tailLift').isChecked(),true);assert.equal(await page.locator('#reviewed').isChecked(),false);assert.equal(await page.locator('#sellPrice').inputValue(),'');assert.equal(await page.locator('#client').inputValue(),'');assert.equal(await page.locator('.offer-row').count(),0);
+  // PDF follows the same endpoint; new content invalidates a pending result.
+  await page.locator('#themeToggle').click();await page.locator('#pasteOpen').click();await page.locator('#importFiles').setInputFiles({name:'zlecenie.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\nfixture')});await page.locator('.import-pdf').waitFor();await page.locator('#parseEnquiry').click();await page.locator('#applyEnquiry').waitFor();
+  for(const width of [1440,390,320]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('#pasteDialog').evaluate(el=>el.scrollWidth<=el.clientWidth),true);}
+  await page.locator('#parsePreview').scrollIntoViewIfNeeded();await page.screenshot({path:out+'/import-mobile.png'});
+  await page.setViewportSize({width:1440,height:1100});await page.locator('#pasteDialog').evaluate(el=>el.scrollTop=0);await page.screenshot({path:out+'/import-light.png'});
+  await page.locator('#clearImport').click();await page.locator('#enquiry').fill('Zapytanie A');
+  let heldImport,importStarted;const pendingImport=new Promise(resolve=>importStarted=resolve);await page.route('**/api/forwarding/parse',route=>{heldImport=route;importStarted();});await page.locator('#parseEnquiry').click();await pendingImport;await page.locator('#enquiry').fill('Zapytanie B');await heldImport.fulfill({status:200,contentType:'application/json',body:JSON.stringify(normalizeExtraction(extracted))}).catch(()=>{});assert.equal(await page.locator('#applyEnquiry').isVisible(),false);await page.unroute('**/api/forwarding/parse');
+  // Multiple orders and unsafe HTML must never be silently applied or executed.
+  await page.route('**/api/forwarding/parse',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(normalizeExtraction({...extracted,scope:'multiple',origin:'<img src=x onerror=alert(1)>'}))}));await page.locator('#parseEnquiry').click();await page.locator('#parsePreview').waitFor();assert.equal(await page.locator('#applyEnquiry').isVisible(),false);assert.equal(await page.locator('#parsePreview img').count(),0);await page.unroute('**/api/forwarding/parse');await page.locator('[data-close=pasteDialog]').click();
   // No token redirects to login, even though static HTML is public.
+  // Several carrier offers append to the same order and keep its sale price and cargo.
+  await page.locator('#quoteCurrency').selectOption('EUR');await page.locator('#eurPln').fill('4.5');await page.locator('#sellPrice').fill('900');await page.locator('#reference').fill('IMPORT-MULTI');await page.locator('#distanceKm').fill('300');
+  await page.locator('#addOffer').click();await page.locator('[data-offer=carrier]').fill('Oferta wcześniejsza');await page.locator('[data-offer=price]').fill('500');
+  const beforeImport=await page.evaluate(()=>['origin','destination','pickup','delivery','sellPrice','reference'].map(id=>document.getElementById(id).value));
+  await page.locator('#offersImportOpen').click();await page.locator('#enquiry').fill('Firma A: 450 EUR netto, winda. Firma B: 1800 PLN netto, bez windy.');await page.locator('#parseEnquiry').click();await page.locator('[data-import-offer="1"]').waitFor();
+  assert.match(await page.locator('#parsePreview').textContent(),/NIEZGODNOŚĆ/);
+  await page.locator('[data-import-offer="1"] [data-import=taxBasis]').selectOption('unknown');await page.locator('#applyEnquiry').click();assert.match(await page.locator('#importStatus').textContent(),/Potwierdź kwotę netto/);assert.equal(await page.locator('.offer-row').count(),1);
+  await page.locator('[data-import-offer="1"] [data-import=taxBasis]').selectOption('net');
+  await page.setViewportSize({width:390,height:844});await page.locator('[data-import-offer="1"]').scrollIntoViewIfNeeded();assert.equal(await page.locator('#pasteDialog').evaluate(el=>el.scrollWidth<=el.clientWidth),true);await page.screenshot({path:out+'/carrier-offers-mobile.png'});
+  await page.setViewportSize({width:1440,height:1100});await page.locator('[data-import-offer="0"]').scrollIntoViewIfNeeded();await page.screenshot({path:out+'/carrier-offers-desktop.png'});await page.locator('#applyEnquiry').click();
+  assert.equal(await page.locator('.offer-row').count(),3);assert.deepEqual(await page.evaluate(()=>['origin','destination','pickup','delivery','sellPrice','reference'].map(id=>document.getElementById(id).value)),beforeImport);
+  assert.equal(await page.locator('[data-offer=price]').nth(2).inputValue(),'400');assert.equal(await page.locator('[data-offer=status]').nth(2).inputValue(),'received');assert.match(await page.locator('.offer-row').nth(2).textContent(),/1800 PLN/);
+  await page.locator('#calculate').click();const saveImported=page.waitForResponse(r=>r.url().endsWith('/api/forwarding/quotes')&&r.request().method()==='POST');await page.locator('#saveQuote').click();const savedImported=await(await saveImported).json();assert.equal(savedImported.input.offers.length,3);assert.equal(savedImported.input.offers[2].terms,'Bez windy.');assert.match(savedImported.input.offers[2].importSource,/1800 PLN/);
+  await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));await page.locator('#refreshHistory').click();const savedRow=page.locator('#history tr').filter({hasText:'IMPORT-MULTI'});await savedRow.locator('button').click();assert.equal(await page.locator('[data-offer=terms]').nth(2).inputValue(),'Bez windy.');
   await page.evaluate(()=>{localStorage.removeItem('optirax_token');});await page.unroute('**/api/route');
   const anonymous=await browser.newContext();await anonymous.route('**/*',r=>r.request().url().startsWith(base)?r.continue():r.abort());const guest=await anonymous.newPage();await guest.goto(base+'/spedycja');await guest.waitForURL('**/login');
   assert.deepEqual(errors,[]);assert.deepEqual(legacyRequests,[]);console.log('PASS: versioned assets bypass old URLs; actual dark/light colors, reload persistence, logo size, 16px inputs; NBP fetch/failure/race/snapshot; modals and 8 viewport widths; EUR/PLN, PDF, routing, purchase, blockers, privacy, parser, XSS and auth. External network blocked.');
