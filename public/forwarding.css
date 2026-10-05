@@ -16,7 +16,7 @@ input,select,textarea{font-size:16px;min-height:48px;padding:12px;background:var
 input::placeholder,textarea::placeholder{font-size:14px;color:var(--muted);opacity:.8}input[type=checkbox],input[type=radio]{min-height:20px;width:20px;height:20px;accent-color:#e8590c}
 button:focus-visible,a:focus-visible,summary:focus-visible{outline-color:#f58b48}input:focus,textarea:focus,select:focus{outline-color:#e8590c}
 .app-header{height:auto;min-height:88px;background:var(--navy);border-bottom:3px solid #e8590c;gap:32px;padding:12px 28px}
-.brand-logo{width:224px;height:auto;max-width:100%;display:block;border-radius:4px}.brand{flex-shrink:0}
+.brand-logo{width:224px;height:auto;max-width:100%;display:block;border-radius:4px}.brand{flex-shrink:0;min-width:0;max-width:100%}
 .app-header nav a{font-size:16px;min-height:48px;color:#b8c6db}.app-header nav a[aria-current]{border-color:#f58039;background:#243650;color:#fff}
 .account{font-size:14px;gap:12px;color:#d0d9e8}.account .quiet{border:1px solid #516078;white-space:nowrap;font-size:14px;padding:9px 12px;min-height:44px}
 main{max-width:1880px;padding:28px 28px 0}.page-heading{padding:7px 0}.eyebrow{font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:1.2px;color:var(--green)}

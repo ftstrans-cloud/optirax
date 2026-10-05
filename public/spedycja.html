@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
-  <link rel="stylesheet" href="/forwarding.css">
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
+  <link rel="stylesheet" href="/forwarding.css?v=1.3.1">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js"></script>
+  <script type="module" src="/forwarding.js?v=1.3.1"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
   <header class="app-header">
-    <a class="brand" href="/" aria-label="Optirax — kalkulator przewoźnika"><img class="brand-logo" src="/optirax-brand.png" width="589" height="125" alt="OPTIRAX — Smart routes. Better business."></a>
+    <a class="brand" href="/" aria-label="Optirax — kalkulator przewoźnika"><img class="brand-logo" src="/optirax-brand.png" width="224" height="48" alt="OPTIRAX — Smart routes. Better business."></a>
     <nav aria-label="Obszar pracy"><a href="/">Przewoźnik</a><a href="/spedycja" aria-current="page">Spedycja</a></nav>
     <div class="account"><span id="accountLabel">Twoje konto</span><button type="button" id="themeToggle" class="quiet">Tryb jasny</button><button type="button" id="logout" class="quiet">Wyloguj</button></div>
   </header>
@@ -65,7 +66,7 @@
       </aside>
     </form>
     <section class="history-section"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.3.1 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
   <dialog id="pasteDialog"><div class="section-top"><h2>Wklej zapytanie</h2><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div><p class="hint">Odczyt lokalny, bez wysyłania treści do AI. Rozpoznaje opisane adresy i pozycje w cm, np.:</p><pre>Załadunek: PL 60-101 Poznań
 Rozładunek: DE 10115 Berlin
