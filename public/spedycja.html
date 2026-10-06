@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
-  <link rel="stylesheet" href="/forwarding.css?v=1.5.0">
+  <link rel="stylesheet" href="/forwarding.css?v=1.6.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js?v=1.5.0"></script>
+  <script type="module" src="/forwarding.js?v=1.6.0"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
@@ -18,7 +18,7 @@
     <div class="account"><span id="accountLabel">Twoje konto</span><button type="button" id="themeToggle" class="quiet">Tryb jasny</button><button type="button" id="logout" class="quiet">Wyloguj</button></div>
   </header>
   <main>
-    <div class="page-heading"><div><p class="eyebrow">OPTIRAX / SPEDYCJA</p><h1>Wycena przesyłki</h1><p class="muted" id="currencyCaption">Bus i solo · transport bezpośredni · kwoty w EUR netto</p></div><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
+    <div class="page-heading"><div><p class="eyebrow">OPTIRAX / SPEDYCJA</p><h1>Wycena przesyłki</h1><p class="muted" id="currencyCaption">Profil pojazdu · kwoty w EUR netto</p></div><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
     <div class="notice"><span class="notice-dot" aria-hidden="true"></span><span><strong>Model negocjacyjny.</strong> Przykładowe założenia kosztowe wymagają dopasowania do Twoich zakupów. Wynik nie jest bieżącą stawką z rynku.</span></div>
     <div id="message" role="status" aria-live="polite" hidden></div>
     <form id="workspace" novalidate>
@@ -44,7 +44,8 @@
         <section class="card">
           <h2><span class="step">03</span> Sposób przewozu</h2>
           <div class="mode-options"><label><input type="radio" name="mode" value="dedicated" checked><span><strong>Dedykowany</strong><small>Całe auto dla przesyłki</small></span></label><label><input type="radio" name="mode" value="partload"><span><strong>Doładunek</strong><small>Udział w koszcie trasy</small></span></label></div>
-          <label>Pojazd<select id="profile"><option value="bus">Bus plandeka 3,5 t</option><option value="solo75">Solo 7,5 t</option><option value="solo12">Solo 12 t</option></select></label>
+          <label>Profil pojazdu<select id="profile"><option value="bus">Bus plandeka 3,5 t</option><option value="solo75">Solo 7,5 t</option><option value="solo12">Solo 12 t</option><option value="curtain136">Firanka 13,6 m / 24 t</option><option value="reefer136">Chłodnia 13,6 m / 24 t</option></select></label>
+          <label id="reeferTemperatureField" hidden>Temperatura przewozu<input id="reeferTemperature" maxlength="30" placeholder="np. +2°C, -18°C"></label>
           <details id="vehicleDetails"><summary>Ładownia i parametry auta <span>Edytuj</span></summary><p class="hint">Profile są przykładowe. Potwierdź rzeczywistą ładowność, drzwi i wymiary auta, zwłaszcza z windą.</p><div id="vehicleFields" class="fields two"></div></details>
         </section>
       </div>
@@ -66,7 +67,7 @@
       </aside>
     </form>
     <section class="history-section"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja · 1.5.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.6.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
   <dialog id="pasteDialog" aria-labelledby="importTitle">
     <div class="section-top"><div><p class="eyebrow">OPTIRAX / SZYBKI IMPORT</p><h2 id="importTitle">Zapytanie → wycena</h2></div><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div>

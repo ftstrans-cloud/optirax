@@ -1,17 +1,19 @@
 // Shared by browser and server. Net amounts in input.currency (legacy input defaults to EUR).
 // Profile defaults are EUR; FX is a user-entered quote snapshot, not a live market rate.
-export const ENGINE_VERSION = 'forwarding-1.2';
-export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy'];
+export const ENGINE_VERSION = 'forwarding-1.3';
+export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy','reeferSurcharge'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
   solo75: { name:'Solo 7,5 t', length:600, width:245, height:240, payload:2500, grossWeightKg:7500, axleWeightKg:4500, lengthCm:820, widthCm:255, heightCm:350, axleCount:2, kmRate:0.55, hourRate:18 },
   solo12: { name:'Solo 12 t', length:720, width:245, height:260, payload:5000, grossWeightKg:12000, axleWeightKg:8000, lengthCm:940, widthCm:255, heightCm:380, axleCount:2, kmRate:0.68, hourRate:20 },
+  curtain136: { name:'Firanka 13,6 m / 24 t', length:1360, width:248, height:270, payload:24000, grossWeightKg:40000, axleWeightKg:10000, lengthCm:1650, widthCm:255, heightCm:400, axleCount:5, kmRate:0.95, hourRate:25 },
+  reefer136: { name:'Chłodnia 13,6 m / 24 t', length:1360, width:248, height:265, payload:23500, grossWeightKg:40000, axleWeightKg:10000, lengthCm:1650, widthCm:255, heightCm:400, axleCount:5, kmRate:1.10, hourRate:28 },
 };
 export const DEFAULT_ASSUMPTIONS = {
   kmRate:0.38, hourRate:14, deadheadKm:30, averageSpeed:65, fixed:25,
   tolls:0, crossing:0, extra:0, waitingHours:0, waitingRate:20,
   carrierMarkup:15, uncertainty:15, minimumBuy:90, minimumShare:30,
-  targetMargin:18, minimumMargin:12,
+  targetMargin:18, minimumMargin:12, reeferSurcharge:0,
 };
 export class ForwardingError extends Error {}
 const fail = message => { throw new ForwardingError(message); };
@@ -62,12 +64,12 @@ export function normalizeInput(raw) {
   if(fxSource==='NBP'&&(!fxDate||!/^\d{1,3}\/A\/NBP\/\d{4}$/.test(fxTable)))fail('Brak poprawnej daty lub tabeli kursu NBP. Pobierz kurs ponownie albo wpisz go ręcznie.');
   const moneyScale=currency==='PLN'?eurPln:1;
   const profile=Object.hasOwn(PROFILES,raw.profile)?PROFILES[raw.profile]:null;
-  if (!profile) fail('Wybierz busa lub solo.');
+  if (!profile) fail('Wybierz profil pojazdu.');
   if (!['dedicated','partload'].includes(raw.mode)) fail('Wybierz sposób przewozu.');
   const v=raw.vehicle||{}, a=raw.assumptions||{}, r=raw.route||{};
   const vehicle={name:profile.name};
   for (const key of ['length','width','height','payload','grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount']) {
-    const limits={length:[100,1400],width:[100,300],height:[100,400],payload:[100,20000],grossWeightKg:[1000,40000],axleWeightKg:[500,20000],lengthCm:[200,2000],widthCm:[100,300],heightCm:[100,500],axleCount:[2,6]}[key];
+    const limits={length:[100,1400],width:[100,300],height:[100,400],payload:[100,30000],grossWeightKg:[1000,40000],axleWeightKg:[500,20000],lengthCm:[200,2000],widthCm:[100,300],heightCm:[100,500],axleCount:[2,6]}[key];
     vehicle[key]=num(v[key],`parametr pojazdu ${key}`,...limits,key==='axleCount');
   }
   if (vehicle.payload>=vehicle.grossWeightKg || vehicle.axleWeightKg>vehicle.grossWeightKg) fail('Ładowność i nacisk osi muszą odpowiadać masie pojazdu.');
@@ -76,7 +78,7 @@ export function normalizeInput(raw) {
   for (const key of Object.keys(DEFAULT_ASSUMPTIONS)) {
     const bounds={averageSpeed:[10,100],targetMargin:[0,80],minimumMargin:[0,80],uncertainty:[0,50],carrierMarkup:[0,100],minimumShare:[1,100],kmRate:[0,10],hourRate:[0,200],deadheadKm:[0,5000],waitingHours:[0,200]}[key]||[0,10000];
     const scale=MONEY_ASSUMPTIONS.includes(key)?moneyScale:1;
-    assumptions[key]=num(a[key],`założenie ${key}`,bounds[0]*scale,bounds[1]*scale);
+    assumptions[key]=num(a[key]??DEFAULT_ASSUMPTIONS[key],`założenie ${key}`,bounds[0]*scale,bounds[1]*scale);
   }
   if (!assumptions.kmRate && !assumptions.hourRate) fail('Koszt kilometra lub godziny musi być większy od zera.');
   if (assumptions.minimumMargin>assumptions.targetMargin) fail('Marża minimalna nie może przekraczać docelowej.');
@@ -103,7 +105,9 @@ export function normalizeInput(raw) {
   const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true,terms:str(o.terms,'warunki oferty',1500),importSource:str(o.importSource,'źródło oferty',3000)}));
   if (offers.some(o=>o.status==='accepted'&&o.needsConfirmation)) fail('Po zmianie przesyłki ponownie potwierdź ofertę przewoźnika.');
   if (offers.filter(o=>o.status==='accepted').length>1) fail('Możesz przyjąć tylko jedną ofertę przewoźnika.');
-  return {module:'forwarding',version:ENGINE_VERSION,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,assumptions,cargo,route,pickup,delivery,
+  const reeferTemperature=str(raw.reeferTemperature,'temperatura chłodni',30);
+  if (raw.profile==='reefer136' && !reeferTemperature) fail('Podaj temperaturę dla chłodni, np. +2°C lub -18°C.');
+  return {module:'forwarding',version:ENGINE_VERSION,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
     client:str(raw.client,'klient',200),reference:str(raw.reference,'referencja',120),notes:str(raw.notes,'warunki przewozu',3000),
     tailLift:raw.tailLift===true,palletJack:raw.palletJack===true,reviewed:raw.reviewed===true,
     sellPrice:raw.sellPrice===''||raw.sellPrice==null?null:num(raw.sellPrice,`cena dla klienta (${currency})`,0.01,1e6*moneyScale),offers,
@@ -129,8 +133,9 @@ export function calculate(raw) {
   if (cargo.some(c=>c.stackable)) warnings.push('Piętrowalność zapisana informacyjnie. Cena i powierzchnia nadal liczone bez piętrowania.');
   if (r.source==='manual') warnings.push('Dystans wpisany ręcznie. Przebieg trasy nie został potwierdzony na mapie.');
   if (input.mode==='partload') warnings.push('Doładunek wymaga dostępnego auta na tej relacji i zgodnych terminów. Udział przestrzeni nie gwarantuje ceny ani dostępności.');
+  if (input.profile==='reefer136' && !a.reeferSurcharge) warnings.push('Nie dodano osobnej dopłaty chłodniczej. Sprawdź agregat, paliwo i wymagania temperaturowe przed wysłaniem ceny.');
   const drivingHours=r.durationHours??r.distanceKm/a.averageSpeed;
-  const linehaul=r.distanceKm*a.kmRate+drivingHours*a.hourRate+a.tolls+a.crossing;
+  const linehaul=r.distanceKm*a.kmRate+drivingHours*a.hourRate+a.tolls+a.crossing+(input.profile==='reefer136'?a.reeferSurcharge:0);
   const shipmentCosts=a.deadheadKm*a.kmRate+(a.deadheadKm/a.averageSpeed)*a.hourRate+a.fixed+a.extra+a.waitingHours*a.waitingRate;
   const share=input.mode==='dedicated'?1:Math.max(a.minimumShare/100,shares.weight,shares.floor,shares.volume);
   const operatingCost=linehaul*share+shipmentCosts;
@@ -171,7 +176,7 @@ export function customerOffer(result) {
     'WSTĘPNA OFERTA TRANSPORTU',i.reference?`Referencja: ${i.reference}`:'',i.client?`Klient: ${i.client}`:'',
     `Trasa: ${i.route.origin} → ${i.route.destination}`,
     `Załadunek: ${i.pickup} | Dostawa: ${i.delivery} (do potwierdzenia)`,
-    `Transport: ${i.mode==='dedicated'?'dedykowany':'doładunek'}, ${i.vehicle.name}`,
+    `Transport: ${i.mode==='dedicated'?'dedykowany':'doładunek'}, ${i.vehicle.name}${i.reeferTemperature?` · temperatura ${i.reeferTemperature}`:''}`,
     ...i.cargo.map(c=>`${c.qty} szt. × ${c.length} × ${c.width} × ${c.height} cm; ${c.weight} kg/szt.; ${c.stackable?'piętrowalne po uzgodnieniu':'bez piętrowania'}`),
     `Łącznie: ${round(result.summary.weight)} kg | ${round(result.summary.volume)} m³`,
     i.tailLift?'Wymagana winda.':'',i.palletJack?'Wymagany paleciak.':'',

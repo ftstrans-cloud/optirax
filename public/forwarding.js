@@ -1,5 +1,5 @@
-import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.5.0';
-import {setupEnquiryImport} from './enquiry-import.js?v=1.5.0';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.6.0';
+import {setupEnquiryImport} from './enquiry-import.js?v=1.6.0';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -20,9 +20,9 @@ const A={
   fixed:['Obsługa zlecenia (EUR)',0,10000],extra:['Dopłaty, np. winda (EUR)',0,10000],
   waitingHours:['Postój (h)',0,200],waitingRate:['Koszt postoju (EUR/h)',0,10000],
   carrierMarkup:['Narzut przewoźnika (%)',0,100],uncertainty:['Rozpiętość zakupu ± (%)',0,50],
-  minimumBuy:['Minimalny zakup (EUR)',0,10000],minimumShare:['Min. udział doładunku (%)',1,100],
+  minimumBuy:['Minimalny zakup (EUR)',0,10000],minimumShare:['Min. udział doładunku (%)',1,100],reeferSurcharge:['Dopłata chłodnicza (EUR)',0,10000],
 };
-const V={length:['Długość ładowni (cm)',100,1400],width:['Szerokość ładowni (cm)',100,300],height:['Wysokość ładowni (cm)',100,400],payload:['Ładowność (kg)',100,20000],grossWeightKg:['DMC do routingu (kg)',1000,40000],axleWeightKg:['Nacisk osi (kg)',500,20000],lengthCm:['Długość auta (cm)',200,2000],widthCm:['Szerokość auta (cm)',100,300],heightCm:['Wysokość auta (cm)',100,500],axleCount:['Liczba osi',2,6]};
+const V={length:['Długość ładowni (cm)',100,1400],width:['Szerokość ładowni (cm)',100,300],height:['Wysokość ładowni (cm)',100,400],payload:['Ładowność (kg)',100,30000],grossWeightKg:['DMC do routingu (kg)',1000,40000],axleWeightKg:['Nacisk osi (kg)',500,20000],lengthCm:['Długość auta (cm)',200,2000],widthCm:['Szerokość auta (cm)',100,300],heightCm:['Wysokość auta (cm)',100,500],axleCount:['Liczba osi',2,6]};
 function fields(spec,prefix,values){return Object.entries(spec).map(([k,[label,min,max]])=>`<label>${label}<input id="${prefix}-${k}" data-${prefix}="${k}" ${prefix==='a'&&MONEY_ASSUMPTIONS.includes(k)?'data-money="assumption"':''} type="number" inputmode="decimal" min="${min}" max="${max}" step="${k==='axleCount'?'1':prefix==='a'&&MONEY_ASSUMPTIONS.includes(k)?'any':'0.01'}" value="${esc(values[k])}"></label>`).join('');}
 function clearMoneyAnchor(el){for(const key of ['anchorAmount','anchorCurrency','anchorRate','renderedAmount'])delete el.dataset[key];}
 function syncCurrencyLabels(){
@@ -33,7 +33,8 @@ function syncCurrencyLabels(){
     label.firstChild.textContent=label.dataset.currencyLabel.replace(/EUR/g,currentCurrency);
     el.dataset.maxEur??=el.max;el.max=Number(el.dataset.maxEur)*scale;
   });
-  $('currencyCaption').textContent=`Bus i solo · transport bezpośredni · kwoty w ${currentCurrency} netto`;
+  const profileLabel=PROFILES[currentProfile]?.name||'profil pojazdu';
+  $('currencyCaption').textContent=`${profileLabel} · kwoty w ${currentCurrency} netto`;
 }
 function switchCurrency(){
   const target=$('quoteCurrency').value,hadResult=!!result;
@@ -59,9 +60,13 @@ function initFields(){
 }
 function setProfile(){
   const v=PROFILES[$('profile').value],rate=currentCurrency==='PLN'?normalizeExchangeRate($('eurPln').value,true):null;
+  if(!v)throw Error('Nieprawidłowy profil pojazdu.');
   $('vehicleFields').innerHTML=fields(V,'v',v);
   for(const k of ['kmRate','hourRate']){const el=$(`a-${k}`);el.value=Number(convertMoney(v[k],'EUR',currentCurrency,rate).toFixed(8));clearMoneyAnchor(el);}
   currentProfile=$('profile').value;
+  $('reeferTemperatureField').hidden=currentProfile!=='reefer136';
+  if(currentProfile!=='reefer136')$('reeferTemperature').value='';
+  syncCurrencyLabels();
 }
 function cargoRow(data={qty:1,length:120,width:80,height:'',weight:'',stackable:false}){
   if($('cargoRows').children.length>=30){message('Maksymalnie 30 pozycji ładunku.',true);return;}
@@ -80,7 +85,7 @@ function offerRow(data={carrier:'',price:'',status:'received'}){
   row.querySelector('select').value=data.status;$('offerRows').appendChild(row);syncCurrencyLabels();
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
-function collect(){return {currency:currentCurrency,eurPln:$('eurPln').value,fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,mode:document.querySelector('[name=mode]:checked').value,
+function collect(){return {currency:currentCurrency,eurPln:$('eurPln').value,fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
   route:{origin:$('origin').value,destination:$('destination').value,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
@@ -172,8 +177,9 @@ function loadInput(input){
   invalidateRoute();$('profile').value=input.profile;setProfile();
   for(const key of Object.keys(V))$(`v-${key}`).value=input.vehicle[key];
   for(const key of Object.keys(A))$(`a-${key}`).value=input.assumptions[key];
-  for(const id of ['client','reference','pickup','delivery','notes','sellPrice'])$(id).value=input[id]??'';
+  for(const id of ['client','reference','pickup','delivery','notes','sellPrice','reeferTemperature'])$(id).value=input[id]??'';
   for(const id of ['tailLift','palletJack'])$(id).checked=input[id]===true;
+  $('reeferTemperatureField').hidden=input.profile!=='reefer136';
   $('reviewed').checked=false;
   document.querySelector(`[name=mode][value="${input.mode==='partload'?'partload':'dedicated'}"]`).checked=true;
   $('origin').value=input.route.origin;$('destination').value=input.route.destination;$('distanceKm').value=input.route.distanceKm;

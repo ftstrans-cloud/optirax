@@ -1,4 +1,4 @@
-import {convertMoney,normalizeExchangeRate} from './forwarding-engine.js?v=1.5.0';
+import {convertMoney,normalizeExchangeRate} from './forwarding-engine.js?v=1.6.0';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function offerSource(o){return [`Kwota w źródle: ${o.amount??'?'} ${o.currency||'?'} (${o.taxBasis==='net'?'netto':o.taxBasis==='gross'?'brutto':'nie podano netto/brutto'}).`,o.origin?`Załadunek: ${o.origin}`:'',o.destination?`Rozładunek: ${o.destination}`:'',o.pickup?`Termin odbioru: ${o.pickup}`:'',o.delivery?`Termin dostawy: ${o.delivery}`:'',o.tailLift===true?'Winda potwierdzona.':o.tailLift===false?'Bez windy.':'Winda niepotwierdzona.',o.terms||''].filter(Boolean).join('\n');}
 export function renderOfferPreview(data,context){
