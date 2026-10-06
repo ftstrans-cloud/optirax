@@ -70,6 +70,12 @@ input.extend{width:50px;padding:3px 6px;background:#0f172a;border:1px solid #334
 const token = localStorage.getItem('optirax_token');
 if(!token){ window.location.href='/login.html'; }
 
+function escapeHtml(value){
+  return String(value).replace(/[&<>"]/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'
+  })[ch]);
+}
+
 async function api(path, method='GET', body=null){
   const r = await fetch(path,{
     method,
@@ -109,7 +115,7 @@ async function loadUsers(){
 
       return `<tr>
         <td>${u.email||'—'}</td>
-        <td style="color:#64748b">${u.company||'—'}</td>
+        <td style="color:#64748b">${escapeHtml(u.company||'—')}</td>
         <td>${planBadge}</td>
         <td style="font-size:12px;color:${trialExpired?'#f87171':'#94a3b8'}">${trialEnd}</td>
         <td>${statusBadge}</td>
