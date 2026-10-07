@@ -83,6 +83,26 @@ function offerRow(data={carrier:'',price:'',status:'received'}){
   row.innerHTML=`<div class="cargo-title"><span>PRZEWOŹNIK</span><button type="button" class="quiet remove-offer" aria-label="Usuń ofertę przewoźnika">×</button></div><label>Nazwa<input data-offer="carrier" maxlength="120" value="${esc(data.carrier)}" placeholder="Nazwa przewoźnika"></label><div class="fields two"><label>Cena EUR netto<input data-offer="price" data-money="price" type="number" min="0.01" max="1000000" step="0.01" value="${esc(data.price)}" inputmode="decimal"></label><label>Status<select data-offer="status"><option value="received">Otrzymana</option><option value="accepted">Przyjęta</option><option value="rejected">Odrzucona</option></select></label></div><p class="offer-compare">Przelicz, aby porównać ofertę z limitem zakupu.</p>`;
   row.insertAdjacentHTML('beforeend',`<label>Warunki oferty<textarea data-offer="terms" maxlength="1500" rows="2" placeholder="Termin, winda, dopłaty…">${esc(data.terms||'')}</textarea></label>${data.importSource?`<details><summary>Oryginalny odczyt oferty</summary><pre>${esc(data.importSource)}</pre></details>`:''}`);
   row.querySelector('select').value=data.status;$('offerRows').appendChild(row);syncCurrencyLabels();
+  renderSelectedOfferPicker();
+}
+function renderSelectedOfferPicker(){
+  const box=$('selectedOfferBox');if(!box)return;
+  const rows=[...document.querySelectorAll('.offer-row')];
+  const offers=rows.map((row,index)=>({index,carrier:row.querySelector('[data-offer=carrier]')?.value.trim()||`Przewoźnik ${index+1}`,price:row.querySelector('[data-offer=price]')?.value||'',status:row.querySelector('[data-offer=status]')?.value||'received'})).filter(o=>o.carrier||o.price);
+  const accepted=offers.find(o=>o.status==='accepted');
+  if(!offers.length){box.innerHTML='<div class="section-top"><strong>Oferta przewoźnika w wycenie</strong><span class="tag">opcjonalnie</span></div><p class="hint">Dodaj oferty po prawej stronie, aby wybrać rzeczywisty koszt zakupu i użyć go w marży.</p>';return;}
+  box.innerHTML=`<div class="section-top"><strong>Oferta przewoźnika w wycenie</strong><span class="tag ${accepted?'tag-active':''}">${accepted?'UŻYTA W WYCENIE':'MODEL KALKULATORA'}</span></div><div class="selected-offer-controls"><select id="selectedOfferChoice" aria-label="Wybierz ofertę przewoźnika"><option value="">Pozostaw koszt modelowy</option>${offers.map(o=>`<option value="${o.index}" ${accepted?.index===o.index?'selected':''}>${esc(o.carrier)} · ${o.price?money(Number(o.price)):'brak ceny'}</option>`).join('')}</select><button type="button" id="useSelectedOffer" class="secondary">Zastosuj ofertę</button></div><p class="hint">Wybrana oferta zastąpi koszt modelowy i przeliczy cenę klienta, zysk oraz marżę.</p>`;
+}
+function useSelectedOffer(){
+  const choice=$('selectedOfferChoice')?.value||'';
+  document.querySelectorAll('.offer-row').forEach((row,index)=>{
+    const status=row.querySelector('[data-offer=status]');
+    const selected=choice!==''&&index===Number(choice);
+    if(selected){status.value='accepted';row.dataset.needsConfirmation='false';}
+    else if(status.value==='accepted')status.value='received';
+  });
+  invalidate();
+  if(runCalculation())message(choice===''?'Przywrócono koszt modelowy kalkulatora.':'Oferta przewoźnika została użyta w wycenie. Cena klienta i marża zostały przeliczone.');
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
 function collect(){return {currency:currentCurrency,eurPln:$('eurPln').value,fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
@@ -100,6 +120,7 @@ function invalidate(){
   $('fitTag').textContent='Przelicz';$('loadMetrics').textContent='Dane zmienione — przelicz kontrolę ładunku.';
   $('warnings').replaceChildren();$('warningsCount').textContent='—';
   document.querySelectorAll('.offer-compare').forEach(e=>{e.textContent='Przelicz, aby porównać ofertę z limitem zakupu.';e.classList.remove('bad');});
+  renderSelectedOfferPicker();
 }
 function clearMap(){if(mapLine){map.removeLayer(mapLine);mapLine=null;}mapMarkers.forEach(m=>map.removeLayer(m));mapMarkers=[];}
 function resetOfferScope(){document.querySelectorAll('.offer-row').forEach(row=>{row.dataset.needsConfirmation='true';const status=row.querySelector('[data-offer=status]');if(status.value==='accepted')status.value='received';});}
@@ -119,6 +140,7 @@ function render(){
   const equivalent=r.eurPln?`<div class="currency-equivalent ${otherCurrency==='PLN'?'pln':''}"><strong>≈ ${money(convertMoney(r.sell,r.currency,otherCurrency,r.eurPln),otherCurrency)}</strong><span>1 EUR = ${fmt(r.eurPln,4)} PLN · ${esc(fxLabel)}</span></div>`:'';
   $('result').hidden=false;$('emptyResult').hidden=true;$('resultTag').textContent=r.blockers.length?'Sprawdź auto':r.input.reviewed?'Szacunek':'Sprawdź założenia';
   $('result').innerHTML=`${r.blockers.length?`<div class="blocker"><strong>Ładunek wymaga zmiany pojazdu lub danych.</strong><br>${r.blockers.map(esc).join('<br>')}</div>`:''}<div class="price-label">Cena dla klienta${r.input.sellPrice===null?' · sugerowana':''}</div><div class="price-value ${r.currency==='PLN'?'pln':''}">${fmt(r.sell)} <small>${symbol}</small></div>${equivalent}<p class="price-range">Zakup: ${money(r.buy)} · ${r.buySource==='accepted'?'przyjęta oferta':'model'}</p><div class="decision-stats"><div class="price-label">Zysk na zleceniu<strong>${money(r.profit)}</strong></div><div class="price-label">Marża od sprzedaży<strong>${fmt(r.margin,1)}%</strong></div></div><div class="decision-line"><span>Zakres zakupu z modelu</span><strong>${fmt(r.low,0)}–${fmt(r.high,0)} ${symbol}</strong></div><div class="decision-line"><span>Propozycja na start</span><strong>${money(r.opening)}</strong></div><div class="decision-line"><span>Limit zakupu (${fmt(r.input.assumptions.minimumMargin,0)}% marży)</span><strong>${money(r.maxBuy)}</strong></div><div class="status-note ${r.overBudget?'bad':''}">${r.overBudget?'Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.':'Zakup mieści się w limicie przy aktualnej cenie sprzedaży.'}</div><details><summary>Skąd ta cena?</summary><div class="decision-line"><span>Koszt całej relacji</span><strong>${money(r.costs.linehaul)}</strong></div><div class="decision-line"><span>Udział przesyłki</span><strong>${fmt(r.share*100,1)}%</strong></div><div class="decision-line"><span>Dojazd + obsługa + dopłaty</span><strong>${money(r.costs.shipment)}</strong></div><div class="decision-line"><span>Koszt modelowy</span><strong>${money(r.costs.operating)}</strong></div><p class="hint">Koszt modelowy × (1 + narzut przewoźnika), z minimum zakupu. Cena sprzedaży = zakup ÷ (1 − marża docelowa). Doładunek: największy udział wagi, objętości lub podłogi, nie mniej niż ustawione minimum. Koszty dojazdu i obsługi przypisane w całości.</p></details>`;
+  renderSelectedOfferPicker();
   $('loadMetrics').innerHTML=`<div class="load-total"><div><strong>${r.summary.pieces}</strong><small>sztuk</small></div><div><strong>${fmt(r.summary.volume,2)}</strong><small>m³</small></div><div><strong>${fmt(r.summary.ldm,2)}</strong><small>LDM / szer. 2,4 m</small></div></div>${[['weight','Ładowność',`${fmt(r.summary.weight,0)} / ${fmt(r.input.vehicle.payload,0)} kg`],['floor','Podłoga',`${fmt(r.summary.area,2)} m²`],['volume','Objętość',`${fmt(r.summary.volume,2)} m³`]].map(([key,label,detail])=>`<div class="capacity ${r.shares[key]>1?'over':''}"><div><span>${label} · ${esc(detail)}</span><strong>${fmt(r.shares[key]*100,0)}%</strong></div><progress max="1" value="${Math.min(1,r.shares[key])}" aria-label="${label}"></progress></div>`).join('')}`;
   $('fitTag').textContent=r.blockers.length?'Przekroczone limity':'Wstępna kontrola';
   $('warnings').innerHTML=[...r.blockers,...r.warnings,...(!r.input.pickup||!r.input.delivery?['Uzupełnij daty przed przygotowaniem oferty dla klienta.']:[])].map(w=>`<li>${esc(w)}</li>`).join('');$('warningsCount').textContent=$('warnings').children.length;
@@ -235,6 +257,7 @@ $('workspace').addEventListener('click',e=>{
 });
 $('addCargo').onclick=()=>{cargoRow();resetOfferScope();$('reviewed').checked=false;invalidate();};
 $('addOffer').onclick=()=>{offerRow();invalidate();};
+$('workspace').addEventListener('click',e=>{if(e.target.id==='useSelectedOffer')useSelectedOffer();});
 $('fetchRoute').onclick=fetchRoute;$('saveQuote').onclick=saveQuote;$('refreshHistory').onclick=loadHistory;
 $('fetchFx').onclick=fetchFx;
 $('mapDetails').addEventListener('toggle',()=>{if(map&&$('mapDetails').open){map.invalidateSize();if(mapLine)map.fitBounds(mapLine.getBounds(),{padding:[22,22]});}});
