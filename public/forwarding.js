@@ -265,7 +265,7 @@ $('workspace').addEventListener('click',e=>{
   if(offer){offer.closest('.offer-row').remove();invalidate();}
 });
 $('addCargo').onclick=()=>{cargoRow();resetOfferScope();$('reviewed').checked=false;invalidate();};
-$('addOffer').onclick=()=>{offerRow();invalidate();$('offerEditor').open=true;$('offerRows').lastElementChild?.querySelector('input')?.focus();};
+$('addOffer').onclick=()=>{offerRow();invalidate();$('offerRows').lastElementChild?.querySelector('input')?.focus();};
 $('workspace').addEventListener('click',e=>{const button=e.target.closest('[data-use-offer]');if(button)useSelectedOffer(button.dataset.useOffer);});
 $('fetchRoute').onclick=fetchRoute;$('saveQuote').onclick=saveQuote;$('refreshHistory').onclick=loadHistory;
 $('fetchFx').onclick=fetchFx;

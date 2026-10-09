@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
-  <link rel="stylesheet" href="/forwarding.css?v=1.6.1">
+  <link rel="stylesheet" href="/forwarding.css?v=1.6.2">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js?v=1.6.1"></script>
+  <script type="module" src="/forwarding.js?v=1.6.2"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
@@ -49,8 +49,14 @@
         </section>
       </div>
       <div class="context-column">
-        <section class="card load-card"><div class="section-top"><h2>Kontrola ładunku</h2><span class="tag" id="fitTag">Uzupełnij dane</span></div><div class="load-metrics" id="loadMetrics"><p class="muted">Wynik pojawi się po obliczeniu.</p></div><p class="hint">Kontrola wagowa i wymiarowa. Bez automatycznego planowania rozmieszczenia i piętrowania.</p></section>
         <details class="card map-card" id="mapDetails" open><summary>Przebieg trasy <span>Mapa</span></summary><div id="routeMap"><div class="map-placeholder">A <span>················</span> B<p>Wyznacz trasę dla wybranego auta.</p></div></div><p id="mapCaption" class="hint">Routing TomTom z parametrami pojazdu. Myto dla busa i solo wpisujesz samodzielnie.</p></details>
+        <section class="card offer-editor" id="offerEditor" aria-labelledby="carrierOffersTitle">
+          <div class="section-top"><h2 id="carrierOffersTitle">Oferty przewoźników</h2><span class="tag" id="offersCount">0</span></div>
+          <div class="offer-tools"><button type="button" id="addOffer" class="text-button">+ Dodaj ofertę</button><button type="button" id="offersImportOpen" class="text-button">Wklej tekst / screeny ↗</button></div>
+          <p class="hint">Dodaj cenę netto i warunki. Ofertę do wyceny wybierz w karcie „Zakup. Sprzedaż. Marża.”</p>
+          <div id="offerRows"></div>
+        </section>
+        <section class="card load-card"><div class="section-top"><h2>Kontrola ładunku</h2><span class="tag" id="fitTag">Uzupełnij dane</span></div><div class="load-metrics" id="loadMetrics"><p class="muted">Wynik pojawi się po obliczeniu.</p></div><p class="hint">Kontrola wagowa i wymiarowa. Bez automatycznego planowania rozmieszczenia i piętrowania.</p></section>
         <section class="card assumptions-card"><h2>Założenia wyceny</h2><p class="hint">Kwoty startowe to przykład modelu, do edycji. Nie są taryfą przewoźników.</p><div id="keyAssumptions" class="fields two"></div><details><summary>Koszty, dojazd i doładunek <span>Edytuj</span></summary><div id="otherAssumptions" class="fields two"></div></details><label class="review-check"><input id="reviewed" type="checkbox"><span>Sprawdziłem stawki, myto, przeprawę, parametry auta i warunki zlecenia.</span></label></section>
       </div>
       <aside class="decision-column">
@@ -60,7 +66,6 @@
           <section class="purchase-section" aria-labelledby="purchaseTitle">
             <div class="purchase-heading"><h3 id="purchaseTitle">Wybierz koszt zakupu</h3><span class="tag">netto</span></div>
             <div id="selectedOfferBox" class="purchase-options" role="group" aria-label="Koszt zakupu do wyceny"></div>
-            <div class="offer-tools"><button type="button" id="addOffer" class="text-button">+ Dodaj ofertę</button><button type="button" id="offersImportOpen" class="text-button">Wklej tekst / screeny ↗</button></div>
             <p id="purchaseStatus" class="hint" role="status" aria-live="polite">Wybór oferty przelicza cenę klienta i marżę.</p>
           </section>
           <div class="currency-toolbar">
@@ -74,13 +79,12 @@
           <div class="calculate-bar"><button type="submit" id="calculate" class="primary">Wyceń przesyłkę <span>↗</span></button></div>
           <div class="result-actions"><button type="button" id="saveQuote" class="secondary" disabled>Zapisz wersję</button><button type="button" id="offerOpen" class="secondary" disabled>Oferta klienta</button></div><p id="saveState" class="hint">Wersje zapisujesz na swoim koncie.</p>
         </section>
-        <details class="card offer-editor" id="offerEditor"><summary>Edytuj oferty <span id="offersCount">0</span></summary><p class="hint">Uzupełnij cenę netto i warunki. Status „Przyjęta” oznacza użycie oferty w tej wycenie.</p><div id="offerRows"></div></details>
         <details class="card" id="calculationDetails" hidden><summary>Szczegóły kalkulacji</summary><div id="calculationBreakdown"></div></details>
         <details class="card" id="warningsCard"><summary>Co trzeba potwierdzić <span id="warningsCount">—</span></summary><ul id="warnings"></ul></details>
       </aside>
     </form>
     <section class="history-section"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja · 1.6.1 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.6.2 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
   <dialog id="pasteDialog" aria-labelledby="importTitle">
     <div class="section-top"><div><p class="eyebrow">OPTIRAX / SZYBKI IMPORT</p><h2 id="importTitle">Zapytanie → wycena</h2></div><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div>

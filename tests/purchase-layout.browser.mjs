@@ -41,7 +41,7 @@ try{
  await page.goto(base+'/spedycja');
  await page.locator('[data-use-offer]').waitFor();
  assert.equal(await page.locator('#fxDetails').getAttribute('open'),null);
- assert.equal(await page.locator('#offerEditor').getAttribute('open'),null);
+ assert.equal(await page.locator('#offerEditor').isVisible(),true);
  for(const [id,value] of Object.entries({origin:'PL Poznań',destination:'DE Berlin',distanceKm:'300',pickup:'2026-10-10',delivery:'2026-10-11','a-targetMargin':'20'}))await page.locator('#'+id).fill(value);
  await page.locator('[data-cargo=height]').fill('150');await page.locator('[data-cargo=weight]').fill('200');
  await page.locator('#calculate').click();
@@ -51,7 +51,6 @@ try{
    const row=page.locator('.offer-row').last();
    await row.locator('[data-offer=carrier]').fill(carrier);await row.locator('[data-offer=price]').fill(price);
  }
- await page.locator('#offerEditor summary').click();
  await page.locator('[data-use-offer="0"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/250,00/);
  assert.match(await page.locator('.price-range').textContent(),/200,00 EUR.*Transport Alfa/);
@@ -83,13 +82,11 @@ try{
  assert.equal(await page.locator('[data-use-offer="1"]').getAttribute('aria-pressed'),'true');
  assert.match(await page.locator('.price-range').textContent(),/1\s*020,00 zł/);
  // Rejected and incomplete offers cannot become the purchase.
- await page.locator('#offerEditor summary').click();
  await page.locator('[data-offer=status]').first().selectOption('rejected');
  assert.equal(await page.locator('[data-use-offer="0"]').isDisabled(),true);
  await page.locator('#addOffer').click();assert.equal(await page.locator('[data-use-offer="2"]').isDisabled(),true);
  await page.locator('.remove-offer').last().click();
  await page.locator('[data-offer=status]').first().selectOption('received');
- await page.locator('#offerEditor summary').click();
  await page.locator('#sellPrice').fill('');await page.locator('[data-use-offer="1"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/1\s*275,00/);
  // Data edits invalidate the selected quote and prevent stale prices from being saved.
@@ -104,12 +101,18 @@ try{
  // Visual checks of the whole right column and narrow layouts, in both themes.
  for(const theme of ['dark','light']){
    await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
-   for(const width of [1680,1024,390,320]){
+   for(const width of [1680,1440,1280,1024,390,320]){
      await page.setViewportSize({width,height:1100});
+     await page.evaluate(()=>window.scrollTo(0,0));
      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${theme}/${width}`);
      const quote=await page.locator('#result').boundingBox(),offers=await page.locator('#selectedOfferBox').boundingBox(),fx=await page.locator('.currency-toolbar').boundingBox();
      assert.ok(quote.y<offers.y&&offers.y<fx.y);assert.ok(fx.height<120,`Compact FX at ${width}px: ${fx.height}`);
-     await page.locator('.decision-column').screenshot({path:`${out}/${theme}-${width}.png`});
+     if(width>=1200){
+       const map=await page.locator('#mapDetails').boundingBox(),editor=await page.locator('#offerEditor').boundingBox(),decision=await page.locator('.decision-column').boundingBox();
+       assert.ok(Math.abs(map.y-decision.y)<2,`Map starts beside quote at ${width}px`);
+       assert.ok(editor.y>map.y+map.height&&editor.x<decision.x,`Offers below map in middle column at ${width}px`);
+     }
+     await page.screenshot({path:`${out}/${theme}-${width}.png`,fullPage:width<1200});
    }
  }
  await page.locator('#offersImportOpen').click();assert.equal(await page.locator('#pasteDialog').isVisible(),true);

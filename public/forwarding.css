@@ -96,13 +96,33 @@ dialog::backdrop{background:#081322bc;backdrop-filter:blur(5px)}dialog .section-
 .fx-editor label{font-size:13px}
 .fx-editor .secondary{font-size:13px;padding:8px;min-height:48px}
 .decision-card .fx-details .hint{font-size:12px;line-height:1.5}
-.offer-editor summary{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.offer-editor summary::before{content:'▸'}
-.offer-editor[open] summary::before{content:'▾'}
-.offer-editor summary span{margin-left:auto}
 @media(max-width:370px){
   .mode-options{grid-template-columns:1fr}
   .purchase-option{grid-template-columns:18px minmax(0,1fr);gap:8px;padding:10px}
   .purchase-price{grid-column:2}
   .currency-toolbar{gap:4px 10px}
+}
+
+/* Map and carrier offers share the middle column beside the quote. */
+.offer-editor .section-top h2{font-size:20px}
+.offer-editor .offer-tools{margin:0 0 8px}
+.offer-editor #offerRows:empty::before{content:'Brak ofert — dodaj ręcznie lub wklej odpowiedzi przewoźników.';display:block;padding:16px;border:1px dashed var(--line);border-radius:8px;color:var(--muted);font-size:14px;line-height:1.6}
+@media(min-width:1200px){
+  #workspace{grid-template-columns:minmax(0,1.08fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:'form context decision';gap:18px}
+  .form-column{grid-area:form}
+  .context-column{grid-area:context;display:grid;grid-template-columns:minmax(0,1fr)}
+  .context-column>.card{grid-column:auto}
+  .decision-column{grid-area:decision;position:sticky;top:20px}
+  .assumptions-card #keyAssumptions,.assumptions-card #otherAssumptions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #routeMap{height:250px}
+}
+@media(min-width:901px) and (max-width:1199px){
+  .context-column{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:900px){
+  .context-column .map-card{order:1;width:100%}
+  .context-column .offer-editor{order:2;width:100%}
+  .decision-column{order:3}
+  .context-column .load-card{order:4}
+  .context-column .assumptions-card{order:5}
 }
