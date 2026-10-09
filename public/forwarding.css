@@ -126,3 +126,27 @@ dialog::backdrop{background:#081322bc;backdrop-filter:blur(5px)}dialog .section-
   .context-column .load-card{order:4}
   .context-column .assumptions-card{order:5}
 }
+/* Optional cost model; margin controls remain available in both modes. */
+#modelAssumptions{border:0;padding:0;margin:0;min-width:0}
+.model-toggle{display:flex;flex-direction:row;align-items:center;gap:10px;font-size:15px;line-height:1.5}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+#marginAssumptions{margin-top:16px}
+.history-shortcut{margin-left:auto;white-space:nowrap;text-decoration:none}
+@media(min-width:1200px){
+  .app-header{height:68px;min-height:68px}
+  main{padding-top:14px}
+  .page-heading{margin-bottom:10px;gap:16px}
+  .page-heading .eyebrow{display:none}
+  .page-heading h1{font-size:26px;margin-bottom:3px}
+  .page-heading .muted{font-size:13px}
+  .notice{font-size:12px;padding:8px 12px;margin-bottom:12px}
+  #workspace{height:var(--workspace-height,calc(100dvh - 240px));min-height:360px;align-items:stretch}
+  #workspace>.form-column,#workspace>.context-column,#workspace>.decision-column{
+    height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;
+    scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:var(--muted) var(--surface);
+    align-content:start;grid-auto-rows:max-content;padding:0 6px 20px 0;position:static;
+  }
+  #workspace>[tabindex]:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+  .purchase-options{max-height:none;overflow:visible}
+}
+@media(max-width:700px){.history-shortcut{font-size:12px;white-space:normal;text-align:right}}

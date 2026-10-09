@@ -98,12 +98,46 @@ try{
  await page.locator('#reviewed').check();await page.locator('#calculate').click();
  await page.locator('#offerOpen').click();const text=await page.locator('#customerText').inputValue();
  assert.doesNotMatch(text,/Transport Beta|1020|marża|Zakup/);await page.locator('[data-close=offerDialog]').click();
+ // Carrier-only quote: empty cost inputs must not block calculation or persistence.
+ await page.locator('#a-kmRate').fill('');await page.locator('#a-hourRate').fill('');
+ await page.locator('#useCostModel').uncheck();
+ assert.equal(await page.locator('#a-kmRate').isDisabled(),true);
+ assert.equal(await page.locator('#modelAssumptions').isVisible(),false);
+ assert.equal(await page.locator('[data-use-offer=""]').isDisabled(),true);
+ await page.locator('[data-use-offer="1"]').click();
+ assert.match(await page.locator('#result .price-value').textContent(),/1\s*275,00/);
+ assert.doesNotMatch(await page.locator('#calculationBreakdown').textContent(),/Zakres zakupu z modelu/);
+ await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
+ assert.equal(saved[0].input.useCostModel,false);assert.equal(saved[0].input.assumptions.kmRate,null);
+ await page.locator('#useCostModel').check();
+ await page.locator('[data-load="0"]').click();
+ assert.equal(await page.locator('#useCostModel').isChecked(),false);
+ assert.match(await page.locator('.price-range').textContent(),/1\s*020,00 zł/);
+ // Turning the model back on restores editable, valid defaults after loading.
+ await page.locator('#useCostModel').check();assert.equal(await page.locator('#a-kmRate').isDisabled(),false);
+ assert.ok(Number(await page.locator('#a-kmRate').inputValue())>0);
+ await page.locator('#useCostModel').uncheck();
+ await page.locator('[data-offer=status]').last().selectOption('received');await page.locator('#calculate').click();
+ assert.match(await page.locator('#message').textContent(),/Wybierz ofertę przewoźnika/);assert.equal(await page.locator('#saveQuote').isDisabled(),true);
+ await page.locator('[data-use-offer="1"]').click();
+ // Desktop panes scroll independently; the document and the other panes stay still.
+ await page.setViewportSize({width:1440,height:900});
+ await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
+ const panes=['.form-column','.context-column','.decision-column'];
+ for(let i=0;i<panes.length;i++){
+   await page.locator(panes[i]).hover();await page.mouse.wheel(0,400);
+   await page.waitForFunction(sel=>document.querySelector(sel).scrollTop>0,panes[i]);
+   const offsets=await page.locator('#workspace>[tabindex]').evaluateAll(es=>es.map(e=>e.scrollTop));
+   assert.ok(offsets[i]>0);offsets.forEach((v,j)=>{if(j!==i)assert.equal(v,0);});
+   assert.equal(await page.evaluate(()=>window.scrollY),0);
+   await page.evaluate(()=>document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0));
+ }
  // Visual checks of the whole right column and narrow layouts, in both themes.
  for(const theme of ['dark','light']){
    await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
    for(const width of [1680,1440,1280,1024,390,320]){
      await page.setViewportSize({width,height:1100});
-     await page.evaluate(()=>window.scrollTo(0,0));
+     await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${theme}/${width}`);
      const quote=await page.locator('#result').boundingBox(),offers=await page.locator('#selectedOfferBox').boundingBox(),fx=await page.locator('.currency-toolbar').boundingBox();
      assert.ok(quote.y<offers.y&&offers.y<fx.y);assert.ok(fx.height<120,`Compact FX at ${width}px: ${fx.height}`);

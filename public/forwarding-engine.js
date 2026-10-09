@@ -1,6 +1,6 @@
 // Shared by browser and server. Net amounts in input.currency (legacy input defaults to EUR).
 // Profile defaults are EUR; FX is a user-entered quote snapshot, not a live market rate.
-export const ENGINE_VERSION = 'forwarding-1.3';
+export const ENGINE_VERSION = 'forwarding-1.4';
 export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy','reeferSurcharge'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
@@ -57,6 +57,8 @@ function date(value,label) {
 }
 export function normalizeInput(raw) {
   if (!raw || typeof raw!=='object' || Array.isArray(raw)) fail('Brak danych przesyłki.');
+  if(raw.useCostModel!==undefined&&typeof raw.useCostModel!=='boolean')fail('Nieprawidłowy wybór modelu kosztowego.');
+  const useCostModel=raw.useCostModel!==false;
   const currency=normalizeCurrency(raw.currency||'EUR'),eurPln=normalizeExchangeRate(raw.eurPln,currency==='PLN');
   const fxSource=eurPln?(raw.fxSource==='NBP'?'NBP':'manual'):null;
   const fxDate=fxSource==='NBP'?date(raw.fxDate,'data kursu NBP'):null;
@@ -76,11 +78,12 @@ export function normalizeInput(raw) {
   if (vehicle.length>vehicle.lengthCm || vehicle.width>vehicle.widthCm || vehicle.height>vehicle.heightCm) fail('Wymiary ładowni nie mogą przekraczać wymiarów zewnętrznych auta.');
   const assumptions={};
   for (const key of Object.keys(DEFAULT_ASSUMPTIONS)) {
+    if(!useCostModel&&!['targetMargin','minimumMargin'].includes(key)){assumptions[key]=null;continue;}
     const bounds={averageSpeed:[10,100],targetMargin:[0,80],minimumMargin:[0,80],uncertainty:[0,50],carrierMarkup:[0,100],minimumShare:[1,100],kmRate:[0,10],hourRate:[0,200],deadheadKm:[0,5000],waitingHours:[0,200]}[key]||[0,10000];
     const scale=MONEY_ASSUMPTIONS.includes(key)?moneyScale:1;
     assumptions[key]=num(a[key]??DEFAULT_ASSUMPTIONS[key],`założenie ${key}`,bounds[0]*scale,bounds[1]*scale);
   }
-  if (!assumptions.kmRate && !assumptions.hourRate) fail('Koszt kilometra lub godziny musi być większy od zera.');
+  if (useCostModel && !assumptions.kmRate && !assumptions.hourRate) fail('Koszt kilometra lub godziny musi być większy od zera.');
   if (assumptions.minimumMargin>assumptions.targetMargin) fail('Marża minimalna nie może przekraczać docelowej.');
   if (!Array.isArray(raw.cargo) || !raw.cargo.length || raw.cargo.length>30) fail('Dodaj od 1 do 30 pozycji ładunku.');
   if (raw.cargo.some(c=>!c||typeof c!=='object'||Array.isArray(c))) fail('Nieprawidłowa pozycja ładunku.');
@@ -105,9 +108,10 @@ export function normalizeInput(raw) {
   const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true,terms:str(o.terms,'warunki oferty',1500),importSource:str(o.importSource,'źródło oferty',3000)}));
   if (offers.some(o=>o.status==='accepted'&&o.needsConfirmation)) fail('Po zmianie przesyłki ponownie potwierdź ofertę przewoźnika.');
   if (offers.filter(o=>o.status==='accepted').length>1) fail('Możesz przyjąć tylko jedną ofertę przewoźnika.');
+  if(!useCostModel&&!offers.some(o=>o.status==='accepted'))fail('Model kosztowy jest wyłączony. Wybierz ofertę przewoźnika do wyceny albo włącz model.');
   const reeferTemperature=str(raw.reeferTemperature,'temperatura chłodni',30);
   if (raw.profile==='reefer136' && !reeferTemperature) fail('Podaj temperaturę dla chłodni, np. +2°C lub -18°C.');
-  return {module:'forwarding',version:ENGINE_VERSION,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
+  return {module:'forwarding',version:ENGINE_VERSION,useCostModel,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
     client:str(raw.client,'klient',200),reference:str(raw.reference,'referencja',120),notes:str(raw.notes,'warunki przewozu',3000),
     tailLift:raw.tailLift===true,palletJack:raw.palletJack===true,reviewed:raw.reviewed===true,
     sellPrice:raw.sellPrice===''||raw.sellPrice==null?null:num(raw.sellPrice,`cena dla klienta (${currency})`,0.01,1e6*moneyScale),offers,
@@ -124,31 +128,38 @@ export function calculate(raw) {
   if (shares.floor>1+1e-9) blockers.push('Przekroczona powierzchnia podłogi (liczona bez piętrowania).');
   if (shares.volume>1+1e-9) blockers.push('Przekroczona objętość ładowni.');
   cargo.forEach((c,i)=>{if (c.height>v.height || !((c.length<=v.length&&c.width<=v.width)||(c.width<=v.length&&c.length<=v.width))) blockers.push(`Pozycja ${i+1} nie mieści się wymiarami w ładowni.`);});
-  const warnings=[
+  const warnings=input.useCostModel?[
     'Stawki startowe są przykładowymi założeniami. Przed ofertowaniem dopasuj je do swoich zakupów.',
     'Waga, objętość i powierzchnia nie potwierdzają układu załadunku. Zweryfikuj drzwi, rozmieszczenie i mocowanie z przewoźnikiem.',
     'Myto, przeprawa i dopłaty wymagają ręcznego sprawdzenia dla konkretnego auta i trasy. Wartość 0 oznacza brak kosztu w modelu.',
     'Czas jazdy służy wyłącznie do modelu kosztowego. Termin dostawy wymaga osobnego potwierdzenia.',
+  ]:[
+    'Potwierdź, że oferta przewoźnika obejmuje cały przewóz, myto, przeprawę i wymagane usługi.',
+    'Zweryfikuj z przewoźnikiem rozmieszczenie, mocowanie i zgodność ładunku z pojazdem.',
   ];
   if (cargo.some(c=>c.stackable)) warnings.push('Piętrowalność zapisana informacyjnie. Cena i powierzchnia nadal liczone bez piętrowania.');
   if (r.source==='manual') warnings.push('Dystans wpisany ręcznie. Przebieg trasy nie został potwierdzony na mapie.');
   if (input.mode==='partload') warnings.push('Doładunek wymaga dostępnego auta na tej relacji i zgodnych terminów. Udział przestrzeni nie gwarantuje ceny ani dostępności.');
-  if (input.profile==='reefer136' && !a.reeferSurcharge) warnings.push('Nie dodano osobnej dopłaty chłodniczej. Sprawdź agregat, paliwo i wymagania temperaturowe przed wysłaniem ceny.');
-  const drivingHours=r.durationHours??r.distanceKm/a.averageSpeed;
-  const linehaul=r.distanceKm*a.kmRate+drivingHours*a.hourRate+a.tolls+a.crossing+(input.profile==='reefer136'?a.reeferSurcharge:0);
-  const shipmentCosts=a.deadheadKm*a.kmRate+(a.deadheadKm/a.averageSpeed)*a.hourRate+a.fixed+a.extra+a.waitingHours*a.waitingRate;
-  const share=input.mode==='dedicated'?1:Math.max(a.minimumShare/100,shares.weight,shares.floor,shares.volume);
-  const operatingCost=linehaul*share+shipmentCosts;
-  const modelBuy=Math.max(a.minimumBuy,operatingCost*(1+a.carrierMarkup/100));
-  const low=Math.max(a.minimumBuy,modelBuy*(1-a.uncertainty/100)), high=modelBuy*(1+a.uncertainty/100);
+  if (input.useCostModel && input.profile==='reefer136' && !a.reeferSurcharge) warnings.push('Nie dodano osobnej dopłaty chłodniczej. Sprawdź agregat, paliwo i wymagania temperaturowe przed wysłaniem ceny.');
+  let drivingHours=null,linehaul=null,shipmentCosts=null,share=null,operatingCost=null,modelBuy=null,low=null,high=null;
+  if(input.useCostModel){
+    drivingHours=r.durationHours??r.distanceKm/a.averageSpeed;
+    linehaul=r.distanceKm*a.kmRate+drivingHours*a.hourRate+a.tolls+a.crossing+(input.profile==='reefer136'?a.reeferSurcharge:0);
+    shipmentCosts=a.deadheadKm*a.kmRate+(a.deadheadKm/a.averageSpeed)*a.hourRate+a.fixed+a.extra+a.waitingHours*a.waitingRate;
+    share=input.mode==='dedicated'?1:Math.max(a.minimumShare/100,shares.weight,shares.floor,shares.volume);
+    operatingCost=linehaul*share+shipmentCosts;
+    modelBuy=Math.max(a.minimumBuy,operatingCost*(1+a.carrierMarkup/100));
+    low=Math.max(a.minimumBuy,modelBuy*(1-a.uncertainty/100));high=modelBuy*(1+a.uncertainty/100);
+  }
+  const modelRound=value=>value===null?null:round(value);
   const accepted=input.offers.find(o=>o.status==='accepted');
   const buy=accepted?accepted.price:modelBuy;
   const suggestedSell=round(buy/(1-a.targetMargin/100));
   const sell=input.sellPrice??suggestedSell;
   const profit=sell-buy,margin=profit/sell*100,maxBuy=sell*(1-a.minimumMargin/100);
   return {version:ENGINE_VERSION,currency:input.currency,eurPln:input.eurPln,input,summary:{...summary,ldm:summary.area/2.4},shares,blockers,warnings,drivingHours,share,
-    costs:{linehaul:round(linehaul),shipment:round(shipmentCosts),operating:round(operatingCost)},
-    modelBuy:round(modelBuy),low:round(low),high:round(high),opening:round(low),buy:round(buy),buySource:accepted?'accepted':'model',
+    costs:{linehaul:modelRound(linehaul),shipment:modelRound(shipmentCosts),operating:modelRound(operatingCost)},
+    modelBuy:modelRound(modelBuy),low:modelRound(low),high:modelRound(high),opening:modelRound(low),buy:round(buy),buySource:accepted?'accepted':'model',
     suggestedSell,sell:round(sell),profit:round(profit),margin:round(margin),maxBuy:round(maxBuy),
     overBudget:buy>maxBuy+0.005,ready:!blockers.length&&input.reviewed&&!!input.pickup&&!!input.delivery,
   };
@@ -185,3 +196,4 @@ export function customerOffer(result) {
     'Oferta wstępna, wymaga potwierdzenia dostępności pojazdu, terminów i warunków załadunku. Zmiana danych przesyłki wymaga ponownej wyceny.',
   ].filter(Boolean).join('\n');
 }
+

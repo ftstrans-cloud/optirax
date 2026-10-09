@@ -83,3 +83,31 @@ test('currency: malformed NBP response and timeout fail without caching',async()
   const bad=createExchangeRateService({fetchImpl:async()=>new Response(JSON.stringify({table:'B'}),{status:200})});await assert.rejects(bad,/Invalid NBP/);
   let aborted=false;const slow=createExchangeRateService({timeoutMs:5,fetchImpl:async(_url,{signal})=>{signal.addEventListener('abort',()=>aborted=true);await new Promise(r=>setTimeout(r,20));return new Response('{}');}});await assert.rejects(slow,/timeout/);assert.equal(aborted,true);
 });
+
+test('optional model: carrier quote works with empty or invalid costs and survives persistence',()=>{
+  const i=sample();i.useCostModel=false;i.assumptions=Object.fromEntries(Object.keys(DEFAULT_ASSUMPTIONS).map(k=>[k,'']));
+  Object.assign(i.assumptions,{targetMargin:20,minimumMargin:10,averageSpeed:'invalid',kmRate:-999});
+  i.offers=[{carrier:'Carrier',price:800,status:'accepted'}];
+  const r=calculate(i);assert.equal(r.buy,800);assert.equal(r.sell,1000);assert.equal(r.profit,200);assert.equal(r.margin,20);
+  for(const k of ['modelBuy','low','high','opening','share','drivingHours'])assert.equal(r[k],null,k);
+  assert.deepEqual(r.costs,{linehaul:null,shipment:null,operating:null});assert.equal(r.input.assumptions.kmRate,null);
+  const restored=calculate(JSON.parse(JSON.stringify(r.input)));assert.equal(restored.input.useCostModel,false);assert.equal(restored.sell,1000);
+  i.sellPrice=900;assert.equal(calculate(i).sell,900);assert.equal(calculate(i).profit,100);
+  i.useCostModel=true;assert.throws(()=>calculate(i),ForwardingError);
+});
+test('optional model: cannot produce a zero-cost quote without an accepted confirmed carrier',()=>{
+  const i={...sample(),useCostModel:false};assert.throws(()=>calculate(i),/Wybierz ofertę przewoźnika/);
+  i.offers=[{carrier:'Carrier',price:800,status:'received'}];assert.throws(()=>calculate(i),/Wybierz ofertę/);
+  i.offers[0].status='accepted';i.offers[0].needsConfirmation=true;assert.throws(()=>calculate(i),/potwierdź/);
+  i.offers[0].needsConfirmation=false;i.useCostModel='false';assert.throws(()=>calculate(i),/modelu kosztowego/);
+});
+test('optional model: PLN prices, margins and cargo validation remain active',()=>{
+  const i={...sample(),useCostModel:false,currency:'PLN',eurPln:4.25,offers:[{carrier:'Carrier',price:850,status:'accepted'}]};
+  i.assumptions={targetMargin:20,minimumMargin:10};let r=calculate(i);assert.equal(r.sell,1062.5);assert.equal(r.buy,850);
+  i.assumptions.targetMargin='';assert.throws(()=>calculate(i),/targetMargin/);
+  i.assumptions.targetMargin=20;i.cargo[0].weight=1000;r=calculate(i);assert.ok(r.blockers.length);assert.equal(r.ready,false);
+  i.offers[0].price=0;assert.throws(()=>calculate(i),/cena przewoźnika/);
+});
+test('optional model: missing flag preserves model for existing saved quotes',()=>{
+  const i=sample();assert.equal(calculate(i).input.useCostModel,true);assert.ok(calculate(i).modelBuy>0);
+});
