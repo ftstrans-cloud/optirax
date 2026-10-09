@@ -1,4 +1,5 @@
-import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.7.0';
+import {setupRouteInputs} from './forwarding-route.js?v=1.8.0';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.8.0';
 import {setupEnquiryImport} from './enquiry-import.js?v=1.6.0';
 
 const $=id=>document.getElementById(id);
@@ -11,7 +12,7 @@ applyTheme(storedTheme==='light'?'light':'dark');
 $('themeToggle').onclick=()=>applyTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
 const currencySymbol=code=>code==='PLN'?'zł':'EUR';
 const money=(n,currency=currentCurrency)=>`${fmt(n)} ${currencySymbol(currency)}`;
-let result=null,routeData=null,routeRequest=null,routeSequence=0,dirty=false,saving=false,revision=0,historyRows=[],map=null,mapLine=null,mapMarkers=[],tilesKey='';
+let routeKey='',result=null,routeData=null,routeRequest=null,routeSequence=0,dirty=false,saving=false,revision=0,historyRows=[],map=null,mapLine=null,mapMarkers=[],tilesKey='';
 const A={
   targetMargin:['Marża docelowa (%)',0,80],minimumMargin:['Marża minimalna (%)',0,80],
   tolls:['Myto (EUR)',0,10000],crossing:['Przeprawa (EUR)',0,10000],
@@ -119,7 +120,7 @@ function useSelectedOffer(choice){
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
 function collect(){return {useCostModel:$('useCostModel').checked,currency:currentCurrency,eurPln:$('eurPln').value,fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
-  route:{origin:$('origin').value,destination:$('destination').value,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
+  route:{origin:$('origin').value,destination:$('destination').value,stops:routeInputs.getStops(),snapshot:routeData?.snapshot||null,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
   offers:[...document.querySelectorAll('.offer-row')].map(row=>({...Object.fromEntries([...row.querySelectorAll('[data-offer]')].map(e=>[e.dataset.offer,e.value])),needsConfirmation:row.dataset.needsConfirmation==='true',importSource:row.dataset.importSource||''})),
@@ -139,7 +140,7 @@ function invalidate(){
 function clearMap(){if(mapLine){map.removeLayer(mapLine);mapLine=null;}mapMarkers.forEach(m=>map.removeLayer(m));mapMarkers=[];}
 function resetOfferScope(){document.querySelectorAll('.offer-row').forEach(row=>{row.dataset.needsConfirmation='true';const status=row.querySelector('[data-offer=status]');if(status.value==='accepted')status.value='received';});}
 function invalidateRoute(clearDistance=true){
-  routeSequence++;routeRequest?.abort();routeRequest=null;routeData=null;clearMap();$('fetchRoute').disabled=false;$('fetchRoute').textContent='Pobierz trasę';
+  routeKey='';routeSequence++;routeRequest?.abort();routeRequest=null;routeData=null;clearMap();$('fetchRoute').disabled=false;$('fetchRoute').textContent='Pobierz trasę';
   if(clearDistance)$('distanceKm').value='';
   $('routeStatus').textContent=clearDistance?'Trasa zmieniona. Pobierz nowy przebieg albo podaj sprawdzony dystans.':'Dystans ręczny — potwierdź przebieg oraz czas przejazdu.';
   $('mapCaption').textContent='Brak aktualnej trasy na mapie.';
@@ -166,20 +167,31 @@ function render(){
   document.querySelectorAll('.offer-row').forEach((row,index)=>{const o=r.input.offers[index],p=row.querySelector('.offer-compare'),delta=r.maxBuy-o.price;p.classList.toggle('bad',delta<0||o.needsConfirmation);p.textContent=`${o.needsConfirmation?'Warunki przesyłki zmienione — potwierdź ponownie z przewoźnikiem przed przyjęciem. ':''}${o.status==='rejected'?'Odrzucona · ':''}${delta<0?'Ponad limit o':'Zapas do limitu:'} ${money(Math.abs(delta))}. Marża przy tej ofercie: ${fmt((r.sell-o.price)/r.sell*100,1)}%.`;});
 }
 async function api(url,options={}){const response=await fetch(url,options);let data;try{data=await response.json();}catch{throw Error('Nieprawidłowa odpowiedź serwera. Odśwież aplikację i spróbuj ponownie.');}if(!response.ok)throw Error(data.error||'Nie udało się wykonać operacji.');return data;}
+const routingFields=['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'];
+function routeFingerprint(){return JSON.stringify([$('origin').value.trim(),routeInputs.getStops(),$('destination').value.trim(),...routingFields.map(k=>Number($(`v-${k}`).value))]);}
+function routeChanged(){invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}
+function routeSnapshot(data){
+  const coords=data.geometry?.coordinates;if(!Array.isArray(coords)||coords.length<2)return null;
+  const count=Math.min(coords.length,12000);
+  return {coordinates:Array.from({length:count},(_,i)=>coords[Math.round(i*(coords.length-1)/(count-1))].slice(0,2).map(n=>Number(Number(n).toFixed(5)))),points:(data.points||[]).slice(0,20).map(p=>({lat:p.lat,lng:p.lng,label:String(p.label||'').slice(0,300)}))};
+}
+function showRoute(data){
+  $('routeStatus').textContent=`${fmt(data.distance_km,1)} km · czas jazdy ${fmt(data.duration_h,1)} h (bez planowania odpoczynków).${data.archived?' Trasa z zapisanej wersji.':''}`;
+  $('mapCaption').textContent=(data.points?.length?data.points.map(p=>p.label):[$('origin').value,...routeInputs.getStops(),$('destination').value]).join(' → ')+'. Sprawdź punkty i przebieg. Myto uzupełnij dla tego auta.';
+  drawMap(data);
+}
 async function fetchRoute(){
   const origin=$('origin').value.trim(),destination=$('destination').value.trim();
   if(!origin||!destination){message('Podaj oba adresy.',true);return;}
-  invalidateRoute(false);$('reviewed').checked=false;invalidate();const seq=routeSequence;const controller=new AbortController();routeRequest=controller;
+  invalidateRoute(false);$('reviewed').checked=false;invalidate();routeKey=routeFingerprint();const seq=routeSequence;const controller=new AbortController();routeRequest=controller;
   $('fetchRoute').disabled=true;$('fetchRoute').textContent='Wyznaczanie…';$('routeStatus').textContent='Pobieranie trasy z profilem wybranego auta…';
   try{
     const vehicle=collectFields('[data-v]','data-v');const truckParams=Object.fromEntries(['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'].map(k=>[k,vehicle[k]]));
-    const data=await api('/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin,destination,truckParams}),signal:controller.signal});
+    const data=await api(routeInputs.getStops().length?'/api/route/multi':'/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin,destination,stops:routeInputs.getStops(),truckParams}),signal:controller.signal});
     if(seq!==routeSequence)return;
     if(data.routing_engine!=='TomTom'||!Number.isFinite(data.distance_km)||!Number.isFinite(data.duration_h))throw Error('Brak potwierdzonej trasy TomTom. Możesz wpisać zweryfikowany dystans ręcznie.');
-    routeData=data;$('distanceKm').value=data.distance_km;
-    $('routeStatus').textContent=`${fmt(data.distance_km,1)} km · czas jazdy ${fmt(data.duration_h,1)} h (bez planowania odpoczynków). Sprawdź rozpoznane adresy na mapie.`;
-    $('mapCaption').textContent=`A: ${data.origin_resolved||origin} → B: ${data.destination_resolved||destination}. Sprawdź punkty i przebieg. Myto nie zostało przeniesione — uzupełnij koszt dla tego auta.`;
-    drawMap(data);dirty=true;
+    routeData={...data,snapshot:routeSnapshot(data)};$('distanceKm').value=data.distance_km;
+    showRoute(routeData);dirty=true;
   }catch(e){if(seq===routeSequence&&e.name!=='AbortError'){message(e.message,true);$('routeStatus').textContent='Nie pobrano trasy. Podaj sprawdzony dystans ręcznie lub spróbuj ponownie.';}}
   finally{if(seq===routeSequence){$('fetchRoute').disabled=false;$('fetchRoute').textContent='Pobierz trasę';routeRequest=null;}}
 }
@@ -191,8 +203,8 @@ function drawMap(data){
     L.tileLayer(tile,{maxZoom:19,attribution:tilesKey?'© TomTom © OpenStreetMap':'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
   }
   clearMap();mapLine=L.polyline(coords,{color:'#157258',weight:5}).addTo(map);
-  [coords[0],coords.at(-1)].forEach((point,index)=>{const m=L.circleMarker(point,{radius:7,color:'#fff',weight:3,fillColor:index?'#d39157':'#157258',fillOpacity:1}).addTo(map);m.bindTooltip(index?'B · Rozładunek':'A · Załadunek');mapMarkers.push(m);});
-  if($('mapDetails').open){map.invalidateSize();map.fitBounds(mapLine.getBounds(),{padding:[22,22]});}
+  (data.points?.length?data.points.map(p=>[p.lat,p.lng]):[coords[0],coords.at(-1)]).forEach((point,index,points)=>{const m=L.circleMarker(point,{radius:7,color:'#fff',weight:3,fillColor:index?'#d39157':'#157258',fillOpacity:1}).addTo(map);const label=document.createElement('span');label.textContent=data.points?.[index]?.label||(index===0?'A · Załadunek':index===points.length-1?'B · Rozładunek':`Przez · ${index}`);m.bindTooltip(label);mapMarkers.push(m);});
+  if($('mapDetails').open){map.invalidateSize({pan:false,animate:false});map.fitBounds(mapLine.getBounds(),{padding:[22,22],animate:false});}
 }
 async function saveQuote(){
   if(!result||saving)return;saving=true;$('saveQuote').disabled=true;$('saveQuote').textContent='Zapisywanie…';const currentRevision=revision;
@@ -222,12 +234,12 @@ function loadInput(input){
   $('reeferTemperatureField').hidden=input.profile!=='reefer136';
   $('reviewed').checked=false;
   document.querySelector(`[name=mode][value="${input.mode==='partload'?'partload':'dedicated'}"]`).checked=true;
-  $('origin').value=input.route.origin;$('destination').value=input.route.destination;$('distanceKm').value=input.route.distanceKm;
+  $('origin').value=input.route.origin;$('destination').value=input.route.destination;routeInputs.setStops(input.route.stops||[]);$('distanceKm').value=input.route.distanceKm;
   $('cargoRows').replaceChildren();input.cargo.forEach(cargoRow);$('offerRows').replaceChildren();(input.offers||[]).forEach(offerRow);syncCurrencyLabels();
-  // Preserve the stored cost inputs; an archived distance/time does not imply a current map.
-  routeData={duration_h:input.route.durationHours,routing_engine:input.route.source,archived:true};
+  // Restore the saved route without another routing request; legacy records may lack geometry.
+  routeData={duration_h:input.route.durationHours,distance_km:input.route.distanceKm,routing_engine:input.route.source,snapshot:input.route.snapshot,geometry:input.route.snapshot?{coordinates:input.route.snapshot.coordinates}:null,points:input.route.snapshot?.points,archived:true};routeKey=routeFingerprint();
   invalidate();runCalculation();dirty=false;
-  $('routeStatus').textContent='Dystans i czas z zapisanej wersji. Pobierz trasę ponownie, aby je odświeżyć i pokazać mapę.';
+  if(routeData.snapshot)showRoute(routeData);else $('routeStatus').textContent='Dystans i czas z zapisanej wersji. Ten zapis nie zawiera mapy — pobierz trasę, aby ją wyświetlić.';
   $('saveState').textContent='Wczytano dane. Ponownie potwierdź założenia przed ofertą. Zapis utworzy nową wersję.';
   $('workspace').scrollIntoView({behavior:'smooth'});
 }
@@ -251,6 +263,7 @@ async function fetchFx(){
   finally{button.disabled=false;button.textContent='Pobierz kurs NBP';}
 }
 
+const routeInputs=setupRouteInputs({api,onChange:routeChanged,message});
 initFields();cargoRow();syncCurrencyLabels();renderFxStatus();syncModelMode();renderSelectedOfferPicker();
 if(matchMedia('(max-width:700px)').matches)$('mapDetails').open=false;
 $('workspace').addEventListener('submit',e=>{e.preventDefault();runCalculation(true);});
@@ -258,9 +271,9 @@ $('workspace').addEventListener('input',e=>{
   if(['profile','quoteCurrency','useCostModel'].includes(e.target.id))return;
   if(e.target.matches('[data-money]'))clearMoneyAnchor(e.target);
   if(e.target.id==='eurPln'){fxMeta=null;renderFxStatus();document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);syncCurrencyLabels();}
-  if(['origin','destination','pickup','delivery','notes','tailLift','palletJack'].includes(e.target.id)||e.target.dataset.cargo||e.target.dataset.v||e.target.name==='mode')resetOfferScope();
-  if(['origin','destination'].includes(e.target.id)||['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'].includes(e.target.dataset.v))invalidateRoute();
-  if(e.target.id==='distanceKm')invalidateRoute(false);
+  if(e.target.matches('[data-stop]')||['origin','destination','pickup','delivery','notes','tailLift','palletJack'].includes(e.target.id)||e.target.dataset.cargo||e.target.dataset.v||e.target.name==='mode')resetOfferScope();
+  if((e.target.matches('[data-route-address]')||routingFields.includes(e.target.dataset.v))&&routeKey!==routeFingerprint())invalidateRoute();
+  if(e.target.id==='distanceKm'&&Number(e.target.value)!==routeData?.distance_km)invalidateRoute(false);
   if(e.target.id!=='reviewed')$('reviewed').checked=false;
   invalidate();
 });
@@ -280,20 +293,20 @@ $('addOffer').onclick=()=>{offerRow();invalidate();$('offerRows').lastElementChi
 $('workspace').addEventListener('click',e=>{const button=e.target.closest('[data-use-offer]');if(button)useSelectedOffer(button.dataset.useOffer);});
 $('fetchRoute').onclick=fetchRoute;$('saveQuote').onclick=saveQuote;$('refreshHistory').onclick=loadHistory;
 $('fetchFx').onclick=fetchFx;
-$('mapDetails').addEventListener('toggle',()=>{if(map&&$('mapDetails').open){map.invalidateSize();if(mapLine)map.fitBounds(mapLine.getBounds(),{padding:[22,22]});}});
+$('mapDetails').addEventListener('toggle',()=>{if(map&&$('mapDetails').open){map.invalidateSize({pan:false,animate:false});if(mapLine)map.fitBounds(mapLine.getBounds(),{padding:[22,22],animate:false});}});
 $('newQuote').onclick=()=>{if(!dirty||confirm('Odrzucić niezapisane zmiany i rozpocząć nową wycenę?')){dirty=false;location.reload();}};
 $('logout').onclick=()=>{if(dirty&&!confirm('Wylogować i odrzucić niezapisane zmiany?'))return;dirty=false;for(const k of ['optirax_token','optirax_refresh','optirax_profile','optirax_user'])localStorage.removeItem(k);location.href='/login';};
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 setupEnquiryImport({api,parseLocal:parseEnquiry,offerContext:()=>{
-  const input=collect();return {origin:input.route.origin,destination:input.route.destination,pickup:input.pickup,delivery:input.delivery,reference:input.reference,tailLift:input.tailLift,currency:currentCurrency,eurPln:input.eurPln,existingCount:input.offers.length,scope:JSON.stringify([input.route.origin,input.route.destination,input.cargo,input.pickup,input.delivery,input.reference,input.tailLift,input.palletJack,input.notes,input.profile,input.mode])};
+  const input=collect();return {origin:input.route.origin,destination:input.route.destination,pickup:input.pickup,delivery:input.delivery,reference:input.reference,tailLift:input.tailLift,currency:currentCurrency,eurPln:input.eurPln,existingCount:input.offers.length,scope:JSON.stringify([input.route.origin,input.route.stops,input.route.destination,input.cargo,input.pickup,input.delivery,input.reference,input.tailLift,input.palletJack,input.notes,input.profile,input.mode])};
 },applyOffers:offers=>{
   if(saving){message('Poczekaj na zakończenie zapisu wyceny.',true);return false;}
   offers.forEach(offerRow);invalidate();message(`Dodano ${offers.length} ofert do bieżącego zlecenia. Przelicz porównanie i potwierdź warunki przed przyjęciem oferty.`);return true;
 },apply:(data,autoRoute)=>{
   if(saving){message('Poczekaj na zakończenie zapisu wyceny.',true);return false;}
   if(dirty&&!confirm('Rozpocząć nowe zapytanie z odczytanych danych? Niezapisana wycena, ceny i oferty przewoźników zostaną zastąpione.'))return false;
-  invalidateRoute();
+  invalidateRoute();routeInputs.setStops([]);
   for(const id of ['origin','destination','client','reference','pickup','delivery','notes'])$(id).value=data[id]||'';
   $('sellPrice').value='';clearMoneyAnchor($('sellPrice'));$('offerRows').replaceChildren();
   $('cargoRows').replaceChildren();(data.cargo.length?data.cargo:[{}]).forEach(cargoRow);
@@ -320,11 +333,16 @@ if(localStorage.getItem('optirax_token')){
 
 // Fit the three independent desktop scroll areas below the page controls.
 function sizeWorkspace(){
-  if(!matchMedia('(min-width:1200px)').matches)return;
+  if(!matchMedia('(min-width:760px)').matches){$('workspace').style.removeProperty('--workspace-height');return;}
   const top=$('workspace').getBoundingClientRect().top+window.scrollY;
-  $('workspace').style.setProperty('--workspace-height',`${Math.max(360,window.innerHeight-top-16)}px`);
+  $('workspace').style.setProperty('--workspace-height',`${Math.max(160,window.innerHeight-top-12)}px`);
 }
 window.addEventListener('resize',sizeWorkspace);
 const workspaceSizer=new ResizeObserver(sizeWorkspace);
 for(const el of document.querySelectorAll('.app-header,.page-heading,.notice,#message'))workspaceSizer.observe(el);
 sizeWorkspace();
+
+// Keep the map canvas in sync when columns resize or browser zoom changes.
+new ResizeObserver(()=>{if(map&&$('mapDetails').open){map.invalidateSize({pan:false,animate:false});if(mapLine)map.fitBounds(mapLine.getBounds(),{padding:[22,22],animate:false});}}).observe($('routeMap'));
+// Scrolling a pane must not change a focused numeric routing field.
+$('workspace').addEventListener('wheel',()=>{const el=document.activeElement;if(el?.matches('input[type=number]'))el.blur();},{passive:true});

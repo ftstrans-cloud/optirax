@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
-  <link rel="stylesheet" href="/forwarding.css?v=1.7.0">
+  <link rel="stylesheet" href="/forwarding.css?v=1.8.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js?v=1.7.0"></script>
+  <script type="module" src="/forwarding.js?v=1.8.0"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
@@ -26,7 +26,8 @@
         <section class="card">
           <div class="section-top"><h2><span class="step">01</span> Zlecenie</h2><button type="button" id="pasteOpen" class="text-button">Wklej tekst / screen ↗</button></div>
           <div class="fields two"><label>Klient<input id="client" maxlength="200" placeholder="Nazwa firmy"></label><label>Referencja<input id="reference" maxlength="120" placeholder="np. OF/10/001"></label></div>
-          <div class="route-fields"><label><span class="route-label"><b>A</b> Załadunek</span><input id="origin" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label><label><span class="route-label"><b>B</b> Rozładunek</span><input id="destination" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label></div>
+          <div class="route-fields"><label><span class="route-label"><b>A</b> Załadunek</span><input id="origin" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label><div id="routeStops"></div><button type="button" id="addRouteStop" class="text-button">+ Przez punkt</button><label><span class="route-label"><b>B</b> Rozładunek</span><input id="destination" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label></div>
+          <details id="mapsImport"><summary>Wklej trasę z Google Maps</summary><label>Link do trasy<input id="mapsUrl" type="url" placeholder="https://www.google.com/maps/dir/…"></label><button id="importMaps" type="button" class="secondary">Wczytaj punkty trasy</button><p class="hint">Importujemy adresy i punkty pośrednie. Kilometry wyznaczymy dla wybranego auta w TomTom.</p></details>
           <div class="fields two"><label>Data załadunku<input id="pickup" type="date"></label><label>Data dostawy<input id="delivery" type="date"></label></div>
           <div class="fields route-controls"><label>Dystans (km)<input id="distanceKm" type="number" min="1" max="20000" step="0.1" placeholder="np. 650" inputmode="decimal"></label><button id="fetchRoute" type="button" class="secondary">Pobierz trasę</button></div>
           <p id="routeStatus" class="hint">Wpisz adresy i pobierz trasę albo podaj sprawdzony dystans ręcznie.</p>
@@ -90,7 +91,7 @@
       </aside>
     </form>
     <section class="history-section" id="quoteHistory"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja · 1.7.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.8.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
   <dialog id="pasteDialog" aria-labelledby="importTitle">
     <div class="section-top"><div><p class="eyebrow">OPTIRAX / SZYBKI IMPORT</p><h2 id="importTitle">Zapytanie → wycena</h2></div><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div>

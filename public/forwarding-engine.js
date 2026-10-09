@@ -1,6 +1,6 @@
 // Shared by browser and server. Net amounts in input.currency (legacy input defaults to EUR).
 // Profile defaults are EUR; FX is a user-entered quote snapshot, not a live market rate.
-export const ENGINE_VERSION = 'forwarding-1.4';
+export const ENGINE_VERSION = 'forwarding-1.5';
 export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy','reeferSurcharge'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
@@ -96,7 +96,8 @@ export function normalizeInput(raw) {
     stackable:c.stackable===true,
   }));
   if (cargo.reduce((s,c)=>s+c.qty,0)>500) fail('Limit wynosi 500 sztuk w jednej wycenie.');
-  const route={origin:str(r.origin,'załadunek',300,true),destination:str(r.destination,'rozładunek',300,true),
+  if(r.stops!=null&&(!Array.isArray(r.stops)||r.stops.length>18))fail('Podaj najwyżej 18 punktów pośrednich.');
+  const route={stops:(r.stops||[]).map(s=>str(s,'punkt pośredni',300,true)),snapshot:normalizeRouteSnapshot(r.snapshot),origin:str(r.origin,'załadunek',300,true),destination:str(r.destination,'rozładunek',300,true),
     distanceKm:num(r.distanceKm,'dystans km',1,20000),
     durationHours:r.durationHours===''||r.durationHours==null?null:num(r.durationHours,'czas jazdy h',0.01,500),
     source:r.source==='TomTom'?'TomTom':'manual',
@@ -185,7 +186,7 @@ export function customerOffer(result) {
   const i=result.input;
   return [
     'WSTĘPNA OFERTA TRANSPORTU',i.reference?`Referencja: ${i.reference}`:'',i.client?`Klient: ${i.client}`:'',
-    `Trasa: ${i.route.origin} → ${i.route.destination}`,
+    `Trasa: ${[i.route.origin,...i.route.stops,i.route.destination].join(' → ')}`,
     `Załadunek: ${i.pickup} | Dostawa: ${i.delivery} (do potwierdzenia)`,
     `Transport: ${i.mode==='dedicated'?'dedykowany':'doładunek'}, ${i.vehicle.name}${i.reeferTemperature?` · temperatura ${i.reeferTemperature}`:''}`,
     ...i.cargo.map(c=>`${c.qty} szt. × ${c.length} × ${c.width} × ${c.height} cm; ${c.weight} kg/szt.; ${c.stackable?'piętrowalne po uzgodnieniu':'bez piętrowania'}`),
@@ -197,3 +198,11 @@ export function customerOffer(result) {
   ].filter(Boolean).join('\n');
 }
 
+
+function normalizeRouteSnapshot(snapshot){
+  if(snapshot==null)return null;
+  const c=snapshot.coordinates,p=snapshot.points||[];
+  if(!Array.isArray(c)||c.length<2||c.length>12000||c.some(v=>!Array.isArray(v)||v.length!==2||v.some(n=>typeof n!=='number'||!Number.isFinite(n))||Math.abs(v[0])>180||Math.abs(v[1])>90))fail('Nieprawidłowy zapis mapy.');
+  if(!Array.isArray(p)||p.length>20)fail('Nieprawidłowe punkty mapy.');
+  return {coordinates:c.map(v=>[...v]),points:p.map(v=>({lat:num(v?.lat,'szerokość geograficzna',-90,90),lng:num(v?.lng,'długość geograficzna',-180,180),label:str(v?.label,'adres punktu',300)}))};
+}

@@ -10,11 +10,17 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('playwright');
 const root=new URL('../public/',import.meta.url).pathname,out=process.env.QA_ARTIFACT_DIR||'/tmp/optirax-purchase-layout-qa';
 await fs.mkdir(out,{recursive:true});
-let saved=[];
+let saved=[],routeCalls=[];
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(url.pathname.startsWith('/api/')){
     res.setHeader('Content-Type','application/json');
+    if(url.pathname==='/api/geocode')return res.end(JSON.stringify([{display_name:'Poznań, Długa 1, 61-001, Polska'}]));
+    if(url.pathname==='/api/expand-url')return res.end(JSON.stringify({url:'https://www.google.com/maps/dir/Poznań/Gorzów/Berlin'}));
+    if(url.pathname==='/api/route'||url.pathname==='/api/route/multi'){
+      let body='';for await(const chunk of req)body+=chunk;routeCalls.push({path:url.pathname,...JSON.parse(body)});
+      return res.end(JSON.stringify({routing_engine:'TomTom',distance_km:300,duration_h:6,geometry:{coordinates:[[16.92,52.4],[15.22,52.73],[13.4,52.52]]},points:[{lat:52.4,lng:16.92,label:'Poznań'},{lat:52.73,lng:15.22,label:'Gorzów'},{lat:52.52,lng:13.4,label:'Berlin'}]}));
+    }
     if(url.pathname==='/api/forwarding/quotes'){
       if(req.method==='POST'){
         let body='';for await(const chunk of req)body+=chunk;
@@ -36,7 +42,11 @@ const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECU
 try{
  const page=await browser.newPage({viewport:{width:1680,height:1100}}),errors=[];
  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
- await page.route('**/*',r=>r.request().url().startsWith(base)?r.continue():r.abort());
+ await page.route('**/*',async r=>{
+   const url=r.request().url();
+   if(process.env.LEAFLET_QA_DIR&&url.startsWith('https://unpkg.com/leaflet@1.9.4/dist/'))return r.fulfill({path:path.join(process.env.LEAFLET_QA_DIR,url.split('/').at(-1))});
+   return url.startsWith(base)?r.continue():r.abort();
+ });
  await page.addInitScript(()=>localStorage.setItem('optirax_token','fixture'));
  await page.goto(base+'/spedycja');
  await page.locator('[data-use-offer]').waitFor();
@@ -44,6 +54,9 @@ try{
  assert.equal(await page.locator('#offerEditor').isVisible(),true);
  for(const [id,value] of Object.entries({origin:'PL Poznań',destination:'DE Berlin',distanceKm:'300',pickup:'2026-10-10',delivery:'2026-10-11','a-targetMargin':'20'}))await page.locator('#'+id).fill(value);
  await page.locator('[data-cargo=height]').fill('150');await page.locator('[data-cargo=weight]').fill('200');
+ await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('routeStatus').textContent.includes('6,0 h'));
+ if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
+ const fetchedStatus=await page.locator('#routeStatus').textContent();
  await page.locator('#calculate').click();
  assert.equal(await page.locator('#result').isVisible(),true);
  for(const [carrier,price] of [['Transport Alfa','200'],['Transport Beta','240']]){
@@ -77,10 +90,12 @@ try{
  assert.match(await page.locator('.decision-stats').textContent(),/680,00 zł.*40,0%/);
  await page.locator('#fxDetails summary').click();
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
+ assert.equal(routeCalls.length,1);assert.equal(saved[0].input.route.durationHours,6);assert.equal(saved[0].input.route.source,'TomTom');assert.equal(saved[0].input.route.snapshot.coordinates.length,3);assert.equal(await page.locator('#routeStatus').textContent(),fetchedStatus);
  assert.equal(saved[0].input.offers[1].status,'accepted');assert.equal(saved[0].input.currency,'PLN');
  await page.locator('[data-use-offer=""]').click();await page.locator('[data-load="0"]').click();
  assert.equal(await page.locator('[data-use-offer="1"]').getAttribute('aria-pressed'),'true');
  assert.match(await page.locator('.price-range').textContent(),/1\s*020,00 zł/);
+ assert.equal(routeCalls.length,1);assert.equal(await page.locator('#distanceKm').inputValue(),'300');if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
  // Rejected and incomplete offers cannot become the purchase.
  await page.locator('[data-offer=status]').first().selectOption('rejected');
  assert.equal(await page.locator('[data-use-offer="0"]').isDisabled(),true);
@@ -120,6 +135,28 @@ try{
  await page.locator('[data-offer=status]').last().selectOption('received');await page.locator('#calculate').click();
  assert.match(await page.locator('#message').textContent(),/Wybierz ofertę przewoźnika/);assert.equal(await page.locator('#saveQuote').isDisabled(),true);
  await page.locator('[data-use-offer="1"]').click();
+ // Full-address suggestions, multi-point routing and both Maps URL formats.
+ await page.locator('#origin').fill('Poznan');await page.locator('#routeSuggestions [role=option]').first().waitFor();
+ await page.locator('#origin').press('ArrowDown');await page.locator('#origin').press('Enter');
+ assert.equal(await page.locator('#origin').inputValue(),'Poznań, Długa 1, 61-001, Polska');
+ assert.equal(await page.locator('#distanceKm').inputValue(),'');
+ await page.locator('#addRouteStop').click();await page.locator('[data-stop]').fill('Gorzów');
+ await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('distanceKm').value==='300');
+ assert.equal(routeCalls.at(-1).path,'/api/route/multi');assert.deepEqual(routeCalls.at(-1).stops,['Gorzów']);
+ for(const link of ['https://www.google.com/maps/dir/?api=1&origin=Poznan&destination=Berlin&waypoints=Gorzow%7CFrankfurt','https://maps.app.goo.gl/example']){
+   await page.locator('#mapsImport summary').click();await page.locator('#mapsUrl').fill(link);await page.locator('#importMaps').click();
+   await page.waitForFunction(()=>!document.getElementById('mapsImport').open);
+   assert.equal(await page.locator('#distanceKm').inputValue(),'');
+ }
+ assert.equal(await page.locator('[data-stop]').inputValue(),'Gorzów');
+ await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('distanceKm').value==='300');
+ const callsBeforeSelection=routeCalls.length;
+ await page.locator('[data-use-offer="1"]').click();
+ await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
+ assert.deepEqual(saved[0].input.route.stops,['Gorzów']);assert.equal(routeCalls.length,callsBeforeSelection);
+ await page.locator('[data-load="0"]').click();
+ assert.equal(await page.locator('[data-stop]').inputValue(),'Gorzów');assert.equal(routeCalls.length,callsBeforeSelection);
+ if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
  // Desktop panes scroll independently; the document and the other panes stay still.
  await page.setViewportSize({width:1440,height:900});
  await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
@@ -135,13 +172,14 @@ try{
  // Visual checks of the whole right column and narrow layouts, in both themes.
  for(const theme of ['dark','light']){
    await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
-   for(const width of [1680,1440,1280,1024,390,320]){
+   for(const width of [2560,1680,1440,1280,1024,800,390,320]){
      await page.setViewportSize({width,height:1100});
      await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${theme}/${width}`);
      const quote=await page.locator('#result').boundingBox(),offers=await page.locator('#selectedOfferBox').boundingBox(),fx=await page.locator('.currency-toolbar').boundingBox();
      assert.ok(quote.y<offers.y&&offers.y<fx.y);assert.ok(fx.height<120,`Compact FX at ${width}px: ${fx.height}`);
-     if(width>=1200){
+     if(width>=760){
+       const bounds=await page.locator('#workspace').boundingBox();assert.ok(bounds.x<=16&&width-(bounds.x+bounds.width)<=16,'Workspace fills window');
        const map=await page.locator('#mapDetails').boundingBox(),editor=await page.locator('#offerEditor').boundingBox(),decision=await page.locator('.decision-column').boundingBox();
        assert.ok(Math.abs(map.y-decision.y)<2,`Map starts beside quote at ${width}px`);
        assert.ok(editor.y>map.y+map.height&&editor.x<decision.x,`Offers below map in middle column at ${width}px`);
@@ -149,6 +187,18 @@ try{
      await page.screenshot({path:`${out}/${theme}-${width}.png`,fullPage:width<1200});
    }
  }
+ // Browser zoom changes the CSS viewport: check short desktop viewports too.
+ for(const [width,height] of [[1280,720],[1024,576],[800,450]]){
+   await page.setViewportSize({width,height});
+   await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
+   await page.waitForFunction(()=>document.getElementById('workspace').getBoundingClientRect().bottom<=innerHeight);
+   const bounds=await page.locator('#workspace>[tabindex]').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,scroll:e.scrollHeight,client:e.clientHeight};}));
+   assert.ok(bounds.every(b=>b.bottom<=height&&b.scroll>b.client));assert.ok(bounds.every(b=>Math.abs(b.top-bounds[0].top)<2));
+ }
+ // Editing a routing parameter invalidates distance and map, unlike price changes.
+ await page.locator('#origin').fill('Warszawa');
+ assert.equal(await page.locator('#distanceKm').inputValue(),'');
+ if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),0);
  await page.locator('#offersImportOpen').click();assert.equal(await page.locator('#pasteDialog').isVisible(),true);
  assert.deepEqual(errors,[]);
  console.log('PASS: live offer choice, fixed/derived price, exclusive selection, model fallback, NBP + EUR/PLN, saved selection, invalid/rejected offers, changed cargo, customer export, responsive dark/light layouts; no browser errors.');

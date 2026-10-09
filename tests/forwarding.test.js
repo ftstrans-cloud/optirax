@@ -111,3 +111,12 @@ test('optional model: PLN prices, margins and cargo validation remain active',()
 test('optional model: missing flag preserves model for existing saved quotes',()=>{
   const i=sample();assert.equal(calculate(i).input.useCostModel,true);assert.ok(calculate(i).modelBuy>0);
 });
+
+test('route: waypoints and map survive carrier selection and saved quote round trip',()=>{
+  const input=sample();input.route.stops=['PL Gorzów'];input.route.snapshot={coordinates:[[16.92,52.4],[15.22,52.73],[13.4,52.52]],points:[{lat:52.73,lng:15.22,label:'PL Gorzów'}]};
+  input.offers=[{carrier:'Test',price:250,status:'accepted'}];
+  const result=calculate(input),loaded=calculate(JSON.parse(JSON.stringify(result.input)));
+  assert.deepEqual(loaded.input.route,input.route);assert.match(customerOffer(loaded),/Poznań → PL Gorzów → DE Berlin/);
+  input.route.snapshot.coordinates[0][0]=181;assert.throws(()=>calculate(input),/mapy/);
+  input.route.snapshot=null;input.route.stops=Array(19).fill('Berlin');assert.throws(()=>calculate(input),/18 punktów/);
+});
