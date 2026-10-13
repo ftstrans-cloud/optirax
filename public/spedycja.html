@@ -4,11 +4,11 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
-  <link rel="stylesheet" href="/forwarding.css?v=1.8.0">
+  <link rel="stylesheet" href="/forwarding.css?v=1.9.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js?v=1.8.0"></script>
+  <script type="module" src="/forwarding.js?v=1.9.0"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
@@ -18,13 +18,15 @@
     <div class="account"><span id="accountLabel">Twoje konto</span><button type="button" id="themeToggle" class="quiet">Tryb jasny</button><button type="button" id="logout" class="quiet">Wyloguj</button></div>
   </header>
   <main>
-    <div class="page-heading"><div><p class="eyebrow">OPTIRAX / SPEDYCJA</p><h1>Wycena przesyłki</h1><p class="muted" id="currencyCaption">Profil pojazdu · kwoty w EUR netto</p></div><a class="text-button history-shortcut" href="#quoteHistory">Historia wycen ↓</a><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
+    <div class="page-heading"><div><p class="eyebrow">OPTIRAX / SPEDYCJA</p><h1>Wycena przesyłki</h1><p class="muted" id="currencyCaption">Profil pojazdu · kwoty w PLN netto</p></div><a class="text-button history-shortcut" href="#quoteHistory">Historia wycen ↓</a><button type="button" id="newQuote" class="secondary">+ Nowa wycena</button></div>
     <div class="notice"><span class="notice-dot" aria-hidden="true"></span><span id="pricingNotice"><strong>Model negocjacyjny.</strong> Przykładowe założenia kosztowe wymagają dopasowania do Twoich zakupów. Wynik nie jest bieżącą stawką z rynku.</span></div>
     <div id="message" role="status" aria-live="polite" hidden></div>
     <form id="workspace" novalidate>
       <div class="form-column" tabindex="0" role="region" aria-label="Dane zlecenia">
         <section class="card">
           <div class="section-top"><h2><span class="step">01</span> Zlecenie</h2><button type="button" id="pasteOpen" class="text-button">Wklej tekst / screen ↗</button></div>
+          <fieldset class="vehicle-picker"><legend>Typ pojazdu</legend><input type="hidden" id="profile" value="bus"><div class="vehicle-options"><label><input type="radio" name="profileChoice" value="bus" checked><span><strong>Bus</strong><small>Plandeka · DMC 3,5 t</small></span></label><label><input type="radio" name="profileChoice" value="solo75"><span><strong>Solo 7,5 t</strong><small>DMC 7,5 t</small></span></label><label><input type="radio" name="profileChoice" value="solo12"><span><strong>Solo 12 t</strong><small>DMC 12 t</small></span></label><label><input type="radio" name="profileChoice" value="curtain136"><span><strong>Firanka</strong><small>Naczepa 13,6 m</small></span></label><label><input type="radio" name="profileChoice" value="reefer136"><span><strong>Chłodnia</strong><small>Naczepa 13,6 m</small></span></label></div></fieldset>
+          <label id="reeferTemperatureField" hidden>Temperatura przewozu<input id="reeferTemperature" maxlength="30" placeholder="np. +2°C, -18°C"></label>
           <div class="fields two"><label>Klient<input id="client" maxlength="200" placeholder="Nazwa firmy"></label><label>Referencja<input id="reference" maxlength="120" placeholder="np. OF/10/001"></label></div>
           <div class="route-fields"><label><span class="route-label"><b>A</b> Załadunek</span><input id="origin" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label><div id="routeStops"></div><button type="button" id="addRouteStop" class="text-button">+ Przez punkt</button><label><span class="route-label"><b>B</b> Rozładunek</span><input id="destination" required maxlength="300" placeholder="Kraj, kod, miasto, ulica" autocomplete="off"></label></div>
           <details id="mapsImport"><summary>Wklej trasę z Google Maps</summary><label>Link do trasy<input id="mapsUrl" type="url" placeholder="https://www.google.com/maps/dir/…"></label><button id="importMaps" type="button" class="secondary">Wczytaj punkty trasy</button><p class="hint">Importujemy adresy i punkty pośrednie. Kilometry wyznaczymy dla wybranego auta w TomTom.</p></details>
@@ -44,8 +46,6 @@
         <section class="card">
           <h2><span class="step">03</span> Sposób przewozu</h2>
           <div class="mode-options"><label><input type="radio" name="mode" value="dedicated" checked><span><strong>Dedykowany</strong><small>Całe auto dla przesyłki</small></span></label><label><input type="radio" name="mode" value="partload"><span><strong>Doładunek</strong><small>Udział w koszcie trasy</small></span></label></div>
-          <label>Profil pojazdu<select id="profile"><option value="bus">Bus plandeka 3,5 t</option><option value="solo75">Solo 7,5 t</option><option value="solo12">Solo 12 t</option><option value="curtain136">Firanka 13,6 m / 24 t</option><option value="reefer136">Chłodnia 13,6 m / 24 t</option></select></label>
-          <label id="reeferTemperatureField" hidden>Temperatura przewozu<input id="reeferTemperature" maxlength="30" placeholder="np. +2°C, -18°C"></label>
           <details id="vehicleDetails"><summary>Ładownia i parametry auta <span>Edytuj</span></summary><p class="hint">Profile są przykładowe. Potwierdź rzeczywistą ładowność, drzwi i wymiary auta, zwłaszcza z windą.</p><div id="vehicleFields" class="fields two"></div></details>
         </section>
       </div>
@@ -67,22 +67,22 @@
       <aside class="decision-column" tabindex="0" aria-label="Wycena i marża">
         <section class="decision-card" aria-labelledby="decisionTitle"><div class="section-top"><p class="eyebrow">TWOJA DECYZJA</p><span class="tag" id="resultTag">Szkic</span></div><h2 id="decisionTitle">Zakup. Sprzedaż. Marża.</h2>
           <div id="emptyResult" class="empty-result"><div class="price-label">Cena dla klienta</div><div class="price-value">—</div><p>Uzupełnij trasę i ładunek, następnie wyceń przesyłkę.</p></div>
-          <div id="result" hidden aria-live="polite"></div>
+          <div id="result" hidden aria-live="polite" tabindex="-1" aria-label="Wynik wyceny"></div>
           <section class="purchase-section" aria-labelledby="purchaseTitle">
             <div class="purchase-heading"><h3 id="purchaseTitle">Wybierz koszt zakupu</h3><span class="tag">netto</span></div>
             <div id="selectedOfferBox" class="purchase-options" role="group" aria-label="Koszt zakupu do wyceny"></div>
             <p id="purchaseStatus" class="hint" role="status" aria-live="polite">Wybór oferty przelicza cenę klienta i marżę.</p>
           </section>
           <div class="currency-toolbar">
-            <label class="currency-choice">Waluta<select id="quoteCurrency"><option value="EUR">EUR</option><option value="PLN">PLN</option></select></label>
-            <details id="fxDetails" class="fx-details"><summary>Kurs EUR/PLN <span id="fxSummary">Ustaw</span></summary>
+            <strong class="base-currency">PLN netto</strong><label class="eur-toggle"><input type="checkbox" id="showEur"> Pokaż przeliczenie na EUR</label>
+            <details id="fxDetails" class="fx-details" hidden><summary>Kurs EUR/PLN <span id="fxSummary">Ustaw</span></summary>
               <div class="fx-editor"><label>1 EUR = PLN<input id="eurPln" type="number" min="0.01" max="100" step="0.0001" inputmode="decimal" placeholder="Wpisz kurs"></label><button type="button" id="fetchFx" class="secondary">Pobierz kurs NBP</button></div>
-              <p id="fxStatus" class="hint" role="status" aria-live="polite"></p><p class="hint">Zmiana waluty przelicza kwoty. Zmiana kursu zachowuje kwoty w wybranej walucie.</p>
+              <p id="fxStatus" class="hint" role="status" aria-live="polite"></p><p class="hint">Kurs służy tylko do przeliczenia na EUR i importu ofert w EUR. Ceny, koszty i marża pozostają w PLN.</p>
             </details>
           </div>
           <div id="marginAssumptions" class="fields two"></div>
           <label class="review-check"><input id="reviewed" type="checkbox"><span>Sprawdziłem cenę zakupu, zakres usług, parametry auta i warunki zlecenia.</span></label>
-          <label class="sell-label">Twoja cena dla klienta (EUR)<input id="sellPrice" data-money="price" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" placeholder="Puste = cena z marży docelowej"></label>
+          <label class="sell-label">Twoja cena dla klienta (PLN)<input id="sellPrice" data-money="price" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" placeholder="Puste = cena z marży docelowej"></label>
           <div class="calculate-bar"><button type="submit" id="calculate" class="primary">Wyceń przesyłkę <span>↗</span></button></div>
           <div class="result-actions"><button type="button" id="saveQuote" class="secondary" disabled>Zapisz wersję</button><button type="button" id="offerOpen" class="secondary" disabled>Oferta klienta</button></div><p id="saveState" class="hint">Wersje zapisujesz na swoim koncie.</p>
         </section>
@@ -91,7 +91,7 @@
       </aside>
     </form>
     <section class="history-section" id="quoteHistory"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja · 1.8.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.9.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
   <dialog id="pasteDialog" aria-labelledby="importTitle">
     <div class="section-top"><div><p class="eyebrow">OPTIRAX / SZYBKI IMPORT</p><h2 id="importTitle">Zapytanie → wycena</h2></div><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div>

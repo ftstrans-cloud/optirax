@@ -50,8 +50,16 @@ try{
  await page.addInitScript(()=>localStorage.setItem('optirax_token','fixture'));
  await page.goto(base+'/spedycja');
  await page.locator('[data-use-offer]').waitFor();
- assert.equal(await page.locator('#fxDetails').getAttribute('open'),null);
+ assert.equal(await page.locator('#fxDetails').isVisible(),false);assert.equal(await page.locator('#showEur').isChecked(),false);
  assert.equal(await page.locator('#offerEditor').isVisible(),true);
+ assert.equal(await page.locator('.vehicle-options input').count(),5);
+ assert.ok((await page.locator('.vehicle-picker').boundingBox()).y<(await page.locator('#client').boundingBox()).y);
+ for(const profile of ['solo75','solo12','curtain136','reefer136','bus']){
+   await page.locator(`[name=profileChoice][value=${profile}]`).check();
+   assert.equal(await page.locator('#profile').inputValue(),profile);
+   assert.equal(await page.locator('#reeferTemperatureField').isVisible(),profile==='reefer136');
+ }
+
  for(const [id,value] of Object.entries({origin:'PL Poznań',destination:'DE Berlin',distanceKm:'300',pickup:'2026-10-10',delivery:'2026-10-11','a-targetMargin':'20'}))await page.locator('#'+id).fill(value);
  await page.locator('[data-cargo=height]').fill('150');await page.locator('[data-cargo=weight]').fill('200');
  await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('routeStatus').textContent.includes('6,0 h'));
@@ -59,6 +67,9 @@ try{
  const fetchedStatus=await page.locator('#routeStatus').textContent();
  await page.locator('#calculate').click();
  assert.equal(await page.locator('#result').isVisible(),true);
+ await page.waitForFunction(()=>document.activeElement===document.getElementById('result'));
+ assert.ok((await page.locator('#result .price-value').boundingBox()).y>0);
+
  for(const [carrier,price] of [['Transport Alfa','200'],['Transport Beta','240']]){
    await page.locator('#addOffer').click();
    const row=page.locator('.offer-row').last();
@@ -66,35 +77,40 @@ try{
  }
  await page.locator('[data-use-offer="0"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/250,00/);
- assert.match(await page.locator('.price-range').textContent(),/200,00 EUR.*Transport Alfa/);
+ assert.match(await page.locator('.price-range').textContent(),/200,00 zł.*Transport Alfa/);
  assert.equal(await page.locator('[data-use-offer="0"]').getAttribute('aria-pressed'),'true');
  await page.locator('[data-use-offer="1"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/300,00/);
  assert.deepEqual(await page.locator('[data-offer=status]').evaluateAll(es=>es.map(e=>e.value)),['received','accepted']);
  await page.locator('#sellPrice').fill('400');await page.locator('[data-use-offer="0"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
- assert.match(await page.locator('.decision-stats').textContent(),/200,00 EUR.*50,0%/);
+ assert.match(await page.locator('.decision-stats').textContent(),/200,00 zł.*50,0%/);
  await page.locator('[data-use-offer=""]').click();assert.match(await page.locator('.price-range').textContent(),/model/);
  assert.equal(await page.locator('[data-offer=status]').evaluateAll(es=>es.every(e=>e.value==='received')),true);
  await page.locator('[data-use-offer="0"]').click();
- // Currency is collapsed until requested; missing exchange rate opens and focuses it.
- await page.locator('#quoteCurrency').selectOption('PLN');
- assert.equal(await page.locator('#quoteCurrency').inputValue(),'EUR');
- assert.equal(await page.locator('#eurPln').evaluate(e=>document.activeElement===e),true);
+ // Native PLN can be saved before any exchange-rate request.
+ await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
+ assert.equal(saved[0].input.currency,'PLN');assert.equal(saved[0].input.eurPln,null);assert.equal(saved[0].input.sellPrice,400);
+ assert.equal(await page.locator('.currency-equivalent').count(),0);
+ await page.locator('#showEur').check();
  await page.locator('#fetchFx').click();await page.waitForFunction(()=>document.getElementById('eurPln').value==='4.25');
- await page.locator('#quoteCurrency').selectOption('PLN');
- assert.match(await page.locator('#result .price-value').textContent(),/1\s*700,00/);
- assert.match(await page.locator('[data-use-offer="0"]').textContent(),/850,00 zł/);
+ assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
+ assert.match(await page.locator('.currency-equivalent').textContent(),/94,12 EUR/);
+ assert.match(await page.locator('[data-use-offer="0"]').textContent(),/200,00 zł/);
+ await page.locator('#eurPln').fill('4');assert.match(await page.locator('.currency-equivalent').textContent(),/100,00 EUR/);
+ assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
+ await page.locator('#showEur').uncheck();assert.equal(await page.locator('.currency-equivalent').count(),0);
+ await page.locator('#showEur').check();
  await page.locator('[data-use-offer="1"]').click();
- assert.match(await page.locator('.price-range').textContent(),/1\s*020,00 zł/);
- assert.match(await page.locator('.decision-stats').textContent(),/680,00 zł.*40,0%/);
+ assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
+ assert.match(await page.locator('.decision-stats').textContent(),/160,00 zł.*40,0%/);
  await page.locator('#fxDetails summary').click();
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
  assert.equal(routeCalls.length,1);assert.equal(saved[0].input.route.durationHours,6);assert.equal(saved[0].input.route.source,'TomTom');assert.equal(saved[0].input.route.snapshot.coordinates.length,3);assert.equal(await page.locator('#routeStatus').textContent(),fetchedStatus);
  assert.equal(saved[0].input.offers[1].status,'accepted');assert.equal(saved[0].input.currency,'PLN');
  await page.locator('[data-use-offer=""]').click();await page.locator('[data-load="0"]').click();
  assert.equal(await page.locator('[data-use-offer="1"]').getAttribute('aria-pressed'),'true');
- assert.match(await page.locator('.price-range').textContent(),/1\s*020,00 zł/);
+ assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
  assert.equal(routeCalls.length,1);assert.equal(await page.locator('#distanceKm').inputValue(),'300');if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
  // Rejected and incomplete offers cannot become the purchase.
  await page.locator('[data-offer=status]').first().selectOption('rejected');
@@ -103,7 +119,7 @@ try{
  await page.locator('.remove-offer').last().click();
  await page.locator('[data-offer=status]').first().selectOption('received');
  await page.locator('#sellPrice').fill('');await page.locator('[data-use-offer="1"]').click();
- assert.match(await page.locator('#result .price-value').textContent(),/1\s*275,00/);
+ assert.match(await page.locator('#result .price-value').textContent(),/300,00/);
  // Data edits invalidate the selected quote and prevent stale prices from being saved.
  await page.locator('[data-cargo=weight]').fill('250');
  assert.equal(await page.locator('#result').isVisible(),false);assert.equal(await page.locator('#saveQuote').isDisabled(),true);
@@ -120,14 +136,14 @@ try{
  assert.equal(await page.locator('#modelAssumptions').isVisible(),false);
  assert.equal(await page.locator('[data-use-offer=""]').isDisabled(),true);
  await page.locator('[data-use-offer="1"]').click();
- assert.match(await page.locator('#result .price-value').textContent(),/1\s*275,00/);
+ assert.match(await page.locator('#result .price-value').textContent(),/300,00/);
  assert.doesNotMatch(await page.locator('#calculationBreakdown').textContent(),/Zakres zakupu z modelu/);
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
  assert.equal(saved[0].input.useCostModel,false);assert.equal(saved[0].input.assumptions.kmRate,null);
  await page.locator('#useCostModel').check();
  await page.locator('[data-load="0"]').click();
  assert.equal(await page.locator('#useCostModel').isChecked(),false);
- assert.match(await page.locator('.price-range').textContent(),/1\s*020,00 zł/);
+ assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
  // Turning the model back on restores editable, valid defaults after loading.
  await page.locator('#useCostModel').check();assert.equal(await page.locator('#a-kmRate').isDisabled(),false);
  assert.ok(Number(await page.locator('#a-kmRate').inputValue())>0);
@@ -177,13 +193,19 @@ try{
      await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${theme}/${width}`);
      const quote=await page.locator('#result').boundingBox(),offers=await page.locator('#selectedOfferBox').boundingBox(),fx=await page.locator('.currency-toolbar').boundingBox();
-     assert.ok(quote.y<offers.y&&offers.y<fx.y);assert.ok(fx.height<120,`Compact FX at ${width}px: ${fx.height}`);
+     assert.ok(quote.y<offers.y&&offers.y<fx.y);assert.ok(fx.height<160,`Compact FX at ${width}px: ${fx.height}`);
      if(width>=760){
        const bounds=await page.locator('#workspace').boundingBox();assert.ok(bounds.x<=16&&width-(bounds.x+bounds.width)<=16,'Workspace fills window');
        const map=await page.locator('#mapDetails').boundingBox(),editor=await page.locator('#offerEditor').boundingBox(),decision=await page.locator('.decision-column').boundingBox();
        assert.ok(Math.abs(map.y-decision.y)<2,`Map starts beside quote at ${width}px`);
        assert.ok(editor.y>map.y+map.height&&editor.x<decision.x,`Offers below map in middle column at ${width}px`);
      }
+     await page.locator('#calculate').click();
+     await page.waitForFunction(()=>document.activeElement===document.getElementById('result'));
+     const priceBox=await page.locator('#result .price-value').boundingBox();
+     assert.ok(priceBox.y>=0&&priceBox.y+priceBox.height<=1100,`Price visible after calculate at ${width}px`);
+     if(width>=760)assert.ok(await page.locator('.decision-column').evaluate(e=>e.scrollTop>0));
+     await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);document.activeElement?.blur();});
      await page.screenshot({path:`${out}/${theme}-${width}.png`,fullPage:width<1200});
    }
  }
@@ -194,6 +216,11 @@ try{
    await page.waitForFunction(()=>document.getElementById('workspace').getBoundingClientRect().bottom<=innerHeight);
    const bounds=await page.locator('#workspace>[tabindex]').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,scroll:e.scrollHeight,client:e.clientHeight};}));
    assert.ok(bounds.every(b=>b.bottom<=height&&b.scroll>b.client));assert.ok(bounds.every(b=>Math.abs(b.top-bounds[0].top)<2));
+   await page.locator('#calculate').click();
+   await page.waitForFunction(()=>document.activeElement===document.getElementById('result'));
+   const paneBox=await page.locator('.decision-column').boundingBox(),price=await page.locator('#result .price-value').boundingBox();
+   assert.ok(price.y>=paneBox.y&&price.y+price.height<=Math.min(height,paneBox.y+paneBox.height),`Price visible at ${width}x${height}`);
+
  }
  // Editing a routing parameter invalidates distance and map, unlike price changes.
  await page.locator('#origin').fill('Warszawa');

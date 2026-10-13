@@ -1,4 +1,4 @@
-import {convertMoney,normalizeExchangeRate} from './forwarding-engine.js?v=1.6.0';
+import {convertMoney,normalizeExchangeRate} from './forwarding-engine.js?v=1.9.0';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function offerSource(o){return [`Kwota w źródle: ${o.amount??'?'} ${o.currency||'?'} (${o.taxBasis==='net'?'netto':o.taxBasis==='gross'?'brutto':'nie podano netto/brutto'}).`,o.origin?`Załadunek: ${o.origin}`:'',o.destination?`Rozładunek: ${o.destination}`:'',o.pickup?`Termin odbioru: ${o.pickup}`:'',o.delivery?`Termin dostawy: ${o.delivery}`:'',o.tailLift===true?'Winda potwierdzona.':o.tailLift===false?'Bez windy.':'Winda niepotwierdzona.',o.terms||''].filter(Boolean).join('\n');}
 export function renderOfferPreview(data,context){
@@ -21,9 +21,11 @@ export function prepareOffers(edits,originals,{currency,eurPln,existingCount=0})
     if(!Number.isFinite(amount)||amount<=0||amount>1000000)throw Error('Podaj poprawną cenę całego przewozu.');
     if(e.taxBasis!=='net')throw Error('Potwierdź kwotę netto. Kwoty brutto lub o nieznanej podstawie nie są porównywalne.');
     if(!['EUR','PLN'].includes(e.currency))throw Error('Wybierz EUR lub PLN. Inne waluty najpierw przelicz ręcznie.');
+    if(e.currency!==currency&&!eurPln)throw Error('Oferta jest w EUR. Zamknij import, włącz „Pokaż przeliczenie na EUR” i podaj kurs lub pobierz NBP, a następnie zaimportuj ofertę ponownie. Cena w źródle nie zostanie uznana za PLN.');
     const rate=normalizeExchangeRate(eurPln,e.currency!==currency);
     const price=Math.round(convertMoney(amount,e.currency,currency,rate)*100)/100;
     const original=originals[e.index];if(!original)throw Error('Odczyt oferty wygasł. Uruchom import ponownie.');
     return {carrier,price,status:'received',needsConfirmation:true,terms:e.terms.trim(),importSource:offerSource(original)+`\nPrzy imporcie: ${amount} ${e.currency} netto → ${price} ${currency}.`+(e.currency!==currency?` Kurs: 1 EUR = ${rate} PLN.`:'')};
   });
 }
+

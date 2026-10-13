@@ -1,6 +1,6 @@
-// Shared by browser and server. Net amounts in input.currency (legacy input defaults to EUR).
-// Profile defaults are EUR; FX is a user-entered quote snapshot, not a live market rate.
-export const ENGINE_VERSION = 'forwarding-1.5';
+// Shared by browser and server. New UI quotes use PLN; legacy untagged inputs remain EUR.
+// PROFILES/DEFAULT_ASSUMPTIONS keep legacy EUR values. modelDefaults supplies native PLN defaults.
+export const ENGINE_VERSION = 'forwarding-1.6';
 export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy','reeferSurcharge'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
@@ -16,6 +16,23 @@ export const DEFAULT_ASSUMPTIONS = {
   targetMargin:18, minimumMargin:12, reeferSurcharge:0,
 };
 export class ForwardingError extends Error {}
+// Native PLN starting assumptions, not a live conversion or a market quote.
+export function modelDefaults(profile, currency='PLN') {
+  const rates={bus:[1.70,60],solo75:[2.50,80],solo12:[3,90],curtain136:[4.30,110],reefer136:[5,125]};
+  if(currency==='EUR')return {...DEFAULT_ASSUMPTIONS,kmRate:PROFILES[profile].kmRate,hourRate:PROFILES[profile].hourRate};
+  const [kmRate,hourRate]=rates[profile]||rates.bus;
+  return {...DEFAULT_ASSUMPTIONS,kmRate,hourRate,fixed:110,waitingRate:90,minimumBuy:400};
+}
+export function quoteToPln(raw, fallbackRate) {
+  const input=normalizeInput(raw);
+  if(input.currency==='PLN')return input;
+  const rate=normalizeExchangeRate(input.eurPln??fallbackRate,true);
+  const assumptions={...input.assumptions};
+  for(const key of MONEY_ASSUMPTIONS)if(assumptions[key]!=null)assumptions[key]=Number((assumptions[key]*rate).toFixed(8));
+  return normalizeInput({...input,currency:'PLN',eurPln:rate,reviewed:false,assumptions,
+    sellPrice:input.sellPrice==null?null:round(input.sellPrice*rate),
+    offers:input.offers.map(o=>({...o,price:round(o.price*rate)}))});
+}
 const fail = message => { throw new ForwardingError(message); };
 const round = n => Math.round((n + Number.EPSILON) * 100) / 100;
 function num(value, label, min=0, max=1e6, integer=false) {
@@ -59,12 +76,12 @@ export function normalizeInput(raw) {
   if (!raw || typeof raw!=='object' || Array.isArray(raw)) fail('Brak danych przesyłki.');
   if(raw.useCostModel!==undefined&&typeof raw.useCostModel!=='boolean')fail('Nieprawidłowy wybór modelu kosztowego.');
   const useCostModel=raw.useCostModel!==false;
-  const currency=normalizeCurrency(raw.currency||'EUR'),eurPln=normalizeExchangeRate(raw.eurPln,currency==='PLN');
+  const currency=normalizeCurrency(raw.currency||'EUR'),eurPln=normalizeExchangeRate(raw.eurPln);
   const fxSource=eurPln?(raw.fxSource==='NBP'?'NBP':'manual'):null;
   const fxDate=fxSource==='NBP'?date(raw.fxDate,'data kursu NBP'):null;
   const fxTable=fxSource==='NBP'?str(raw.fxTable,'numer tabeli NBP',30,true):null;
   if(fxSource==='NBP'&&(!fxDate||!/^\d{1,3}\/A\/NBP\/\d{4}$/.test(fxTable)))fail('Brak poprawnej daty lub tabeli kursu NBP. Pobierz kurs ponownie albo wpisz go ręcznie.');
-  const moneyScale=currency==='PLN'?eurPln:1;
+  const moneyScale=currency==='PLN'?5:1;
   const profile=Object.hasOwn(PROFILES,raw.profile)?PROFILES[raw.profile]:null;
   if (!profile) fail('Wybierz profil pojazdu.');
   if (!['dedicated','partload'].includes(raw.mode)) fail('Wybierz sposób przewozu.');
@@ -81,7 +98,7 @@ export function normalizeInput(raw) {
     if(!useCostModel&&!['targetMargin','minimumMargin'].includes(key)){assumptions[key]=null;continue;}
     const bounds={averageSpeed:[10,100],targetMargin:[0,80],minimumMargin:[0,80],uncertainty:[0,50],carrierMarkup:[0,100],minimumShare:[1,100],kmRate:[0,10],hourRate:[0,200],deadheadKm:[0,5000],waitingHours:[0,200]}[key]||[0,10000];
     const scale=MONEY_ASSUMPTIONS.includes(key)?moneyScale:1;
-    assumptions[key]=num(a[key]??DEFAULT_ASSUMPTIONS[key],`założenie ${key}`,bounds[0]*scale,bounds[1]*scale);
+    assumptions[key]=num(a[key]??modelDefaults(raw.profile,currency)[key],`założenie ${key}`,bounds[0]*scale,bounds[1]*scale);
   }
   if (useCostModel && !assumptions.kmRate && !assumptions.hourRate) fail('Koszt kilometra lub godziny musi być większy od zera.');
   if (assumptions.minimumMargin>assumptions.targetMargin) fail('Marża minimalna nie może przekraczać docelowej.');
@@ -112,7 +129,7 @@ export function normalizeInput(raw) {
   if(!useCostModel&&!offers.some(o=>o.status==='accepted'))fail('Model kosztowy jest wyłączony. Wybierz ofertę przewoźnika do wyceny albo włącz model.');
   const reeferTemperature=str(raw.reeferTemperature,'temperatura chłodni',30);
   if (raw.profile==='reefer136' && !reeferTemperature) fail('Podaj temperaturę dla chłodni, np. +2°C lub -18°C.');
-  return {module:'forwarding',version:ENGINE_VERSION,useCostModel,currency,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
+  return {module:'forwarding',version:ENGINE_VERSION,useCostModel,currency,showEur:raw.showEur===true,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
     client:str(raw.client,'klient',200),reference:str(raw.reference,'referencja',120),notes:str(raw.notes,'warunki przewozu',3000),
     tailLift:raw.tailLift===true,palletJack:raw.palletJack===true,reviewed:raw.reviewed===true,
     sellPrice:raw.sellPrice===''||raw.sellPrice==null?null:num(raw.sellPrice,`cena dla klienta (${currency})`,0.01,1e6*moneyScale),offers,
@@ -193,6 +210,7 @@ export function customerOffer(result) {
     `Łącznie: ${round(result.summary.weight)} kg | ${round(result.summary.volume)} m³`,
     i.tailLift?'Wymagana winda.':'',i.palletJack?'Wymagany paleciak.':'',
     `Cena: ${result.sell.toFixed(2)} ${i.currency||'EUR'} netto. VAT zgodnie z właściwymi zasadami rozliczenia.`,
+    i.currency==='PLN'&&i.showEur&&i.eurPln?`Orientacyjnie: ${convertMoney(result.sell,'PLN','EUR',i.eurPln).toFixed(2)} EUR netto (1 EUR = ${i.eurPln} PLN${i.fxSource==='NBP'?`, NBP ${i.fxDate}`:''}). Cena rozliczeniowa pozostaje w PLN.`:'',
     i.notes?`Uzgodnione warunki / zakres ceny: ${i.notes}`:'',
     'Oferta wstępna, wymaga potwierdzenia dostępności pojazdu, terminów i warunków załadunku. Zmiana danych przesyłki wymaga ponownej wyceny.',
   ].filter(Boolean).join('\n');

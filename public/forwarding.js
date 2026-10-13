@@ -1,11 +1,12 @@
 import {setupRouteInputs} from './forwarding-route.js?v=1.8.0';
-import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeCurrency,normalizeExchangeRate,convertMoney} from './forwarding-engine.js?v=1.8.0';
-import {setupEnquiryImport} from './enquiry-import.js?v=1.6.0';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeExchangeRate,convertMoney,modelDefaults,quoteToPln} from './forwarding-engine.js?v=1.9.0';
+import {setupEnquiryImport} from './enquiry-import.js?v=1.9.0';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(n,d=2)=>Number(n).toLocaleString('pl-PL',{minimumFractionDigits:d,maximumFractionDigits:d});
-let currentCurrency='EUR',currentProfile='bus',fxMeta=null;
+const currentCurrency='PLN';
+let currentProfile='bus',fxMeta=null;
 function applyTheme(theme){document.documentElement.dataset.theme=theme;$('themeToggle').textContent=theme==='dark'?'Tryb jasny':'Tryb ciemny';try{localStorage.setItem('optirax_theme',theme);}catch{}}
 let storedTheme;try{storedTheme=localStorage.getItem('optirax_theme');}catch{}
 applyTheme(storedTheme==='light'?'light':'dark');
@@ -27,8 +28,7 @@ const V={length:['Długość ładowni (cm)',100,1400],width:['Szerokość ładow
 function fields(spec,prefix,values){return Object.entries(spec).map(([k,[label,min,max]])=>`<label>${label}<input id="${prefix}-${k}" data-${prefix}="${k}" ${prefix==='a'&&MONEY_ASSUMPTIONS.includes(k)?'data-money="assumption"':''} type="number" inputmode="decimal" min="${min}" max="${max}" step="${k==='axleCount'?'1':prefix==='a'&&MONEY_ASSUMPTIONS.includes(k)?'any':'0.01'}" value="${esc(values[k])}"></label>`).join('');}
 function clearMoneyAnchor(el){for(const key of ['anchorAmount','anchorCurrency','anchorRate','renderedAmount'])delete el.dataset[key];}
 function syncCurrencyLabels(){
-  let rate=null;try{rate=normalizeExchangeRate($('eurPln').value);}catch{}
-  const scale=currentCurrency==='PLN'&&rate?rate:1;
+  const scale=5;
   document.querySelectorAll('[data-money]').forEach(el=>{
     const label=el.closest('label');label.dataset.currencyLabel??=label.firstChild.textContent;
     label.firstChild.textContent=label.dataset.currencyLabel.replace(/EUR/g,currentCurrency);
@@ -37,27 +37,12 @@ function syncCurrencyLabels(){
   const profileLabel=PROFILES[currentProfile]?.name||'profil pojazdu';
   $('currencyCaption').textContent=`${profileLabel} · kwoty w ${currentCurrency} netto`;
 }
-function switchCurrency(){
-  const target=$('quoteCurrency').value,hadResult=!!result;
-  try{
-    normalizeCurrency(target);const rate=normalizeExchangeRate($('eurPln').value,target!==currentCurrency);
-    const changes=[...document.querySelectorAll('[data-money]')].map(el=>{
-      if(el.value==='')return {el,value:'',anchor:null};
-      const anchor=el.dataset.renderedAmount===el.value&&Number(el.dataset.anchorRate)===rate
-        ?{amount:Number(el.dataset.anchorAmount),currency:el.dataset.anchorCurrency}
-        :{amount:Number(el.value),currency:currentCurrency};
-      const value=convertMoney(anchor.amount,anchor.currency,target,rate);
-      return {el,value:target===anchor.currency?String(anchor.amount):String(Number(value.toFixed(el.dataset.money==='price'?2:8))),anchor};
-    });
-    changes.forEach(({el,value,anchor})=>{el.value=value;if(anchor){el.dataset.anchorAmount=anchor.amount;el.dataset.anchorCurrency=anchor.currency;el.dataset.anchorRate=rate;el.dataset.renderedAmount=el.value;}else clearMoneyAnchor(el);});
-    currentCurrency=target;syncCurrencyLabels();$('reviewed').checked=false;invalidate();$('message').hidden=true;if(hadResult)runCalculation();
-  }catch(e){$('quoteCurrency').value=currentCurrency;message(e.message,true);$('fxDetails').open=true;$('eurPln').focus();}
-}
 function initFields(){
   const margins=['targetMargin','minimumMargin'],main=['kmRate','hourRate','tolls','crossing'];
-  $('marginAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>margins.includes(k))),'a',DEFAULT_ASSUMPTIONS);
-  $('keyAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>main.includes(k))),'a',DEFAULT_ASSUMPTIONS);
-  $('otherAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>!main.includes(k)&&!margins.includes(k))),'a',DEFAULT_ASSUMPTIONS);
+  const defaults=modelDefaults(currentProfile);
+  $('marginAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>margins.includes(k))),'a',defaults);
+  $('keyAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>main.includes(k))),'a',defaults);
+  $('otherAssumptions').innerHTML=fields(Object.fromEntries(Object.entries(A).filter(([k])=>!main.includes(k)&&!margins.includes(k))),'a',defaults);
   setProfile();
 }
 function syncModelMode(){
@@ -66,12 +51,15 @@ function syncModelMode(){
   $('modelAssumptions').disabled=!enabled;$('modelAssumptions').hidden=!enabled;
   $('modelStatus').textContent=enabled?'Opcjonalny szacunek zakupu na podstawie kilometrów i kosztów auta.':'Model wyłączony. Stawki i koszty modelowe są pomijane. Wybierz ofertę przewoźnika po prawej.';
 }
+function syncProfileChoice(){
+  document.querySelectorAll('[name=profileChoice]').forEach(el=>el.checked=el.value===$('profile').value);
+}
 function setProfile(){
-  const v=PROFILES[$('profile').value],rate=currentCurrency==='PLN'?normalizeExchangeRate($('eurPln').value,true):null;
+  const v=PROFILES[$('profile').value];
   if(!v)throw Error('Nieprawidłowy profil pojazdu.');
   $('vehicleFields').innerHTML=fields(V,'v',v);
-  for(const k of ['kmRate','hourRate']){const el=$(`a-${k}`);el.value=Number(convertMoney(v[k],'EUR',currentCurrency,rate).toFixed(8));clearMoneyAnchor(el);}
-  currentProfile=$('profile').value;
+  for(const k of ['kmRate','hourRate']){const el=$(`a-${k}`);el.value=modelDefaults($('profile').value)[k];clearMoneyAnchor(el);}
+  currentProfile=$('profile').value;syncProfileChoice();
   $('reeferTemperatureField').hidden=currentProfile!=='reefer136';
   if(currentProfile!=='reefer136')$('reeferTemperature').value='';
   syncCurrencyLabels();
@@ -119,7 +107,8 @@ function useSelectedOffer(choice){
   [...$('selectedOfferBox').querySelectorAll('[data-use-offer]')].find(el=>el.dataset.useOffer===choice)?.focus({preventScroll:true});
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
-function collect(){return {useCostModel:$('useCostModel').checked,currency:currentCurrency,eurPln:$('eurPln').value,fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
+function optionalRate(){try{return normalizeExchangeRate($('eurPln').value);}catch{return null;}}
+function collect(){return {useCostModel:$('useCostModel').checked,currency:currentCurrency,showEur:$('showEur').checked,eurPln:optionalRate(),fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
   route:{origin:$('origin').value,destination:$('destination').value,stops:routeInputs.getStops(),snapshot:routeData?.snapshot||null,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
@@ -145,14 +134,27 @@ function invalidateRoute(clearDistance=true){
   $('routeStatus').textContent=clearDistance?'Trasa zmieniona. Pobierz nowy przebieg albo podaj sprawdzony dystans.':'Dystans ręczny — potwierdź przebieg oraz czas przejazdu.';
   $('mapCaption').textContent='Brak aktualnej trasy na mapie.';
 }
+function showQuoteResult(){
+  // Run after layout observers have accounted for the hidden validation message.
+  requestAnimationFrame(()=>{
+    const target=$('result'),pane=document.querySelector('.decision-column');
+    if(target.hidden)return;
+    if(matchMedia('(min-width:760px)').matches){
+      pane.scrollTo({top:pane.scrollTop+target.getBoundingClientRect().top-pane.getBoundingClientRect().top-12,behavior:'instant'});
+      const bounds=target.getBoundingClientRect();
+      if(bounds.top<0||bounds.top>innerHeight-80)window.scrollBy({top:bounds.top-24,behavior:'instant'});
+    }else target.scrollIntoView({behavior:'instant',block:'start'});
+    target.focus({preventScroll:true});
+  });
+}
 function runCalculation(scroll=false){
-  try{result=calculate(collect());render();$('message').hidden=true;if(scroll&&matchMedia('(max-width:700px)').matches)$('decisionTitle').scrollIntoView({behavior:'smooth',block:'start'});return true;}
+  try{result=calculate(collect());render();$('message').hidden=true;if(scroll)showQuoteResult();return true;}
   catch(e){result=null;$('saveQuote').disabled=true;$('offerOpen').disabled=true;message(e.message,true);$('message').scrollIntoView({behavior:'smooth',block:'center'});return false;}
 }
 function render(){
   const r=result,symbol=currencySymbol(r.currency),otherCurrency=r.currency==='PLN'?'EUR':'PLN';
   const fxLabel=r.input.fxSource==='NBP'?`NBP · ${r.input.fxDate||''} · ${r.input.fxTable||''}`:'kurs ręczny';
-  const equivalent=r.eurPln?`<div class="currency-equivalent ${otherCurrency==='PLN'?'pln':''}"><strong>≈ ${money(convertMoney(r.sell,r.currency,otherCurrency,r.eurPln),otherCurrency)}</strong><span>1 EUR = ${fmt(r.eurPln,4)} PLN · ${esc(fxLabel)}</span></div>`:'';
+  const equivalent=r.input.showEur&&r.eurPln?`<div class="currency-equivalent ${otherCurrency==='PLN'?'pln':''}"><strong>≈ ${money(convertMoney(r.sell,r.currency,otherCurrency,r.eurPln),otherCurrency)}</strong><span>1 EUR = ${fmt(r.eurPln,4)} PLN · ${esc(fxLabel)}</span></div>`:'';
   $('result').hidden=false;$('emptyResult').hidden=true;$('resultTag').textContent=r.blockers.length?'Sprawdź auto':r.input.reviewed?(r.buySource==='accepted'?'Oferta przewoźnika':'Szacunek'):'Potwierdź warunki';
   $('result').innerHTML=`${r.blockers.length?`<div class="blocker"><strong>Ładunek wymaga zmiany pojazdu lub danych.</strong><br>${r.blockers.map(esc).join('<br>')}</div>`:''}<div class="price-label">Cena dla klienta${r.input.sellPrice===null?' · sugerowana':''}</div><div class="price-value ${r.currency==='PLN'?'pln':''}">${fmt(r.sell)} <small>${symbol}</small></div>${equivalent}<p class="price-range">Zakup: ${money(r.buy)} · ${r.buySource==='accepted'?'przyjęta oferta · '+esc(r.input.offers.find(o=>o.status==='accepted').carrier):'model'}</p><div class="decision-stats"><div class="price-label">Zysk na zleceniu<strong>${money(r.profit)}</strong></div><div class="price-label">Marża od sprzedaży<strong>${fmt(r.margin,1)}%</strong></div></div>${r.overBudget?'<div class="status-note bad">Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.</div>':''}`;
   $('calculationDetails').hidden=false;
@@ -219,16 +221,21 @@ async function loadHistory(){
   finally{$('refreshHistory').disabled=false;}
 }
 function renderHistory(){
-  if(!historyRows.length){$('history').innerHTML='<div class="history-empty">Pierwsza wycena czeka na zapis. Tutaj zbudujesz własny punkt odniesienia do kolejnych zakupów.</div>';return;}
-  $('history').innerHTML=`<div class="history-table"><table><thead><tr><th>ZAPIS / KLIENT</th><th>RELACJA</th><th>ZAKUP</th><th>SPRZEDAŻ</th><th>MARŻA</th><th><span class="muted">WERSJA</span></th></tr></thead><tbody>${historyRows.map((row,index)=>{const s=row.calc?.forwarding,currency=row.input?.currency||'EUR',rate=row.input?.eurPln,fx=row.input?.fxSource==='NBP'?`NBP ${row.input.fxDate||''}`:'';const rowMoney=n=>money(n,currency);return `<tr><td>${esc(new Date(Number(row.ts)).toLocaleString('pl-PL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))}<small>${esc(row.client||row.name||'Bez nazwy')}</small></td><td class="history-route">${esc(row.origin)} → ${esc(row.destination)}<small>${esc(PROFILES[row.input?.profile]?.name||'')} · ${row.input?.mode==='partload'?'Doładunek':'Dedykowany'}</small></td><td class="numeric">${rowMoney(s?.buy??convertMoney(row.total_cost??0,'EUR',currency,rate))}<small>${s?.buySource==='accepted'?'Przyjęta oferta':'Model'}</small></td><td class="numeric">${rowMoney(s?.sell??convertMoney(row.price_eur??0,'EUR',currency,rate))}${rate?`<small>1 EUR = ${fmt(rate,4)} PLN${fx?` · ${esc(fx)}`:''}</small>`:''}</td><td class="numeric">${fmt(row.margin_pct??0,1)}%</td><td><button type="button" class="secondary" data-load="${index}">Wczytaj</button></td></tr>`;}).join('')}</tbody></table></div>`;
+  if(!historyRows.length){$('history').innerHTML='<div class="history-empty">Brak zapisanych wycen.</div>';return;}
+  $('history').innerHTML='<div class="history-table"><table><thead><tr><th>ZAPIS / KLIENT</th><th>RELACJA</th><th>ZAKUP PLN</th><th>SPRZEDAŻ PLN</th><th>MARŻA</th><th>WERSJA</th></tr></thead><tbody>'+historyRows.map((row,index)=>{
+    const snap=row.calc?.forwarding,cur=row.input?.currency||'EUR',rate=row.input?.eurPln;
+    const amount=(value,source)=>value==null?'—':source==='PLN'?money(value):rate?money(convertMoney(value,'EUR','PLN',rate)):'Wymaga kursu';
+    const note=cur==='EUR'?(rate?`Przeliczono z EUR · zapisany kurs ${fmt(rate,4)} PLN`:'Starszy zapis EUR — podaj kurs przy wczytaniu'):'';
+    return `<tr><td>${esc(new Date(Number(row.ts)).toLocaleString('pl-PL'))}<small>${esc(row.client||row.name||'Bez nazwy')}</small></td><td class="history-route">${esc(row.origin)} → ${esc(row.destination)}<small>${esc(note)}</small></td><td class="numeric">${amount(snap?.buy??row.total_cost,snap?.buy!=null?cur:'EUR')}</td><td class="numeric">${amount(snap?.sell??row.price_eur,snap?.sell!=null?cur:'EUR')}</td><td>${fmt(row.margin_pct??snap?.margin??0,1)}%</td><td><button type="button" class="secondary" data-load="${index}">Wczytaj</button></td></tr>`;
+  }).join('')+'</tbody></table></div>';
 }
 function loadInput(input){
   $('useCostModel').checked=input.useCostModel!==false;syncModelMode();
-  currentCurrency=normalizeCurrency(input.currency||'EUR');fxMeta=input.fxSource==='NBP'?{fxSource:'NBP',fxDate:input.fxDate,fxTable:input.fxTable}:null;$('quoteCurrency').value=currentCurrency;$('eurPln').value=input.eurPln??'';renderFxStatus();
+  fxMeta=input.fxSource==='NBP'?{fxSource:'NBP',fxDate:input.fxDate,fxTable:input.fxTable}:null;$('showEur').checked=input.showEur===true;$('fxDetails').hidden=!$('showEur').checked;$('eurPln').value=input.eurPln??'';renderFxStatus();
   document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);
   invalidateRoute();$('profile').value=input.profile;setProfile();
   for(const key of Object.keys(V))$(`v-${key}`).value=input.vehicle[key];
-  for(const key of Object.keys(A)){const fallback=PROFILES[input.profile][key]??DEFAULT_ASSUMPTIONS[key];$(`a-${key}`).value=input.assumptions[key]??(MONEY_ASSUMPTIONS.includes(key)?convertMoney(fallback,'EUR',currentCurrency,input.eurPln):fallback);}
+  for(const key of Object.keys(A)){const fallback=modelDefaults(input.profile)[key];$(`a-${key}`).value=input.assumptions[key]??fallback;}
   for(const id of ['client','reference','pickup','delivery','notes','sellPrice','reeferTemperature'])$(id).value=input[id]??'';
   for(const id of ['tailLift','palletJack'])$(id).checked=input[id]===true;
   $('reeferTemperatureField').hidden=input.profile!=='reefer136';
@@ -245,8 +252,11 @@ function loadInput(input){
 }
 
 function renderFxStatus(){
-  $('fxSummary').textContent=$('eurPln').value?`${fmt($('eurPln').value,4)}${fxMeta?' · NBP':''}`:'Ustaw';
-  $('fxStatus').textContent=fxMeta?`Kurs NBP: ${fmt($('eurPln').value,4)} PLN za 1 EUR · tabela ${fxMeta.fxTable} · data publikacji ${fxMeta.fxDate}`:$('eurPln').value?'Kurs ręczny — zapisze się z tą wersją wyceny.':'Pobierz kurs NBP lub wpisz własny kurs EUR/PLN.';
+  const valid=optionalRate();
+  $('fxDetails').hidden=!$('showEur').checked;
+  if($('eurPln').value&&!valid){$('fxSummary').textContent='Popraw kurs';$('fxStatus').textContent='Nieprawidłowy kurs — przeliczenie EUR jest niedostępne. Wycena i zapis w PLN nadal działają.';return;}
+  $('fxSummary').textContent=valid?`${fmt($('eurPln').value,4)}${fxMeta?' · NBP':''}`:'Ustaw';
+  $('fxStatus').textContent=fxMeta?`Kurs NBP: ${fmt($('eurPln').value,4)} PLN za 1 EUR · tabela ${fxMeta.fxTable} · data publikacji ${fxMeta.fxDate}`:$('eurPln').value?'Kurs ręczny — zapisze się z tą wersją wyceny.':'Podaj kurs lub pobierz go z NBP, aby zobaczyć EUR. Wycena i zapis w PLN działają bez kursu.';
 }
 async function fetchFx(){
   const button=$('fetchFx'),status=$('fxStatus'),requestRevision=revision,hadResult=!!result;
@@ -257,7 +267,7 @@ async function fetchFx(){
     normalizeExchangeRate(data.eurPln,true);
     $('eurPln').value=data.eurPln;fxMeta={fxSource:'NBP',fxDate:data.fxDate,fxTable:data.fxTable};
     document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);
-    syncCurrencyLabels();$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();
+    invalidate();if(hadResult)runCalculation();
     renderFxStatus();
   }catch(e){renderFxStatus();message(e.message,true);}
   finally{button.disabled=false;button.textContent='Pobierz kurs NBP';}
@@ -268,9 +278,9 @@ initFields();cargoRow();syncCurrencyLabels();renderFxStatus();syncModelMode();re
 if(matchMedia('(max-width:700px)').matches)$('mapDetails').open=false;
 $('workspace').addEventListener('submit',e=>{e.preventDefault();runCalculation(true);});
 $('workspace').addEventListener('input',e=>{
-  if(['profile','quoteCurrency','useCostModel'].includes(e.target.id))return;
+  if(e.target.name==='profileChoice'||['profile','showEur','useCostModel'].includes(e.target.id))return;
   if(e.target.matches('[data-money]'))clearMoneyAnchor(e.target);
-  if(e.target.id==='eurPln'){fxMeta=null;renderFxStatus();document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);syncCurrencyLabels();}
+  if(e.target.id==='eurPln'){const hadResult=!!result;fxMeta=null;renderFxStatus();invalidate();if(hadResult)runCalculation();return;}
   if(e.target.matches('[data-stop]')||['origin','destination','pickup','delivery','notes','tailLift','palletJack'].includes(e.target.id)||e.target.dataset.cargo||e.target.dataset.v||e.target.name==='mode')resetOfferScope();
   if((e.target.matches('[data-route-address]')||routingFields.includes(e.target.dataset.v))&&routeKey!==routeFingerprint())invalidateRoute();
   if(e.target.id==='distanceKm'&&Number(e.target.value)!==routeData?.distance_km)invalidateRoute(false);
@@ -278,9 +288,10 @@ $('workspace').addEventListener('input',e=>{
   invalidate();
 });
 $('workspace').addEventListener('change',e=>{
+  if(e.target.name==='profileChoice'){$('profile').value=e.target.value;$('profile').dispatchEvent(new Event('change',{bubbles:true}));return;}
   if(e.target.id==='useCostModel'){const hadResult=!!result;syncModelMode();$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();return;}
-  if(e.target.id==='quoteCurrency'){switchCurrency();return;}
-  if(e.target.id==='profile'){try{setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;message(err.message,true);}}
+  if(e.target.id==='showEur'){const hadResult=!!result;renderFxStatus();$('fxDetails').open=e.target.checked;invalidate();if(hadResult)runCalculation();return;}
+  if(e.target.id==='profile'){try{setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;syncProfileChoice();message(err.message,true);}}
   if(e.target.dataset.offer==='status'&&e.target.value==='accepted'){e.target.closest('.offer-row').dataset.needsConfirmation='false';document.querySelectorAll('[data-offer=status]').forEach(el=>{if(el!==e.target&&el.value==='accepted')el.value='received';});invalidate();runCalculation();}
 });
 $('workspace').addEventListener('click',e=>{
@@ -323,7 +334,7 @@ setupEnquiryImport({api,parseLocal:parseEnquiry,offerContext:()=>{
 $('offerOpen').onclick=()=>{try{$('customerText').value=customerOffer(result);$('copyStatus').textContent='';$('offerDialog').showModal();}catch(e){message(e.message,true);}};
 $('copyOffer').onclick=async()=>{try{await navigator.clipboard.writeText($('customerText').value);$('copyStatus').textContent='Skopiowano treść oferty.';}catch{$('customerText').focus();$('customerText').select();$('copyStatus').textContent='Zaznaczono treść. Skopiuj ją ręcznie (Ctrl/Cmd+C).';}};
 $('printOffer').onclick=()=>{$('printArea').textContent=$('customerText').value;$('offerDialog').close();window.print();};
-$('history').onclick=e=>{const button=e.target.closest('[data-load]');if(!button)return;if(dirty&&!confirm('Wczytać zapis i odrzucić niezapisane zmiany?'))return;const row=historyRows[Number(button.dataset.load)];try{calculate(row.input);loadInput(row.input);}catch(err){message('Nie można wczytać tej wersji: '+err.message,true);}};
+$('history').onclick=e=>{const button=e.target.closest('[data-load]');if(!button)return;if(dirty&&!confirm('Wczytać zapis i odrzucić niezapisane zmiany?'))return;const row=historyRows[Number(button.dataset.load)];try{const legacy=(row.input.currency||'EUR')==='EUR';if(legacy&&!row.input.eurPln&&!optionalRate()){$('showEur').checked=true;renderFxStatus();$('fxDetails').open=true;message('Ten zapis jest w EUR. Podaj kurs lub pobierz NBP, a następnie kliknij Wczytaj ponownie. Kwoty zostaną przeliczone na PLN.',true);$('eurPln').focus();return;}const input=quoteToPln(row.input,optionalRate());if(legacy&&!confirm(`Przeliczyć zapis EUR na PLN po kursie 1 EUR = ${input.eurPln} PLN? Oryginalny zapis pozostanie bez zmian.`))return;loadInput(input);if(legacy){dirty=true;message('Przeliczono starszą wycenę na PLN. Sprawdź kwoty i zapisz jako nową wersję.');}}catch(err){message('Nie można wczytać tej wersji: '+err.message,true);}};
 if(localStorage.getItem('optirax_token')){
   loadHistory();
   api('/api/auth/profile').then(p=>{$('accountLabel').textContent=`${String(p.plan||'konto').toUpperCase()} · ${p.email||'Optirax'}`;}).catch(()=>{$('accountLabel').textContent='Optirax';});

@@ -1,5 +1,5 @@
 // Text, clipboard images and local documents. Nothing is sent until the AI button is clicked.
-import {renderOfferPreview,prepareOffers} from './carrier-offer-import.js?v=1.6.0';
+import {renderOfferPreview,prepareOffers} from './carrier-offer-import.js?v=1.9.0';
 export function setupEnquiryImport({api,parseLocal,apply,offerContext,applyOffers}){
   const $=id=>document.getElementById(id),dialog=$('pasteDialog');
   const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -84,3 +84,4 @@ export function setupEnquiryImport({api,parseLocal,apply,offerContext,applyOffer
     dialog.close();invalidate();files=[];$('enquiry').value='';renderFiles();
   };
 }
+

@@ -202,3 +202,21 @@ main{max-width:none}
   .capacity div{flex-wrap:wrap;gap:5px}
   .account .quiet{font-size:12px;padding:6px}
 }
+
+.vehicle-picker{border:0;padding:0;margin:20px 0 16px;min-width:0}
+.vehicle-picker legend{font-size:16px;font-weight:700;color:var(--ink);padding:0;margin-bottom:10px}
+.vehicle-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.vehicle-options label{flex-direction:row;align-items:center;gap:9px;padding:12px 10px;min-height:66px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
+.vehicle-options label:has(input:checked){border:2px solid var(--green);padding:11px 9px;background:var(--tint);box-shadow:0 0 0 1px var(--green)}
+.vehicle-options strong{display:block;font-size:16px;color:var(--ink)}
+.vehicle-options small{display:block;font-size:12px;line-height:1.4;color:var(--muted);margin-top:4px;font-weight:400}
+.vehicle-options label:focus-within{outline:2px solid var(--green);outline-offset:3px}
+#reeferTemperatureField{margin-bottom:16px}
+#result{scroll-margin-top:16px}
+.base-currency{color:var(--ink);font-size:14px;white-space:nowrap}
+.eur-toggle{flex-direction:row;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.currency-toolbar:has(#showEur){justify-content:space-between}
+.currency-toolbar #fxDetails{flex-basis:100%;margin:0}
+#result:focus{outline:2px solid var(--green);outline-offset:6px;border-radius:4px}
+@media(min-width:760px) and (max-width:1199px){.vehicle-options{grid-template-columns:1fr}}
+@media(max-width:370px){.vehicle-options label{padding:10px 7px;gap:6px}.vehicle-options label:has(input:checked){padding:9px 6px}.vehicle-options strong{font-size:14px}.vehicle-options small{font-size:11px}}

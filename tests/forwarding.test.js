@@ -1,9 +1,31 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,normalizeInput,parseEnquiry,customerOffer,ForwardingError,PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,convertMoney} from '../public/forwarding-engine.js';
+import {calculate,normalizeInput,parseEnquiry,customerOffer,ForwardingError,PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,convertMoney,modelDefaults,quoteToPln} from '../public/forwarding-engine.js';
 import {createExchangeRateService} from '../lib/exchange-rate.js';
 
 export function sample(){return {profile:'bus',mode:'dedicated',vehicle:{...PROFILES.bus},assumptions:{...DEFAULT_ASSUMPTIONS},route:{origin:'PL Poznań',destination:'DE Berlin',distanceKm:300,durationHours:5,source:'TomTom'},cargo:[{qty:2,length:120,width:80,height:150,weight:200,stackable:false}],client:'Test',pickup:'2026-10-10',delivery:'2026-10-11',reviewed:true,offers:[]};}
+test('PLN: EUR preview is optional and cannot change purchase, sale or margin',()=>{
+  const input={...sample(),currency:'PLN',useCostModel:false,assumptions:{targetMargin:20,minimumMargin:10},offers:[{carrier:'Test',price:1000,status:'accepted'}]};
+  const plain=calculate(input);assert.equal(plain.sell,1250);assert.equal(plain.margin,20);assert.doesNotMatch(customerOffer(plain),/EUR/);
+  for(const rate of [4.25,4.80]){
+    const converted=calculate({...input,showEur:true,eurPln:rate});
+    assert.equal(converted.buy,plain.buy);assert.equal(converted.sell,plain.sell);assert.equal(converted.profit,plain.profit);assert.equal(converted.margin,plain.margin);
+    assert.match(customerOffer(converted),/Cena: 1250.00 PLN/);assert.match(customerOffer(converted),/Orientacyjnie: .* EUR/);
+  }
+});
+test('PLN: legacy conversion uses explicit FX and leaves source unchanged',()=>{
+  const input={...sample(),sellPrice:400,offers:[{carrier:'Test',price:200,status:'accepted'}]},before=JSON.stringify(input);
+  assert.throws(()=>quoteToPln(input),/kurs/);
+  const pln=quoteToPln(input,4.25);assert.equal(pln.sellPrice,1700);assert.equal(pln.offers[0].price,850);assert.equal(pln.currency,'PLN');assert.equal(pln.reviewed,false);
+  assert.equal(pln.assumptions.kmRate,input.assumptions.kmRate*4.25);assert.equal(JSON.stringify(input),before);
+  assert.deepEqual(quoteToPln(pln,5),pln);
+});
+test('PLN: every vehicle has usable native defaults without an exchange rate',()=>{
+  for(const profile of Object.keys(PROFILES)){
+    const r=calculate({...sample(),currency:'PLN',profile,vehicle:PROFILES[profile],reeferTemperature:'-18°C',assumptions:modelDefaults(profile)});
+    assert.equal(r.eurPln,null);assert.ok(r.buy>0);assert.equal(r.input.assumptions.kmRate,modelDefaults(profile).kmRate);
+  }
+});
 test('forwarding: dedicated costs, margin on sales and fixed sell-price ceiling reconcile',()=>{
   const i=sample();Object.assign(i.assumptions,{kmRate:1,hourRate:10,deadheadKm:0,fixed:0,tolls:0,crossing:0,carrierMarkup:0,minimumBuy:0,targetMargin:20,minimumMargin:10});
   let r=calculate(i);assert.equal(r.buy,350);assert.equal(r.sell,437.5);assert.equal(r.profit,87.5);assert.equal(r.margin,20);assert.equal(r.maxBuy,393.75);
@@ -52,9 +74,10 @@ test('forwarding: JSON round trip reproduces calculated historical prices',()=>{
 test('forwarding: accepted quote cannot use unconfirmed changed shipment conditions',()=>{
   const i=sample();i.offers=[{carrier:'Test',price:200,status:'accepted',needsConfirmation:true}];assert.throws(()=>calculate(i),/ponownie potwierdź/);
 });
-test('currency: old snapshots remain EUR, PLN requires an explicit positive manual rate',()=>{
+test('currency: old snapshots remain EUR, native PLN works without FX; supplied rates are validated',()=>{
   assert.equal(calculate(sample()).currency,'EUR');assert.equal(calculate(sample()).eurPln,null);
-  for(const rate of ['',null,0,-4,Infinity,true,'oops',4.12345])assert.throws(()=>calculate({...sample(),currency:'PLN',eurPln:rate}),ForwardingError);
+  for(const rate of ['',null])assert.equal(calculate({...sample(),currency:'PLN',eurPln:rate}).eurPln,null);
+  for(const rate of [0,-4,Infinity,true,'oops',4.12345])assert.throws(()=>calculate({...sample(),currency:'PLN',eurPln:rate}),ForwardingError);
   assert.throws(()=>calculate({...sample(),currency:'USD',eurPln:4.3}),/walutę/);
   assert.equal(calculate({...sample(),currency:'PLN',eurPln:'4,3000'}).input.fxSource,'manual');
 });
