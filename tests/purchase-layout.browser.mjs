@@ -52,10 +52,10 @@ try{
  await page.locator('[data-use-offer]').waitFor();
  assert.equal(await page.locator('#fxDetails').isVisible(),false);assert.equal(await page.locator('#showEur').isChecked(),false);
  assert.equal(await page.locator('#offerEditor').isVisible(),true);
- assert.equal(await page.locator('.vehicle-options input').count(),5);
- assert.ok((await page.locator('.vehicle-picker').boundingBox()).y<(await page.locator('#client').boundingBox()).y);
+ assert.equal(await page.locator('#profile option').count(),5);
+ assert.ok(await page.locator('#profile').evaluate(el=>Boolean(document.getElementById('routeStatus').compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)&&Boolean(el.compareDocumentPosition(document.getElementById('cargoRows'))&Node.DOCUMENT_POSITION_FOLLOWING)));
  for(const profile of ['solo75','solo12','curtain136','reefer136','bus']){
-   await page.locator(`[name=profileChoice][value=${profile}]`).check();
+   await page.locator('#profile').selectOption(profile);
    assert.equal(await page.locator('#profile').inputValue(),profile);
    assert.equal(await page.locator('#reeferTemperatureField').isVisible(),profile==='reefer136');
  }

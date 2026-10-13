@@ -51,15 +51,12 @@ function syncModelMode(){
   $('modelAssumptions').disabled=!enabled;$('modelAssumptions').hidden=!enabled;
   $('modelStatus').textContent=enabled?'Opcjonalny szacunek zakupu na podstawie kilometrów i kosztów auta.':'Model wyłączony. Stawki i koszty modelowe są pomijane. Wybierz ofertę przewoźnika po prawej.';
 }
-function syncProfileChoice(){
-  document.querySelectorAll('[name=profileChoice]').forEach(el=>el.checked=el.value===$('profile').value);
-}
 function setProfile(){
   const v=PROFILES[$('profile').value];
   if(!v)throw Error('Nieprawidłowy profil pojazdu.');
   $('vehicleFields').innerHTML=fields(V,'v',v);
   for(const k of ['kmRate','hourRate']){const el=$(`a-${k}`);el.value=modelDefaults($('profile').value)[k];clearMoneyAnchor(el);}
-  currentProfile=$('profile').value;syncProfileChoice();
+  currentProfile=$('profile').value;
   $('reeferTemperatureField').hidden=currentProfile!=='reefer136';
   if(currentProfile!=='reefer136')$('reeferTemperature').value='';
   syncCurrencyLabels();
@@ -294,7 +291,7 @@ initFields();cargoRow();syncCurrencyLabels();renderFxStatus();syncModelMode();re
 if(matchMedia('(max-width:700px)').matches)$('mapDetails').open=false;
 $('workspace').addEventListener('submit',e=>{e.preventDefault();runCalculation(true);});
 $('workspace').addEventListener('input',e=>{
-  if(e.target.name==='profileChoice'||['profile','showEur','useCostModel'].includes(e.target.id))return;
+  if(['profile','showEur','useCostModel'].includes(e.target.id))return;
   if(e.target.id==='salesVat'||e.target.dataset.offer==='vat'){const hadResult=!!result;$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();return;}
   if(e.target.matches('[data-money]'))clearMoneyAnchor(e.target);
   if(e.target.id==='eurPln'){const hadResult=!!result;fxMeta=null;renderFxStatus();invalidate();if(hadResult)runCalculation();return;}
@@ -305,10 +302,9 @@ $('workspace').addEventListener('input',e=>{
   invalidate();
 });
 $('workspace').addEventListener('change',e=>{
-  if(e.target.name==='profileChoice'){$('profile').value=e.target.value;$('profile').dispatchEvent(new Event('change',{bubbles:true}));return;}
   if(e.target.id==='useCostModel'){const hadResult=!!result;syncModelMode();$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();return;}
   if(e.target.id==='showEur'){const hadResult=!!result;renderFxStatus();$('fxDetails').open=e.target.checked;invalidate();if(hadResult)runCalculation();return;}
-  if(e.target.id==='profile'){try{setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;syncProfileChoice();message(err.message,true);}}
+  if(e.target.id==='profile'){try{setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;message(err.message,true);}}
   if(e.target.dataset.offer==='status'&&e.target.value==='accepted'){e.target.closest('.offer-row').dataset.needsConfirmation='false';document.querySelectorAll('[data-offer=status]').forEach(el=>{if(el!==e.target&&el.value==='accepted')el.value='received';});invalidate();runCalculation();}
 });
 $('workspace').addEventListener('click',e=>{
