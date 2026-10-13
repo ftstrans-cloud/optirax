@@ -1,6 +1,6 @@
 import {setupRouteInputs} from './forwarding-route.js?v=1.8.0';
-import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeExchangeRate,convertMoney,modelDefaults,quoteToPln,grossAmount,vatLabel} from './forwarding-engine.js?v=1.10.0';
-import {setupEnquiryImport} from './enquiry-import.js?v=1.10.0';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeExchangeRate,convertMoney,modelDefaults,quoteToPln,grossAmount,vatLabel,ROUTING_VEHICLE_FIELDS,routingVehicleChanged} from './forwarding-engine.js?v=1.11.0';
+import {setupEnquiryImport} from './enquiry-import.js?v=1.11.0';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -49,7 +49,7 @@ function syncModelMode(){
   const enabled=$('useCostModel').checked;
   $('pricingNotice').textContent=enabled?'Model negocjacyjny. Przykładowe koszty wymagają dopasowania do Twoich zakupów. Wynik modelu nie jest stawką rynkową.':'Wycena z oferty przewoźnika. Zakup pochodzi z wybranej oferty, a cenę klienta określa marża lub wpisana kwota sprzedaży.';
   $('modelAssumptions').disabled=!enabled;$('modelAssumptions').hidden=!enabled;
-  $('modelStatus').textContent=enabled?'Opcjonalny szacunek zakupu na podstawie kilometrów i kosztów auta.':'Model wyłączony. Stawki i koszty modelowe są pomijane. Wybierz ofertę przewoźnika po prawej.';
+  $('modelStatus').textContent=enabled?'Opcjonalny szacunek zakupu na podstawie kilometrów i kosztów auta.':'Model wyłączony. Stawki i koszty modelowe są pomijane. Wybierz ofertę przewoźnika na liście.';
 }
 function setProfile(){
   const v=PROFILES[$('profile').value];
@@ -93,6 +93,7 @@ function offerRow(data={carrier:'',price:'',status:'received',vat:'23'}){
   renderSelectedOfferPicker();
 }
 function renderSelectedOfferPicker(){
+  updateShipmentSummary();
   updatePriceHints();
   const rows=[...document.querySelectorAll('.offer-row')];
   const offers=rows.map((row,index)=>({index,vat:row.querySelector('[data-offer=vat]').value,carrier:row.querySelector('[data-offer=carrier]').value.trim()||`Przewoźnik ${index+1}`,price:Number(row.querySelector('[data-offer=price]').value),status:row.querySelector('[data-offer=status]').value,terms:row.querySelector('[data-offer=terms]').value,needsConfirmation:row.dataset.needsConfirmation==='true'}));
@@ -118,10 +119,15 @@ function useSelectedOffer(choice){
   // Restore keyboard focus after rebuilding the list of purchase options.
   [...$('selectedOfferBox').querySelectorAll('[data-use-offer]')].find(el=>el.dataset.useOffer===choice)?.focus({preventScroll:true});
 }
+function updateShipmentSummary(){
+  const pieces=[...document.querySelectorAll('[data-cargo=qty]')].reduce((sum,el)=>sum+(Number(el.value)||0),0);
+  const route=[$('origin').value,$('destination').value].filter(Boolean).join(' → ');
+  $('shipmentSummary').textContent=[route,PROFILES[$('profile').value]?.name,pieces?`${pieces} szt.`:'',$('distanceKm').value?`${fmt($('distanceKm').value,0)} km`:''].filter(Boolean).join(' · ')||'Uzupełnij dane do wyceny';
+}
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
 function optionalRate(){try{return normalizeExchangeRate($('eurPln').value);}catch{return null;}}
 function collect(){return {useCostModel:$('useCostModel').checked,currency:currentCurrency,salesVat:$('salesVat').value,showEur:$('showEur').checked,eurPln:optionalRate(),fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
-  route:{origin:$('origin').value,destination:$('destination').value,stops:routeInputs.getStops(),snapshot:routeData?.snapshot||null,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
+  route:{routingVehicle:routeData?.routingVehicle||null,origin:$('origin').value,destination:$('destination').value,stops:routeInputs.getStops(),snapshot:routeData?.snapshot||null,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
   offers:[...document.querySelectorAll('.offer-row')].map(row=>({...Object.fromEntries([...row.querySelectorAll('[data-offer]')].map(e=>[e.dataset.offer,e.value])),needsConfirmation:row.dataset.needsConfirmation==='true',importSource:row.dataset.importSource||''})),
@@ -144,7 +150,7 @@ function invalidateRoute(clearDistance=true){
   routeKey='';routeSequence++;routeRequest?.abort();routeRequest=null;routeData=null;clearMap();$('fetchRoute').disabled=false;$('fetchRoute').textContent='Pobierz trasę';
   if(clearDistance)$('distanceKm').value='';
   $('routeStatus').textContent=clearDistance?'Trasa zmieniona. Pobierz nowy przebieg albo podaj sprawdzony dystans.':'Dystans ręczny — potwierdź przebieg oraz czas przejazdu.';
-  $('mapCaption').textContent='Brak aktualnej trasy na mapie.';
+  $('mapCaption').textContent='Brak aktualnej trasy na mapie.';refreshRouteVehicleStatus();
 }
 function showQuoteResult(){
   // Run after layout observers have accounted for the hidden validation message.
@@ -160,8 +166,8 @@ function showQuoteResult(){
   });
 }
 function runCalculation(scroll=false){
-  try{result=calculate(collect());render();$('message').hidden=true;if(scroll)showQuoteResult();return true;}
-  catch(e){result=null;$('saveQuote').disabled=true;$('offerOpen').disabled=true;message(e.message,true);$('message').scrollIntoView({behavior:'smooth',block:'center'});return false;}
+  try{result=calculate(collect());render();$('message').hidden=true;if(scroll){$('shipmentDetails').open=!!result.blockers.length;document.querySelector('.form-column').scrollTop=0;showQuoteResult();}return true;}
+  catch(e){$('shipmentDetails').open=true;result=null;$('saveQuote').disabled=true;$('offerOpen').disabled=true;message(e.message,true);$('message').scrollIntoView({behavior:'smooth',block:'center'});return false;}
 }
 function render(){
   const r=result,symbol=currencySymbol(r.currency),otherCurrency=r.currency==='PLN'?'EUR':'PLN';
@@ -181,8 +187,15 @@ function render(){
   document.querySelectorAll('.offer-row').forEach((row,index)=>{const o=r.input.offers[index],p=row.querySelector('.offer-compare'),delta=r.maxBuy-o.price;p.classList.toggle('bad',delta<0||o.needsConfirmation);p.textContent=`${o.needsConfirmation?'Warunki przesyłki zmienione — potwierdź ponownie z przewoźnikiem przed przyjęciem. ':''}${o.status==='rejected'?'Odrzucona · ':''}${delta<0?'Ponad limit o':'Zapas do limitu:'} ${money(Math.abs(delta))}. Marża przy tej ofercie: ${fmt((r.sell-o.price)/r.sell*100,1)}%.`;});
 }
 async function api(url,options={}){const response=await fetch(url,options);let data;try{data=await response.json();}catch{throw Error('Nieprawidłowa odpowiedź serwera. Odśwież aplikację i spróbuj ponownie.');}if(!response.ok)throw Error(data.error||'Nie udało się wykonać operacji.');return data;}
-const routingFields=['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'];
-function routeFingerprint(){return JSON.stringify([$('origin').value.trim(),routeInputs.getStops(),$('destination').value.trim(),...routingFields.map(k=>Number($(`v-${k}`).value))]);}
+const routingFields=ROUTING_VEHICLE_FIELDS;
+function routeFingerprint(){return JSON.stringify([$('origin').value.trim(),routeInputs.getStops(),$('destination').value.trim()]);}
+function currentRoutingVehicle(){return Object.fromEntries(routingFields.map(key=>[key,Number($(`v-${key}`).value)]));}
+function refreshRouteVehicleStatus(){
+  const mismatch=routeData?.routing_engine==='TomTom'&&routingVehicleChanged(routeData.routingVehicle,currentRoutingVehicle());
+  $('routeVehicleStatus').hidden=!mismatch;
+  $('routeVehicleStatus').textContent=mismatch?'Zmieniono parametry auta. Zachowano trasę, kilometry i czas dla poprzedniego pojazdu. Sprawdź ograniczenia przejazdu; nową trasę możesz pobrać przyciskiem „Pobierz trasę”.':'';
+  $('mapSummary').textContent=routeData?`${fmt(routeData.distance_km,0)} km${mismatch?' · sprawdź profil auta':''}`:'Rozwiń';
+}
 function routeChanged(){invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}
 function routeSnapshot(data){
   const coords=data.geometry?.coordinates;if(!Array.isArray(coords)||coords.length<2)return null;
@@ -192,21 +205,22 @@ function routeSnapshot(data){
 function showRoute(data){
   $('routeStatus').textContent=`${fmt(data.distance_km,1)} km · czas jazdy ${fmt(data.duration_h,1)} h (bez planowania odpoczynków).${data.archived?' Trasa z zapisanej wersji.':''}`;
   $('mapCaption').textContent=(data.points?.length?data.points.map(p=>p.label):[$('origin').value,...routeInputs.getStops(),$('destination').value]).join(' → ')+'. Sprawdź punkty i przebieg. Myto uzupełnij dla tego auta.';
-  drawMap(data);
+  drawMap(data);refreshRouteVehicleStatus();
 }
 async function fetchRoute(){
   const origin=$('origin').value.trim(),destination=$('destination').value.trim();
   if(!origin||!destination){message('Podaj oba adresy.',true);return;}
-  invalidateRoute(false);$('reviewed').checked=false;invalidate();routeKey=routeFingerprint();const seq=routeSequence;const controller=new AbortController();routeRequest=controller;
+  routeRequest?.abort();routeSequence++;$('reviewed').checked=false;invalidate();routeKey=routeFingerprint();const seq=routeSequence;const controller=new AbortController();routeRequest=controller;
+  const routingVehicle=currentRoutingVehicle();
   $('fetchRoute').disabled=true;$('fetchRoute').textContent='Wyznaczanie…';$('routeStatus').textContent='Pobieranie trasy z profilem wybranego auta…';
   try{
-    const vehicle=collectFields('[data-v]','data-v');const truckParams=Object.fromEntries(['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'].map(k=>[k,vehicle[k]]));
+    const truckParams=routingVehicle;
     const data=await api(routeInputs.getStops().length?'/api/route/multi':'/api/route',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({origin,destination,stops:routeInputs.getStops(),truckParams}),signal:controller.signal});
     if(seq!==routeSequence)return;
     if(data.routing_engine!=='TomTom'||!Number.isFinite(data.distance_km)||!Number.isFinite(data.duration_h))throw Error('Brak potwierdzonej trasy TomTom. Możesz wpisać zweryfikowany dystans ręcznie.');
-    routeData={...data,snapshot:routeSnapshot(data)};$('distanceKm').value=data.distance_km;
-    showRoute(routeData);dirty=true;
-  }catch(e){if(seq===routeSequence&&e.name!=='AbortError'){message(e.message,true);$('routeStatus').textContent='Nie pobrano trasy. Podaj sprawdzony dystans ręcznie lub spróbuj ponownie.';}}
+    const hadResult=!!result;routeData={...data,routingVehicle,snapshot:routeSnapshot(data)};$('distanceKm').value=data.distance_km;
+    showRoute(routeData);invalidate();if(hadResult)runCalculation();
+  }catch(e){if(seq===routeSequence&&e.name!=='AbortError'){message(e.message,true);if(routeData)showRoute(routeData);$('routeStatus').textContent=routeData?'Nie pobrano nowej trasy. Zachowano poprzedni dystans, czas i mapę.':'Nie pobrano trasy. Podaj sprawdzony dystans ręcznie lub spróbuj ponownie.';}}
   finally{if(seq===routeSequence){$('fetchRoute').disabled=false;$('fetchRoute').textContent='Pobierz trasę';routeRequest=null;}}
 }
 function drawMap(data){
@@ -257,9 +271,10 @@ function loadInput(input){
   $('origin').value=input.route.origin;$('destination').value=input.route.destination;routeInputs.setStops(input.route.stops||[]);$('distanceKm').value=input.route.distanceKm;
   $('cargoRows').replaceChildren();input.cargo.forEach(cargoRow);$('offerRows').replaceChildren();(input.offers||[]).forEach(offerRow);syncCurrencyLabels();
   // Restore the saved route without another routing request; legacy records may lack geometry.
-  routeData={duration_h:input.route.durationHours,distance_km:input.route.distanceKm,routing_engine:input.route.source,snapshot:input.route.snapshot,geometry:input.route.snapshot?{coordinates:input.route.snapshot.coordinates}:null,points:input.route.snapshot?.points,archived:true};routeKey=routeFingerprint();
-  invalidate();runCalculation();dirty=false;
+  routeData={routingVehicle:input.route.routingVehicle||(input.route.source==='TomTom'?currentRoutingVehicle():null),duration_h:input.route.durationHours,distance_km:input.route.distanceKm,routing_engine:input.route.source,snapshot:input.route.snapshot,geometry:input.route.snapshot?{coordinates:input.route.snapshot.coordinates}:null,points:input.route.snapshot?.points,archived:true};routeKey=routeFingerprint();
+  invalidate();runCalculation();$('shipmentDetails').open=!!result?.blockers.length;$('offerManagement').open=false;dirty=false;
   if(routeData.snapshot)showRoute(routeData);else $('routeStatus').textContent='Dystans i czas z zapisanej wersji. Ten zapis nie zawiera mapy — pobierz trasę, aby ją wyświetlić.';
+  refreshRouteVehicleStatus();
   $('saveState').textContent='Wczytano dane. Ponownie potwierdź założenia przed ofertą. Zapis utworzy nową wersję.';
   $('workspace').scrollIntoView({behavior:'smooth'});
 }
@@ -288,7 +303,7 @@ async function fetchFx(){
 
 const routeInputs=setupRouteInputs({api,onChange:routeChanged,message});
 initFields();cargoRow();syncCurrencyLabels();renderFxStatus();syncModelMode();renderSelectedOfferPicker();
-if(matchMedia('(max-width:700px)').matches)$('mapDetails').open=false;
+$('mapDetails').open=false;
 $('workspace').addEventListener('submit',e=>{e.preventDefault();runCalculation(true);});
 $('workspace').addEventListener('input',e=>{
   if(['profile','showEur','useCostModel'].includes(e.target.id))return;
@@ -296,7 +311,8 @@ $('workspace').addEventListener('input',e=>{
   if(e.target.matches('[data-money]'))clearMoneyAnchor(e.target);
   if(e.target.id==='eurPln'){const hadResult=!!result;fxMeta=null;renderFxStatus();invalidate();if(hadResult)runCalculation();return;}
   if(e.target.matches('[data-stop]')||['origin','destination','pickup','delivery','notes','tailLift','palletJack'].includes(e.target.id)||e.target.dataset.cargo||e.target.dataset.v||e.target.name==='mode')resetOfferScope();
-  if((e.target.matches('[data-route-address]')||routingFields.includes(e.target.dataset.v))&&routeKey!==routeFingerprint())invalidateRoute();
+  if(e.target.matches('[data-route-address]')&&routeKey!==routeFingerprint())invalidateRoute();
+  if(routingFields.includes(e.target.dataset.v))refreshRouteVehicleStatus();
   if(e.target.id==='distanceKm'&&Number(e.target.value)!==routeData?.distance_km)invalidateRoute(false);
   if(e.target.id!=='reviewed')$('reviewed').checked=false;
   invalidate();
@@ -304,7 +320,7 @@ $('workspace').addEventListener('input',e=>{
 $('workspace').addEventListener('change',e=>{
   if(e.target.id==='useCostModel'){const hadResult=!!result;syncModelMode();$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();return;}
   if(e.target.id==='showEur'){const hadResult=!!result;renderFxStatus();$('fxDetails').open=e.target.checked;invalidate();if(hadResult)runCalculation();return;}
-  if(e.target.id==='profile'){try{setProfile();invalidateRoute();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;message(err.message,true);}}
+  if(e.target.id==='profile'){try{setProfile();refreshRouteVehicleStatus();resetOfferScope();$('reviewed').checked=false;invalidate();}catch(err){$('profile').value=currentProfile;message(err.message,true);}}
   if(e.target.dataset.offer==='status'&&e.target.value==='accepted'){e.target.closest('.offer-row').dataset.needsConfirmation='false';document.querySelectorAll('[data-offer=status]').forEach(el=>{if(el!==e.target&&el.value==='accepted')el.value='received';});invalidate();runCalculation();}
 });
 $('workspace').addEventListener('click',e=>{
@@ -313,7 +329,7 @@ $('workspace').addEventListener('click',e=>{
   if(offer){offer.closest('.offer-row').remove();invalidate();}
 });
 $('addCargo').onclick=()=>{cargoRow();resetOfferScope();$('reviewed').checked=false;invalidate();};
-$('addOffer').onclick=()=>{offerRow();invalidate();$('offerRows').lastElementChild?.querySelector('input')?.focus();};
+$('addOffer').onclick=()=>{$('offerManagement').open=true;offerRow();invalidate();$('offerRows').lastElementChild?.querySelector('input')?.focus();};
 $('workspace').addEventListener('click',e=>{const button=e.target.closest('[data-use-offer]');if(button)useSelectedOffer(button.dataset.useOffer);});
 $('fetchRoute').onclick=fetchRoute;$('saveQuote').onclick=saveQuote;$('refreshHistory').onclick=loadHistory;
 $('fetchFx').onclick=fetchFx;
@@ -326,11 +342,11 @@ setupEnquiryImport({api,parseLocal:parseEnquiry,offerContext:()=>{
   const input=collect();return {origin:input.route.origin,destination:input.route.destination,pickup:input.pickup,delivery:input.delivery,reference:input.reference,tailLift:input.tailLift,currency:currentCurrency,eurPln:input.eurPln,existingCount:input.offers.length,scope:JSON.stringify([input.route.origin,input.route.stops,input.route.destination,input.cargo,input.pickup,input.delivery,input.reference,input.tailLift,input.palletJack,input.notes,input.profile,input.mode])};
 },applyOffers:offers=>{
   if(saving){message('Poczekaj na zakończenie zapisu wyceny.',true);return false;}
-  offers.forEach(offerRow);invalidate();message(`Dodano ${offers.length} ofert do bieżącego zlecenia. Przelicz porównanie i potwierdź warunki przed przyjęciem oferty.`);return true;
+  $('offerManagement').open=true;offers.forEach(offerRow);invalidate();message(`Dodano ${offers.length} ofert do bieżącego zlecenia. Przelicz porównanie i potwierdź warunki przed przyjęciem oferty.`);return true;
 },apply:(data,autoRoute)=>{
   if(saving){message('Poczekaj na zakończenie zapisu wyceny.',true);return false;}
   if(dirty&&!confirm('Rozpocząć nowe zapytanie z odczytanych danych? Niezapisana wycena, ceny i oferty przewoźników zostaną zastąpione.'))return false;
-  invalidateRoute();routeInputs.setStops([]);
+  $('shipmentDetails').open=true;invalidateRoute();routeInputs.setStops([]);
   for(const id of ['origin','destination','client','reference','pickup','delivery','notes'])$(id).value=data[id]||'';
   $('salesVat').value='23';$('sellPrice').value='';clearMoneyAnchor($('sellPrice'));$('offerRows').replaceChildren();
   $('cargoRows').replaceChildren();(data.cargo.length?data.cargo:[{}]).forEach(cargoRow);
@@ -347,7 +363,7 @@ setupEnquiryImport({api,parseLocal:parseEnquiry,offerContext:()=>{
 $('offerOpen').onclick=()=>{try{$('customerText').value=customerOffer(result);$('copyStatus').textContent='';$('offerDialog').showModal();}catch(e){message(e.message,true);}};
 $('copyOffer').onclick=async()=>{try{await navigator.clipboard.writeText($('customerText').value);$('copyStatus').textContent='Skopiowano treść oferty.';}catch{$('customerText').focus();$('customerText').select();$('copyStatus').textContent='Zaznaczono treść. Skopiuj ją ręcznie (Ctrl/Cmd+C).';}};
 $('printOffer').onclick=()=>{$('printArea').textContent=$('customerText').value;$('offerDialog').close();window.print();};
-$('history').onclick=e=>{const button=e.target.closest('[data-load]');if(!button)return;if(dirty&&!confirm('Wczytać zapis i odrzucić niezapisane zmiany?'))return;const row=historyRows[Number(button.dataset.load)];try{const legacy=(row.input.currency||'EUR')==='EUR';if(legacy&&!row.input.eurPln&&!optionalRate()){$('showEur').checked=true;renderFxStatus();$('fxDetails').open=true;message('Ten zapis jest w EUR. Podaj kurs lub pobierz NBP, a następnie kliknij Wczytaj ponownie. Kwoty zostaną przeliczone na PLN.',true);$('eurPln').focus();return;}const input=quoteToPln(row.input,optionalRate());if(legacy&&!confirm(`Przeliczyć zapis EUR na PLN po kursie 1 EUR = ${input.eurPln} PLN? Oryginalny zapis pozostanie bez zmian.`))return;loadInput(input);if(legacy){dirty=true;message('Przeliczono starszą wycenę na PLN. Sprawdź kwoty i zapisz jako nową wersję.');}}catch(err){message('Nie można wczytać tej wersji: '+err.message,true);}};
+$('history').onclick=e=>{const button=e.target.closest('[data-load]');if(!button)return;if(dirty&&!confirm('Wczytać zapis i odrzucić niezapisane zmiany?'))return;const row=historyRows[Number(button.dataset.load)];try{const legacy=(row.input.currency||'EUR')==='EUR';if(legacy&&!row.input.eurPln&&!optionalRate()){$('currencySettings').open=true;$('showEur').checked=true;renderFxStatus();$('fxDetails').open=true;message('Ten zapis jest w EUR. Podaj kurs lub pobierz NBP, a następnie kliknij Wczytaj ponownie. Kwoty zostaną przeliczone na PLN.',true);$('eurPln').focus();return;}const input=quoteToPln(row.input,optionalRate());if(legacy&&!confirm(`Przeliczyć zapis EUR na PLN po kursie 1 EUR = ${input.eurPln} PLN? Oryginalny zapis pozostanie bez zmian.`))return;loadInput(input);if(legacy){dirty=true;message('Przeliczono starszą wycenę na PLN. Sprawdź kwoty i zapisz jako nową wersję.');}}catch(err){message('Nie można wczytać tej wersji: '+err.message,true);}};
 if(localStorage.getItem('optirax_token')){
   loadHistory();
   api('/api/auth/profile').then(p=>{$('accountLabel').textContent=`${String(p.plan||'konto').toUpperCase()} · ${p.email||'Optirax'}`;}).catch(()=>{$('accountLabel').textContent='Optirax';});
@@ -355,7 +371,7 @@ if(localStorage.getItem('optirax_token')){
 }
 
 
-// Fit the three independent desktop scroll areas below the page controls.
+// Fit the two independent desktop scroll areas below the page controls.
 function sizeWorkspace(){
   if(!matchMedia('(min-width:760px)').matches){$('workspace').style.removeProperty('--workspace-height');return;}
   const top=$('workspace').getBoundingClientRect().top+window.scrollY;

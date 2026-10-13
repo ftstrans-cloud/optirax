@@ -10,7 +10,7 @@ const require=createRequire(import.meta.url);
 const {chromium}=require('playwright');
 const root=new URL('../public/',import.meta.url).pathname,out=process.env.QA_ARTIFACT_DIR||'/tmp/optirax-purchase-layout-qa';
 await fs.mkdir(out,{recursive:true});
-let saved=[],routeCalls=[];
+let saved=[],routeCalls=[],holdNextRoute=false,heldRoute=null,failNextRoute=false;
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(url.pathname.startsWith('/api/')){
@@ -19,6 +19,8 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname==='/api/expand-url')return res.end(JSON.stringify({url:'https://www.google.com/maps/dir/Poznań/Gorzów/Berlin'}));
     if(url.pathname==='/api/route'||url.pathname==='/api/route/multi'){
       let body='';for await(const chunk of req)body+=chunk;routeCalls.push({path:url.pathname,...JSON.parse(body)});
+      if(holdNextRoute){holdNextRoute=false;await new Promise(resolve=>heldRoute=resolve);heldRoute=null;}
+      if(failNextRoute){failNextRoute=false;res.statusCode=503;return res.end(JSON.stringify({error:'Routing temporarily unavailable'}));}
       return res.end(JSON.stringify({routing_engine:'TomTom',distance_km:300,duration_h:6,geometry:{coordinates:[[16.92,52.4],[15.22,52.73],[13.4,52.52]]},points:[{lat:52.4,lng:16.92,label:'Poznań'},{lat:52.73,lng:15.22,label:'Gorzów'},{lat:52.52,lng:13.4,label:'Berlin'}]}));
     }
     if(url.pathname==='/api/forwarding/quotes'){
@@ -41,6 +43,7 @@ const base=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE_PATH?{executablePath:process.env.BROWSER_EXECUTABLE_PATH,args:['--no-sandbox','--disable-dev-shm-usage','--disable-gpu','--no-zygote','--single-process']}:{} )});
 try{
  const page=await browser.newPage({viewport:{width:1680,height:1100}}),errors=[];
+ const reveal=async selector=>page.locator(selector).first().evaluate(el=>{for(let node=el.parentElement;node;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;});
  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
  await page.route('**/*',async r=>{
    const url=r.request().url();
@@ -52,19 +55,37 @@ try{
  await page.locator('[data-use-offer]').waitFor();
  assert.equal(await page.locator('#fxDetails').isVisible(),false);assert.equal(await page.locator('#showEur').isChecked(),false);
  assert.equal(await page.locator('#offerEditor').isVisible(),true);
+ assert.equal(await page.locator('#mapDetails').evaluate(el=>el.open),false);
+ assert.equal(await page.locator('#workspace > [tabindex]').count(),2);
+ assert.equal(await page.locator('.decision-column #selectedOfferBox').count(),0);
  assert.equal(await page.locator('#profile option').count(),5);
  assert.ok(await page.locator('#profile').evaluate(el=>Boolean(document.getElementById('routeStatus').compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)&&Boolean(el.compareDocumentPosition(document.getElementById('cargoRows'))&Node.DOCUMENT_POSITION_FOLLOWING)));
  for(const profile of ['solo75','solo12','curtain136','reefer136','bus']){
-   await page.locator('#profile').selectOption(profile);
+   await reveal('#profile');await page.locator('#profile').selectOption(profile);
    assert.equal(await page.locator('#profile').inputValue(),profile);
    assert.equal(await page.locator('#reeferTemperatureField').isVisible(),profile==='reefer136');
  }
 
  for(const [id,value] of Object.entries({origin:'PL Poznań',destination:'DE Berlin',distanceKm:'300',pickup:'2026-10-10',delivery:'2026-10-11','a-targetMargin':'20'}))await page.locator('#'+id).fill(value);
- await page.locator('[data-cargo=height]').fill('150');await page.locator('[data-cargo=weight]').fill('200');
+ await reveal('[data-cargo=height]');await page.locator('[data-cargo=height]').fill('150');await reveal('[data-cargo=weight]');await page.locator('[data-cargo=weight]').fill('200');
  await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('routeStatus').textContent.includes('6,0 h'));
+ assert.equal(await page.locator('#mapDetails').evaluate(el=>el.open),false);
+ await page.locator('#mapDetails summary').click();
+ if(process.env.LEAFLET_QA_DIR)await page.locator('#routeMap path.leaflet-interactive').first().waitFor();
+ await page.locator('#mapDetails summary').click();
  if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
  const fetchedStatus=await page.locator('#routeStatus').textContent();
+ for(const profile of ['solo75','solo12','curtain136','reefer136','bus']){
+   await reveal('#profile');await page.locator('#profile').selectOption(profile);
+   assert.equal(await page.locator('#distanceKm').inputValue(),'300');
+   assert.equal(routeCalls.length,1);
+   assert.equal(await page.locator('#routeVehicleStatus').isVisible(),profile!=='bus');
+   if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
+ }
+ await page.locator('#mapDetails summary').click();
+ if(process.env.LEAFLET_QA_DIR)assert.ok(await page.locator('#routeMap').evaluate(el=>el.clientHeight>0));
+ await page.locator('#mapDetails summary').click();
+ assert.equal(routeCalls.length,1);
  await page.locator('#calculate').click();
  assert.equal(await page.locator('#result').isVisible(),true);
  await page.waitForFunction(()=>document.activeElement===document.getElementById('result'));
@@ -80,19 +101,19 @@ try{
  assert.match(await page.locator('.price-range').textContent(),/200,00 zł.*Transport Alfa/);
  assert.match(await page.locator('#result > .price-gross').textContent(),/307,50 zł brutto/);
  assert.match(await page.locator('[data-use-offer="0"] .price-gross').textContent(),/246,00 zł brutto/);
- await page.locator('[data-offer=vat]').first().selectOption('0');
+ await reveal('[data-offer=vat]');await page.locator('[data-offer=vat]').first().selectOption('0');
  assert.match(await page.locator('.price-range .price-gross').textContent(),/200,00 zł brutto.*VAT 0%/);
  assert.match(await page.locator('#result > .price-gross').textContent(),/307,50 zł brutto/);
- await page.locator('#salesVat').selectOption('NP');
+ await reveal('#salesVat');await page.locator('#salesVat').selectOption('NP');
  assert.match(await page.locator('#result > .price-gross').textContent(),/250,00 zł brutto.*VAT NP/);
  assert.match(await page.locator('.decision-stats').textContent(),/50,00 zł.*20,0%/);
- await page.locator('#salesVat').selectOption('23');
+ await reveal('#salesVat');await page.locator('#salesVat').selectOption('23');
  assert.equal(routeCalls.length,1);
  assert.equal(await page.locator('[data-use-offer="0"]').getAttribute('aria-pressed'),'true');
  await page.locator('[data-use-offer="1"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/300,00/);
  assert.deepEqual(await page.locator('[data-offer=status]').evaluateAll(es=>es.map(e=>e.value)),['received','accepted']);
- await page.locator('#sellPrice').fill('400');await page.locator('[data-use-offer="0"]').click();
+ await reveal('#sellPrice');await page.locator('#sellPrice').fill('400');await page.locator('[data-use-offer="0"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
  assert.match(await page.locator('.decision-stats').textContent(),/200,00 zł.*50,0%/);
  await page.locator('[data-use-offer=""]').click();assert.match(await page.locator('.price-range').textContent(),/model/);
@@ -104,16 +125,16 @@ try{
  assert.equal(saved[0].input.salesVat,'23');assert.equal(saved[0].input.offers[0].vat,'0');
  assert.match(await page.locator('#history').textContent(),/492,00 zł brutto/);
  assert.equal(await page.locator('.currency-equivalent').count(),0);
- await page.locator('#showEur').check();
+ await reveal('#showEur');await page.locator('#showEur').check();
  await page.locator('#fetchFx').click();await page.waitForFunction(()=>document.getElementById('eurPln').value==='4.25');
  assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
  assert.match(await page.locator('.currency-equivalent').textContent(),/94,12 EUR/);
  assert.match(await page.locator('[data-use-offer="0"]').textContent(),/200,00 zł/);
- await page.locator('#eurPln').fill('4');assert.match(await page.locator('.currency-equivalent').textContent(),/100,00 EUR/);
+ await reveal('#eurPln');await page.locator('#eurPln').fill('4');assert.match(await page.locator('.currency-equivalent').textContent(),/100,00 EUR/);
  assert.match(await page.locator('.currency-equivalent .price-gross').textContent(),/123,00 EUR brutto/);
  assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
- await page.locator('#showEur').uncheck();assert.equal(await page.locator('.currency-equivalent').count(),0);
- await page.locator('#showEur').check();
+ await reveal('#showEur');await page.locator('#showEur').uncheck();assert.equal(await page.locator('.currency-equivalent').count(),0);
+ await reveal('#showEur');await page.locator('#showEur').check();
  await page.locator('[data-use-offer="1"]').click();
  assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
  assert.match(await page.locator('.decision-stats').textContent(),/160,00 zł.*40,0%/);
@@ -128,25 +149,25 @@ try{
  assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
  assert.equal(routeCalls.length,1);assert.equal(await page.locator('#distanceKm').inputValue(),'300');if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
  // Rejected and incomplete offers cannot become the purchase.
- await page.locator('[data-offer=status]').first().selectOption('rejected');
+ await reveal('[data-offer=status]');await page.locator('[data-offer=status]').first().selectOption('rejected');
  assert.equal(await page.locator('[data-use-offer="0"]').isDisabled(),true);
  await page.locator('#addOffer').click();assert.equal(await page.locator('[data-use-offer="2"]').isDisabled(),true);
  await page.locator('.remove-offer').last().click();
- await page.locator('[data-offer=status]').first().selectOption('received');
- await page.locator('#sellPrice').fill('');await page.locator('[data-use-offer="1"]').click();
+ await reveal('[data-offer=status]');await page.locator('[data-offer=status]').first().selectOption('received');
+ await reveal('#sellPrice');await page.locator('#sellPrice').fill('');await page.locator('[data-use-offer="1"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/300,00/);
  // Data edits invalidate the selected quote and prevent stale prices from being saved.
- await page.locator('[data-cargo=weight]').fill('250');
+ await reveal('[data-cargo=weight]');await page.locator('[data-cargo=weight]').fill('250');
  assert.equal(await page.locator('#result').isVisible(),false);assert.equal(await page.locator('#saveQuote').isDisabled(),true);
  assert.equal(await page.locator('[data-use-offer=""]').getAttribute('aria-pressed'),'true');
  await page.locator('[data-use-offer="1"]').click(); // confirmation after scope changed
  assert.match(await page.locator('.price-range').textContent(),/Transport Beta/);
- await page.locator('#reviewed').check();await page.locator('#calculate').click();
+ await reveal('#reviewed');await page.locator('#reviewed').check();await page.locator('#calculate').click();
  await page.locator('#offerOpen').click();const text=await page.locator('#customerText').inputValue();
  assert.doesNotMatch(text,/Transport Beta|1020|marża|Zakup/);await page.locator('[data-close=offerDialog]').click();
  // Carrier-only quote: empty cost inputs must not block calculation or persistence.
- await page.locator('#a-kmRate').fill('');await page.locator('#a-hourRate').fill('');
- await page.locator('#useCostModel').uncheck();
+ await reveal('#a-kmRate');await page.locator('#a-kmRate').fill('');await reveal('#a-hourRate');await page.locator('#a-hourRate').fill('');
+ await reveal('#useCostModel');await page.locator('#useCostModel').uncheck();
  assert.equal(await page.locator('#a-kmRate').isDisabled(),true);
  assert.equal(await page.locator('#modelAssumptions').isVisible(),false);
  assert.equal(await page.locator('[data-use-offer=""]').isDisabled(),true);
@@ -155,43 +176,75 @@ try{
  assert.doesNotMatch(await page.locator('#calculationBreakdown').textContent(),/Zakres zakupu z modelu/);
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
  assert.equal(saved[0].input.useCostModel,false);assert.equal(saved[0].input.assumptions.kmRate,null);
- await page.locator('#useCostModel').check();
+ await reveal('#useCostModel');await page.locator('#useCostModel').check();
  await page.locator('[data-load="0"]').click();
  assert.equal(await page.locator('#useCostModel').isChecked(),false);
  assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
  // Turning the model back on restores editable, valid defaults after loading.
- await page.locator('#useCostModel').check();assert.equal(await page.locator('#a-kmRate').isDisabled(),false);
+ await reveal('#useCostModel');await page.locator('#useCostModel').check();assert.equal(await page.locator('#a-kmRate').isDisabled(),false);
  assert.ok(Number(await page.locator('#a-kmRate').inputValue())>0);
- await page.locator('#useCostModel').uncheck();
- await page.locator('[data-offer=status]').last().selectOption('received');await page.locator('#calculate').click();
+ await reveal('#useCostModel');await page.locator('#useCostModel').uncheck();
+ await reveal('[data-offer=status]');await page.locator('[data-offer=status]').last().selectOption('received');await page.locator('#calculate').click();
  assert.match(await page.locator('#message').textContent(),/Wybierz ofertę przewoźnika/);assert.equal(await page.locator('#saveQuote').isDisabled(),true);
  await page.locator('[data-use-offer="1"]').click();
  // Full-address suggestions, multi-point routing and both Maps URL formats.
- await page.locator('#origin').fill('Poznan');await page.locator('#routeSuggestions [role=option]').first().waitFor();
+ await reveal('#origin');await page.locator('#origin').fill('Poznan');await page.locator('#routeSuggestions [role=option]').first().waitFor();
  await page.locator('#origin').press('ArrowDown');await page.locator('#origin').press('Enter');
  assert.equal(await page.locator('#origin').inputValue(),'Poznań, Długa 1, 61-001, Polska');
  assert.equal(await page.locator('#distanceKm').inputValue(),'');
- await page.locator('#addRouteStop').click();await page.locator('[data-stop]').fill('Gorzów');
+ await page.locator('#addRouteStop').click();await reveal('[data-stop]');await page.locator('[data-stop]').fill('Gorzów');
  await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('distanceKm').value==='300');
  assert.equal(routeCalls.at(-1).path,'/api/route/multi');assert.deepEqual(routeCalls.at(-1).stops,['Gorzów']);
  for(const link of ['https://www.google.com/maps/dir/?api=1&origin=Poznan&destination=Berlin&waypoints=Gorzow%7CFrankfurt','https://maps.app.goo.gl/example']){
-   await page.locator('#mapsImport summary').click();await page.locator('#mapsUrl').fill(link);await page.locator('#importMaps').click();
+   await page.locator('#mapsImport summary').click();await reveal('#mapsUrl');await page.locator('#mapsUrl').fill(link);await page.locator('#importMaps').click();
    await page.waitForFunction(()=>!document.getElementById('mapsImport').open);
    assert.equal(await page.locator('#distanceKm').inputValue(),'');
  }
  assert.equal(await page.locator('[data-stop]').inputValue(),'Gorzów');
  await page.locator('#fetchRoute').click();await page.waitForFunction(()=>document.getElementById('distanceKm').value==='300');
  const callsBeforeSelection=routeCalls.length;
+ await reveal('#profile');await page.locator('#profile').selectOption('solo12');
+ assert.equal(await page.locator('#distanceKm').inputValue(),'300');
+ assert.equal(await page.locator('#routeVehicleStatus').isVisible(),true);
  await page.locator('[data-use-offer="1"]').click();
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
+ assert.equal(saved[0].input.route.routingVehicle.grossWeightKg,3500);
+ assert.equal(saved[0].input.profile,'solo12');
  assert.deepEqual(saved[0].input.route.stops,['Gorzów']);assert.equal(routeCalls.length,callsBeforeSelection);
  await page.locator('[data-load="0"]').click();
  assert.equal(await page.locator('[data-stop]').inputValue(),'Gorzów');assert.equal(routeCalls.length,callsBeforeSelection);
+ assert.equal(await page.locator('#profile').inputValue(),'solo12');assert.equal(await page.locator('#routeVehicleStatus').isVisible(),true);
+ assert.equal(await page.locator('#distanceKm').inputValue(),'300');
  if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
+ // An explicit refresh updates the recorded vehicle; failure keeps the previous route.
+ await reveal('#fetchRoute');await page.locator('#fetchRoute').click();
+ await page.waitForFunction(()=>!document.getElementById('fetchRoute').disabled);
+ assert.equal(await page.locator('#routeVehicleStatus').isVisible(),false);
+ const beforeFailure=await page.locator('#routeMap').innerHTML();
+ failNextRoute=true;await page.locator('#fetchRoute').click();
+ await page.waitForFunction(()=>!document.getElementById('fetchRoute').disabled);
+ assert.equal(await page.locator('#distanceKm').inputValue(),'300');
+ assert.match(await page.locator('#routeStatus').textContent(),/Zachowano poprzedni/);
+ if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
+ // A response started for one vehicle must not be falsely labelled as the new one.
+ const beforePending=routeCalls.length;holdNextRoute=true;
+ await page.locator('#fetchRoute').click();
+ await new Promise(resolve=>{const check=()=>heldRoute?resolve():setTimeout(check,10);check();});
+ await reveal('#profile');await page.locator('#profile').selectOption('curtain136');
+ assert.equal(await page.locator('#distanceKm').inputValue(),'300');
+ heldRoute();
+ await page.waitForFunction(()=>!document.getElementById('fetchRoute').disabled);
+ assert.equal(routeCalls.length,beforePending+1);
+ assert.equal(await page.locator('#routeVehicleStatus').isVisible(),true);
+ await page.locator('[data-use-offer="1"]').click();
+ await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
+ assert.equal(saved[0].input.route.routingVehicle.grossWeightKg,12000);
+ assert.equal(saved[0].input.route.durationHours,6);
  // Desktop panes scroll independently; the document and the other panes stay still.
  await page.setViewportSize({width:1440,height:900});
  await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
- const panes=['.form-column','.context-column','.decision-column'];
+ const panes=['.form-column','.decision-column'];
+ await page.locator('#shipmentDetails').evaluate(el=>el.open=true);
  for(let i=0;i<panes.length;i++){
    await page.locator(panes[i]).hover();await page.mouse.wheel(0,400);
    await page.waitForFunction(sel=>document.querySelector(sel).scrollTop>0,panes[i]);
@@ -208,12 +261,13 @@ try{
      await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`overflow ${theme}/${width}`);
      const quote=await page.locator('#result').boundingBox(),offers=await page.locator('#selectedOfferBox').boundingBox(),fx=await page.locator('.currency-toolbar').boundingBox();
-     assert.ok(quote.y<offers.y&&offers.y<fx.y);assert.ok(fx.height<160,`Compact FX at ${width}px: ${fx.height}`);
+     assert.ok(quote.y<fx.y);assert.ok(fx.height<160,`Compact FX at ${width}px: ${fx.height}`);
      if(width>=760){
        const bounds=await page.locator('#workspace').boundingBox();assert.ok(bounds.x<=16&&width-(bounds.x+bounds.width)<=16,'Workspace fills window');
        const map=await page.locator('#mapDetails').boundingBox(),editor=await page.locator('#offerEditor').boundingBox(),decision=await page.locator('.decision-column').boundingBox();
-       assert.ok(Math.abs(map.y-decision.y)<2,`Map starts beside quote at ${width}px`);
-       assert.ok(editor.y>map.y+map.height&&editor.x<decision.x,`Offers below map in middle column at ${width}px`);
+       assert.equal(await page.locator('#mapDetails').evaluate(el=>el.open),false);
+       assert.ok(map.height<100,`Map is compact at ${width}px`);
+       assert.ok(editor.y>map.y+map.height&&editor.x<decision.x,`Offers below map in left column at ${width}px`);
      }
      await page.locator('#calculate').click();
      await page.waitForFunction(()=>document.activeElement===document.getElementById('result'));
@@ -230,15 +284,15 @@ try{
    await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
    await page.waitForFunction(()=>document.getElementById('workspace').getBoundingClientRect().bottom<=innerHeight);
    const bounds=await page.locator('#workspace>[tabindex]').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,scroll:e.scrollHeight,client:e.clientHeight};}));
-   assert.ok(bounds.every(b=>b.bottom<=height&&b.scroll>b.client));assert.ok(bounds.every(b=>Math.abs(b.top-bounds[0].top)<2));
+   assert.ok(bounds.every(b=>b.bottom<=height));assert.ok(bounds.every(b=>Math.abs(b.top-bounds[0].top)<2));
    await page.locator('#calculate').click();
    await page.waitForFunction(()=>document.activeElement===document.getElementById('result'));
    const paneBox=await page.locator('.decision-column').boundingBox(),price=await page.locator('#result .price-value').boundingBox();
    assert.ok(price.y>=paneBox.y&&price.y+price.height<=Math.min(height,paneBox.y+paneBox.height),`Price visible at ${width}x${height}`);
 
  }
- // Editing a routing parameter invalidates distance and map, unlike price changes.
- await page.locator('#origin').fill('Warszawa');
+ // Address edits invalidate the saved route, unlike vehicle or offer changes.
+ await reveal('#origin');await page.locator('#origin').fill('Warszawa');
  assert.equal(await page.locator('#distanceKm').inputValue(),'');
  if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),0);
  await page.locator('#offersImportOpen').click();assert.equal(await page.locator('#pasteDialog').isVisible(),true);

@@ -1,6 +1,16 @@
 // Shared by browser and server. New UI quotes use PLN; legacy untagged inputs remain EUR.
 // PROFILES/DEFAULT_ASSUMPTIONS keep legacy EUR values. modelDefaults supplies native PLN defaults.
-export const ENGINE_VERSION = 'forwarding-1.7';
+export const ENGINE_VERSION = 'forwarding-1.8';
+export const ROUTING_VEHICLE_FIELDS=['grossWeightKg','axleWeightKg','lengthCm','widthCm','heightCm','axleCount'];
+export function routingVehicleChanged(recorded,current){
+  return !!recorded&&ROUTING_VEHICLE_FIELDS.some(key=>Number(recorded[key])!==Number(current[key]));
+}
+function normalizeRoutingVehicle(value){
+  if(value==null)return null;
+  if(typeof value!=='object'||Array.isArray(value))fail('Nieprawidłowe parametry zapisanej trasy.');
+  const bounds={grossWeightKg:[1000,40000],axleWeightKg:[500,20000],lengthCm:[200,2000],widthCm:[100,300],heightCm:[100,500],axleCount:[2,6]};
+  return Object.fromEntries(ROUTING_VEHICLE_FIELDS.map(key=>[key,num(value[key],'parametr zapisanej trasy '+key,...bounds[key],key==='axleCount')]));
+}
 export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy','reeferSurcharge'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
@@ -133,7 +143,7 @@ export function normalizeInput(raw) {
   }));
   if (cargo.reduce((s,c)=>s+c.qty,0)>500) fail('Limit wynosi 500 sztuk w jednej wycenie.');
   if(r.stops!=null&&(!Array.isArray(r.stops)||r.stops.length>18))fail('Podaj najwyżej 18 punktów pośrednich.');
-  const route={stops:(r.stops||[]).map(s=>str(s,'punkt pośredni',300,true)),snapshot:normalizeRouteSnapshot(r.snapshot),origin:str(r.origin,'załadunek',300,true),destination:str(r.destination,'rozładunek',300,true),
+  const route={routingVehicle:normalizeRoutingVehicle(r.routingVehicle),stops:(r.stops||[]).map(s=>str(s,'punkt pośredni',300,true)),snapshot:normalizeRouteSnapshot(r.snapshot),origin:str(r.origin,'załadunek',300,true),destination:str(r.destination,'rozładunek',300,true),
     distanceKm:num(r.distanceKm,'dystans km',1,20000),
     durationHours:r.durationHours===''||r.durationHours==null?null:num(r.durationHours,'czas jazdy h',0.01,500),
     source:r.source==='TomTom'?'TomTom':'manual',
@@ -175,6 +185,7 @@ export function calculate(raw) {
     'Zweryfikuj z przewoźnikiem rozmieszczenie, mocowanie i zgodność ładunku z pojazdem.',
   ];
   if (cargo.some(c=>c.stackable)) warnings.push('Piętrowalność zapisana informacyjnie. Cena i powierzchnia nadal liczone bez piętrowania.');
+  if(r.source==='TomTom'&&routingVehicleChanged(r.routingVehicle,v))warnings.push('Zachowana trasa została pobrana dla innych parametrów auta. Kilometry i czas pozostają bez zmian. Sprawdź ograniczenia przejazdu albo pobierz trasę ponownie.');
   if (r.source==='manual') warnings.push('Dystans wpisany ręcznie. Przebieg trasy nie został potwierdzony na mapie.');
   if (input.mode==='partload') warnings.push('Doładunek wymaga dostępnego auta na tej relacji i zgodnych terminów. Udział przestrzeni nie gwarantuje ceny ani dostępności.');
   if (input.useCostModel && input.profile==='reefer136' && !a.reeferSurcharge) warnings.push('Nie dodano osobnej dopłaty chłodniczej. Sprawdź agregat, paliwo i wymagania temperaturowe przed wysłaniem ceny.');

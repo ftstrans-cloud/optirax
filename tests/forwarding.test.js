@@ -2,7 +2,22 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {calculate,normalizeInput,parseEnquiry,customerOffer,ForwardingError,PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,convertMoney,modelDefaults,quoteToPln} from '../public/forwarding-engine.js';
 import {createExchangeRateService} from '../lib/exchange-rate.js';
-import {grossAmount,normalizeVat,vatLabel} from '../public/forwarding-engine.js';
+import {grossAmount,normalizeVat,vatLabel,ROUTING_VEHICLE_FIELDS,routingVehicleChanged} from '../public/forwarding-engine.js';
+
+test('route: vehicle changes preserve distance and geometry, recording their original routing profile',()=>{
+  const base=sample();base.route.routingVehicle=Object.fromEntries(ROUTING_VEHICLE_FIELDS.map(key=>[key,base.vehicle[key]]));
+  base.route.snapshot={coordinates:[[16.92,52.4],[13.4,52.52]],points:[]};
+  const before=calculate(base);
+  const changed=calculate({...base,profile:'curtain136',vehicle:PROFILES.curtain136});
+  assert.deepEqual(changed.input.route,before.input.route);
+  assert.ok(routingVehicleChanged(changed.input.route.routingVehicle,changed.input.vehicle));
+  assert.match(changed.warnings.join(' '),/innych parametrów auta/);
+  const restored=calculate(JSON.parse(JSON.stringify(changed.input)));
+  assert.deepEqual(restored,changed);
+  assert.equal(routingVehicleChanged(base.route.routingVehicle,base.vehicle),false);
+  assert.equal(routingVehicleChanged(null,base.vehicle),false);
+  assert.throws(()=>normalizeInput({...base,route:{...base.route,routingVehicle:{grossWeightKg:'oops'}}}),ForwardingError);
+});
 
 test('VAT: rounded gross, distinct zero/NP/ZW and unknown historical VAT',()=>{
   assert.equal(grossAmount(1000,'23'),1230);
@@ -167,7 +182,7 @@ test('route: waypoints and map survive carrier selection and saved quote round t
   const input=sample();input.route.stops=['PL Gorzów'];input.route.snapshot={coordinates:[[16.92,52.4],[15.22,52.73],[13.4,52.52]],points:[{lat:52.73,lng:15.22,label:'PL Gorzów'}]};
   input.offers=[{carrier:'Test',price:250,status:'accepted'}];
   const result=calculate(input),loaded=calculate(JSON.parse(JSON.stringify(result.input)));
-  assert.deepEqual(loaded.input.route,input.route);assert.match(customerOffer(loaded),/Poznań → PL Gorzów → DE Berlin/);
+  assert.deepEqual(loaded.input.route,{...input.route,routingVehicle:null});assert.match(customerOffer(loaded),/Poznań → PL Gorzów → DE Berlin/);
   input.route.snapshot.coordinates[0][0]=181;assert.throws(()=>calculate(input),/mapy/);
   input.route.snapshot=null;input.route.stops=Array(19).fill('Berlin');assert.throws(()=>calculate(input),/18 punktów/);
 });

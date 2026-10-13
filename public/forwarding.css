@@ -224,3 +224,63 @@ main{max-width:none}
 #sellGross{margin-top:4px}
 .currency-equivalent .price-gross{width:100%}
 .history-table .price-gross{min-width:120px}
+
+/* Two work areas: shipment and carrier comparison, then pricing decision. */
+#workspace{grid-template-areas:'form decision';grid-template-columns:minmax(0,1.75fr) minmax(320px,1fr)}
+#workspace>.form-column{grid-area:form}#workspace>.decision-column{grid-area:decision}
+.shipment-details>summary{display:list-item}
+#shipmentSummary{display:block;margin-top:6px;font-size:13px;color:var(--muted);font-weight:400;line-height:1.6;overflow-wrap:anywhere}
+.shipment-details[open]>summary{border-bottom:1px solid var(--line);padding-bottom:14px}
+.shipment-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;padding-top:16px}
+.shipment-section{min-width:0}.shipment-section:last-child{grid-column:1/-1;border-top:1px solid var(--line);padding-top:16px}
+.shipment-section h2{font-size:17px}.shipment-section .hint{font-size:12px}
+.shipment-section .fields.two,.shipment-section .route-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+.shipment-section .cargo-fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+.shipment-section .mode-options{max-width:650px}
+#offerEditor .offer-tools{margin-bottom:14px}
+#offerManagement{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+#offerRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#offerRows:empty{display:block}
+.purchase-option{grid-template-columns:20px minmax(0,1fr) minmax(120px,auto);padding:14px 16px;gap:12px;align-items:center}
+.purchase-price{grid-column:auto;text-align:right}.purchase-name small{white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.purchase-price .price-gross{max-width:none}
+.purchase-option[aria-pressed=true]{box-shadow:none}
+.route-vehicle-status{padding:10px 14px;border-left:3px solid var(--amber);background:var(--surface);color:var(--ink);font-size:13px;line-height:1.6;margin:0;border-radius:6px}
+#mapDetails>summary{margin-bottom:0}#mapDetails[open]>summary{margin-bottom:14px}
+#mapSummary{font-size:13px;color:var(--muted)}
+#assumptionsDetails>summary,#loadDetails>summary{margin-bottom:0}
+#assumptionsDetails[open]>summary,#loadDetails[open]>summary{margin-bottom:14px}
+.assumptions-card .notice{margin:14px 0;font-size:12px}
+#currencySettings{margin:16px 0;padding-top:14px;border-top:1px solid var(--line)}
+#currencySettings>summary{font-size:14px}.decision-card h2{font-size:19px}
+.price-value.pln{color:var(--ink)}.decision-stats{grid-template-columns:1fr 1fr}.decision-stats strong{font-size:24px}
+.calculate-bar{margin:16px 0}.review-check{font-size:13px}.result-actions{grid-template-columns:1fr 1fr}
+#workspace .form-column .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+#workspace .form-column .section-top{align-items:center}
+@media(min-width:760px){
+  #workspace{grid-template-columns:minmax(0,1.75fr) minmax(320px,1fr);grid-template-areas:'form decision';gap:20px}
+  #workspace>.form-column,#workspace>.decision-column{gap:16px}
+  #workspace>.decision-column{max-width:none}
+  .decision-card{padding:22px}
+  #routeMap{height:clamp(200px,32dvh,360px)}
+}
+@media(min-width:760px) and (max-width:1199px){
+  #workspace{grid-template-columns:minmax(0,1.45fr) minmax(300px,1fr);gap:14px}
+  .shipment-form,#offerRows{grid-template-columns:minmax(0,1fr)}
+  .shipment-section:last-child{grid-column:auto}
+  .shipment-section+.shipment-section{border-top:1px solid var(--line);padding-top:16px}
+  .decision-card{padding:16px}
+  .purchase-option{grid-template-columns:18px minmax(0,1fr);padding:12px}
+  .purchase-price{grid-column:2;text-align:left}
+  #marginAssumptions{grid-template-columns:1fr 1fr}
+}
+@media(max-width:759px){
+  #workspace{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:'form' 'decision';gap:16px}
+  #workspace>.form-column,#workspace>.decision-column{display:grid;gap:14px;order:0}
+  .shipment-form,#offerRows{grid-template-columns:minmax(0,1fr)}
+  .shipment-section:last-child{grid-column:auto}
+  .shipment-section+.shipment-section{border-top:1px solid var(--line);padding-top:16px}
+  .purchase-option{grid-template-columns:18px minmax(0,1fr);padding:12px}
+  .purchase-price{grid-column:2;text-align:left}
+  #shipmentSummary{font-size:12px}
+}
