@@ -1,6 +1,6 @@
 import {setupRouteInputs} from './forwarding-route.js?v=1.8.0';
-import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeExchangeRate,convertMoney,modelDefaults,quoteToPln} from './forwarding-engine.js?v=1.9.0';
-import {setupEnquiryImport} from './enquiry-import.js?v=1.9.0';
+import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeExchangeRate,convertMoney,modelDefaults,quoteToPln,grossAmount,vatLabel} from './forwarding-engine.js?v=1.10.0';
+import {setupEnquiryImport} from './enquiry-import.js?v=1.10.0';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -71,22 +71,37 @@ function cargoRow(data={qty:1,length:120,width:80,height:'',weight:'',stackable:
   $('cargoRows').appendChild(row);numberCargo();
 }
 function numberCargo(){document.querySelectorAll('.cargo-row').forEach((r,i)=>{r.querySelector('.cargo-number').textContent=`POZYCJA ${String(i+1).padStart(2,'0')}`;r.querySelector('.remove-cargo').disabled=$('cargoRows').children.length===1;});}
-function offerRow(data={carrier:'',price:'',status:'received'}){
+function vatOptions(){return '<option value="">Do ustalenia</option>'+['23','8','5','0','NP','ZW'].map(v=>`<option value="${v}">${vatLabel(v)}</option>`).join('');}
+function grossHint(net,vat,currency=currentCurrency){
+  const gross=grossAmount(net,vat);
+  return `<small class="price-gross">${gross===null?'VAT do ustalenia':`(${money(gross,currency)} brutto · ${vatLabel(vat)})`}</small>`;
+}
+function netPrice(net,vat,currency=currentCurrency){return `${money(net,currency)} netto${grossHint(net,vat,currency)}`;}
+function updatePriceHints(){
+  document.querySelectorAll('.offer-row').forEach(row=>{
+    const price=Number(row.querySelector('[data-offer=price]').value);
+    row.querySelector('.offer-gross').innerHTML=price>0?grossHint(price,row.querySelector('[data-offer=vat]').value):'';
+  });
+  const price=Number($('sellPrice').value);
+  $('sellGross').innerHTML=price>0?grossHint(price,$('salesVat').value):'';
+}
+function offerRow(data={carrier:'',price:'',status:'received',vat:'23'}){
   if($('offerRows').children.length>=50){message('Maksymalnie 50 ofert przewoźników.',true);return;}
   const row=document.createElement('div');row.className='offer-row';
   row.dataset.needsConfirmation=String(data.needsConfirmation===true);
   row.dataset.importSource=data.importSource||'';
-  row.innerHTML=`<div class="cargo-title"><span>PRZEWOŹNIK</span><button type="button" class="quiet remove-offer" aria-label="Usuń ofertę przewoźnika">×</button></div><label>Nazwa<input data-offer="carrier" maxlength="120" value="${esc(data.carrier)}" placeholder="Nazwa przewoźnika"></label><div class="fields two"><label>Cena EUR netto<input data-offer="price" data-money="price" type="number" min="0.01" max="1000000" step="0.01" value="${esc(data.price)}" inputmode="decimal"></label><label>Status<select data-offer="status"><option value="received">Otrzymana</option><option value="accepted">Przyjęta</option><option value="rejected">Odrzucona</option></select></label></div><p class="offer-compare">Przelicz, aby porównać ofertę z limitem zakupu.</p>`;
+  row.innerHTML=`<div class="cargo-title"><span>PRZEWOŹNIK</span><button type="button" class="quiet remove-offer" aria-label="Usuń ofertę przewoźnika">×</button></div><label>Nazwa<input data-offer="carrier" maxlength="120" value="${esc(data.carrier)}" placeholder="Nazwa przewoźnika"></label><div class="fields two"><label>Cena EUR netto<input data-offer="price" data-money="price" type="number" min="0.01" max="1000000" step="0.01" value="${esc(data.price)}" inputmode="decimal"></label><label>VAT przewoźnika<select data-offer="vat">${vatOptions()}</select></label></div><div class="offer-gross"></div><label>Status<select data-offer="status"><option value="received">Otrzymana</option><option value="accepted">Przyjęta</option><option value="rejected">Odrzucona</option></select></label><p class="offer-compare">Przelicz, aby porównać ofertę z limitem zakupu.</p>`;
   row.insertAdjacentHTML('beforeend',`<label>Warunki oferty<textarea data-offer="terms" maxlength="1500" rows="2" placeholder="Termin, winda, dopłaty…">${esc(data.terms||'')}</textarea></label>${data.importSource?`<details><summary>Oryginalny odczyt oferty</summary><pre>${esc(data.importSource)}</pre></details>`:''}`);
-  row.querySelector('select').value=data.status;$('offerRows').appendChild(row);syncCurrencyLabels();
+  row.querySelector('[data-offer=status]').value=data.status;row.querySelector('[data-offer=vat]').value=data.vat??'';$('offerRows').appendChild(row);syncCurrencyLabels();
   renderSelectedOfferPicker();
 }
 function renderSelectedOfferPicker(){
+  updatePriceHints();
   const rows=[...document.querySelectorAll('.offer-row')];
-  const offers=rows.map((row,index)=>({index,carrier:row.querySelector('[data-offer=carrier]').value.trim()||`Przewoźnik ${index+1}`,price:Number(row.querySelector('[data-offer=price]').value),status:row.querySelector('[data-offer=status]').value,terms:row.querySelector('[data-offer=terms]').value,needsConfirmation:row.dataset.needsConfirmation==='true'}));
+  const offers=rows.map((row,index)=>({index,vat:row.querySelector('[data-offer=vat]').value,carrier:row.querySelector('[data-offer=carrier]').value.trim()||`Przewoźnik ${index+1}`,price:Number(row.querySelector('[data-offer=price]').value),status:row.querySelector('[data-offer=status]').value,terms:row.querySelector('[data-offer=terms]').value,needsConfirmation:row.dataset.needsConfirmation==='true'}));
   const accepted=offers.find(o=>o.status==='accepted'),modelEnabled=$('useCostModel').checked;
   const option=(value,name,price,selected,detail,disabled=false)=>`<button type="button" class="purchase-option" data-use-offer="${value}" aria-pressed="${selected}" ${disabled?'disabled':''}><span class="purchase-dot" aria-hidden="true">${selected?'✓':''}</span><span class="purchase-name"><strong>${esc(name)}</strong><small>${esc(detail)}</small></span><strong class="purchase-price">${price}</strong></button>`;
-  $('selectedOfferBox').innerHTML=option('','Koszt modelowy',result&&modelEnabled?money(result.modelBuy):'—',modelEnabled&&!accepted,modelEnabled?'Szacunek kalkulatora':'Wyłączony w założeniach wyceny',!modelEnabled)+offers.map(o=>option(o.index,o.carrier,o.price>0?money(o.price):'Brak ceny',accepted?.index===o.index,o.status==='rejected'?'Odrzucona':o.needsConfirmation?'Potwierdź ponownie warunki przed wyborem':o.terms||'Oferta przewoźnika',o.status==='rejected'||!Number.isFinite(o.price)||o.price<=0)).join('');
+  $('selectedOfferBox').innerHTML=option('','Koszt modelowy',result&&modelEnabled?netPrice(result.modelBuy,null):'—',modelEnabled&&!accepted,modelEnabled?'Szacunek kalkulatora':'Wyłączony w założeniach wyceny',!modelEnabled)+offers.map(o=>option(o.index,o.carrier,o.price>0?netPrice(o.price,o.vat):'Brak ceny',accepted?.index===o.index,o.status==='rejected'?'Odrzucona':o.needsConfirmation?'Potwierdź ponownie warunki przed wyborem':o.terms||'Oferta przewoźnika',o.status==='rejected'||!Number.isFinite(o.price)||o.price<=0)).join('');
   $('offersCount').textContent=String(offers.length);
   $('purchaseStatus').textContent=accepted?(result?`W wycenie: ${accepted.carrier}. ${$('sellPrice').value?'Cena klienta jest wpisana ręcznie — zmieniają się zysk i marża.':'Cena klienta wynika z wybranej oferty i marży docelowej.'}`:`Wybrano: ${accepted.carrier}. Uzupełnij dane i przelicz wycenę.`):offers.length?'Wybierz ofertę, aby zastąpić koszt modelowy.':'Dodaj lub wklej ofertę przewoźnika, aby użyć jej w wycenie.';
 }
@@ -108,7 +123,7 @@ function useSelectedOffer(choice){
 }
 function collectFields(selector,attribute){return Object.fromEntries([...document.querySelectorAll(selector)].map(el=>[el.getAttribute(attribute),el.type==='checkbox'?el.checked:el.value]));}
 function optionalRate(){try{return normalizeExchangeRate($('eurPln').value);}catch{return null;}}
-function collect(){return {useCostModel:$('useCostModel').checked,currency:currentCurrency,showEur:$('showEur').checked,eurPln:optionalRate(),fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
+function collect(){return {useCostModel:$('useCostModel').checked,currency:currentCurrency,salesVat:$('salesVat').value,showEur:$('showEur').checked,eurPln:optionalRate(),fxSource:fxMeta?.fxSource||null,fxDate:fxMeta?.fxDate||null,fxTable:fxMeta?.fxTable||null,profile:$('profile').value,reeferTemperature:$('reeferTemperature').value,mode:document.querySelector('[name=mode]:checked').value,
   route:{origin:$('origin').value,destination:$('destination').value,stops:routeInputs.getStops(),snapshot:routeData?.snapshot||null,distanceKm:$('distanceKm').value,durationHours:routeData?routeData.duration_h:null,source:routeData?.routing_engine==='TomTom'?'TomTom':'manual'},
   vehicle:collectFields('[data-v]','data-v'),assumptions:collectFields('[data-a]','data-a'),
   cargo:[...document.querySelectorAll('.cargo-row')].map(row=>Object.fromEntries([...row.querySelectorAll('[data-cargo]')].map(e=>[e.dataset.cargo,e.type==='checkbox'?e.checked:e.value]))),
@@ -154,9 +169,9 @@ function runCalculation(scroll=false){
 function render(){
   const r=result,symbol=currencySymbol(r.currency),otherCurrency=r.currency==='PLN'?'EUR':'PLN';
   const fxLabel=r.input.fxSource==='NBP'?`NBP · ${r.input.fxDate||''} · ${r.input.fxTable||''}`:'kurs ręczny';
-  const equivalent=r.input.showEur&&r.eurPln?`<div class="currency-equivalent ${otherCurrency==='PLN'?'pln':''}"><strong>≈ ${money(convertMoney(r.sell,r.currency,otherCurrency,r.eurPln),otherCurrency)}</strong><span>1 EUR = ${fmt(r.eurPln,4)} PLN · ${esc(fxLabel)}</span></div>`:'';
+  const equivalent=r.input.showEur&&r.eurPln?`<div class="currency-equivalent ${otherCurrency==='PLN'?'pln':''}"><strong>≈ ${money(convertMoney(r.sell,r.currency,otherCurrency,r.eurPln),otherCurrency)} netto</strong>${r.input.salesVat==null?'':`<small class="price-gross">(${money(convertMoney(grossAmount(r.sell,r.input.salesVat),r.currency,otherCurrency,r.eurPln),otherCurrency)} brutto)</small>`}<span>1 EUR = ${fmt(r.eurPln,4)} PLN · ${esc(fxLabel)}</span></div>`:'';
   $('result').hidden=false;$('emptyResult').hidden=true;$('resultTag').textContent=r.blockers.length?'Sprawdź auto':r.input.reviewed?(r.buySource==='accepted'?'Oferta przewoźnika':'Szacunek'):'Potwierdź warunki';
-  $('result').innerHTML=`${r.blockers.length?`<div class="blocker"><strong>Ładunek wymaga zmiany pojazdu lub danych.</strong><br>${r.blockers.map(esc).join('<br>')}</div>`:''}<div class="price-label">Cena dla klienta${r.input.sellPrice===null?' · sugerowana':''}</div><div class="price-value ${r.currency==='PLN'?'pln':''}">${fmt(r.sell)} <small>${symbol}</small></div>${equivalent}<p class="price-range">Zakup: ${money(r.buy)} · ${r.buySource==='accepted'?'przyjęta oferta · '+esc(r.input.offers.find(o=>o.status==='accepted').carrier):'model'}</p><div class="decision-stats"><div class="price-label">Zysk na zleceniu<strong>${money(r.profit)}</strong></div><div class="price-label">Marża od sprzedaży<strong>${fmt(r.margin,1)}%</strong></div></div>${r.overBudget?'<div class="status-note bad">Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.</div>':''}`;
+  $('result').innerHTML=`${r.blockers.length?`<div class="blocker"><strong>Ładunek wymaga zmiany pojazdu lub danych.</strong><br>${r.blockers.map(esc).join('<br>')}</div>`:''}<div class="price-label">Cena dla klienta${r.input.sellPrice===null?' · sugerowana':''}</div><div class="price-value ${r.currency==='PLN'?'pln':''}">${fmt(r.sell)} <small>${symbol} netto</small></div>${grossHint(r.sell,r.input.salesVat)}${equivalent}<p class="price-range">Zakup: ${netPrice(r.buy,r.input.offers.find(o=>o.status==='accepted')?.vat)} · ${r.buySource==='accepted'?'przyjęta oferta · '+esc(r.input.offers.find(o=>o.status==='accepted').carrier):'model'}</p><div class="decision-stats"><div class="price-label">Zysk netto na zleceniu<strong>${money(r.profit)}</strong></div><div class="price-label">Marża od sprzedaży<strong>${fmt(r.margin,1)}%</strong></div></div>${r.overBudget?'<div class="status-note bad">Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.</div>':''}`;
   $('calculationDetails').hidden=false;
   $('calculationBreakdown').innerHTML=`<div class="decision-line"><span>Zakres zakupu z modelu</span><strong>${fmt(r.low,0)}–${fmt(r.high,0)} ${symbol}</strong></div><div class="decision-line"><span>Propozycja na start</span><strong>${money(r.opening)}</strong></div><div class="decision-line"><span>Limit zakupu (${fmt(r.input.assumptions.minimumMargin,0)}% marży)</span><strong>${money(r.maxBuy)}</strong></div><div class="status-note ${r.overBudget?'bad':''}">${r.overBudget?'Zakup przekracza limit. Podnieś cenę klienta lub negocjuj zakup.':'Zakup mieści się w limicie przy aktualnej cenie sprzedaży.'}</div><details><summary>Skąd ta cena?</summary><div class="decision-line"><span>Koszt całej relacji</span><strong>${money(r.costs.linehaul)}</strong></div><div class="decision-line"><span>Udział przesyłki</span><strong>${fmt(r.share*100,1)}%</strong></div><div class="decision-line"><span>Dojazd + obsługa + dopłaty</span><strong>${money(r.costs.shipment)}</strong></div><div class="decision-line"><span>Koszt modelowy</span><strong>${money(r.costs.operating)}</strong></div><p class="hint">Koszt modelowy × (1 + narzut przewoźnika), z minimum zakupu. Cena sprzedaży = zakup ÷ (1 − marża docelowa). Doładunek: największy udział wagi, objętości lub podłogi, nie mniej niż ustawione minimum. Koszty dojazdu i obsługi przypisane w całości.</p></details>`;
   if(!r.input.useCostModel)$('calculationBreakdown').innerHTML=`<p class="hint">Zakup pochodzi wyłącznie z wybranej oferty przewoźnika. Koszty modelowe są wyłączone.</p><div class="decision-line"><span>Limit zakupu (${fmt(r.input.assumptions.minimumMargin,0)}% marży)</span><strong>${money(r.maxBuy)}</strong></div>`;
@@ -224,12 +239,13 @@ function renderHistory(){
   if(!historyRows.length){$('history').innerHTML='<div class="history-empty">Brak zapisanych wycen.</div>';return;}
   $('history').innerHTML='<div class="history-table"><table><thead><tr><th>ZAPIS / KLIENT</th><th>RELACJA</th><th>ZAKUP PLN</th><th>SPRZEDAŻ PLN</th><th>MARŻA</th><th>WERSJA</th></tr></thead><tbody>'+historyRows.map((row,index)=>{
     const snap=row.calc?.forwarding,cur=row.input?.currency||'EUR',rate=row.input?.eurPln;
-    const amount=(value,source)=>value==null?'—':source==='PLN'?money(value):rate?money(convertMoney(value,'EUR','PLN',rate)):'Wymaga kursu';
+    const amount=(value,source,vat)=>value==null?'—':source==='PLN'?netPrice(value,vat):rate?netPrice(convertMoney(value,'EUR','PLN',rate),vat):'Wymaga kursu';
     const note=cur==='EUR'?(rate?`Przeliczono z EUR · zapisany kurs ${fmt(rate,4)} PLN`:'Starszy zapis EUR — podaj kurs przy wczytaniu'):'';
-    return `<tr><td>${esc(new Date(Number(row.ts)).toLocaleString('pl-PL'))}<small>${esc(row.client||row.name||'Bez nazwy')}</small></td><td class="history-route">${esc(row.origin)} → ${esc(row.destination)}<small>${esc(note)}</small></td><td class="numeric">${amount(snap?.buy??row.total_cost,snap?.buy!=null?cur:'EUR')}</td><td class="numeric">${amount(snap?.sell??row.price_eur,snap?.sell!=null?cur:'EUR')}</td><td>${fmt(row.margin_pct??snap?.margin??0,1)}%</td><td><button type="button" class="secondary" data-load="${index}">Wczytaj</button></td></tr>`;
+    return `<tr><td>${esc(new Date(Number(row.ts)).toLocaleString('pl-PL'))}<small>${esc(row.client||row.name||'Bez nazwy')}</small></td><td class="history-route">${esc(row.origin)} → ${esc(row.destination)}<small>${esc(note)}</small></td><td class="numeric">${amount(snap?.buy??row.total_cost,snap?.buy!=null?cur:'EUR',row.input?.offers?.find(o=>o.status==='accepted')?.vat)}</td><td class="numeric">${amount(snap?.sell??row.price_eur,snap?.sell!=null?cur:'EUR',row.input?.salesVat)}</td><td>${fmt(row.margin_pct??snap?.margin??0,1)}%</td><td><button type="button" class="secondary" data-load="${index}">Wczytaj</button></td></tr>`;
   }).join('')+'</tbody></table></div>';
 }
 function loadInput(input){
+  $('salesVat').value=input.salesVat??'';
   $('useCostModel').checked=input.useCostModel!==false;syncModelMode();
   fxMeta=input.fxSource==='NBP'?{fxSource:'NBP',fxDate:input.fxDate,fxTable:input.fxTable}:null;$('showEur').checked=input.showEur===true;$('fxDetails').hidden=!$('showEur').checked;$('eurPln').value=input.eurPln??'';renderFxStatus();
   document.querySelectorAll('[data-money]').forEach(clearMoneyAnchor);
@@ -279,6 +295,7 @@ if(matchMedia('(max-width:700px)').matches)$('mapDetails').open=false;
 $('workspace').addEventListener('submit',e=>{e.preventDefault();runCalculation(true);});
 $('workspace').addEventListener('input',e=>{
   if(e.target.name==='profileChoice'||['profile','showEur','useCostModel'].includes(e.target.id))return;
+  if(e.target.id==='salesVat'||e.target.dataset.offer==='vat'){const hadResult=!!result;$('reviewed').checked=false;invalidate();if(hadResult)runCalculation();return;}
   if(e.target.matches('[data-money]'))clearMoneyAnchor(e.target);
   if(e.target.id==='eurPln'){const hadResult=!!result;fxMeta=null;renderFxStatus();invalidate();if(hadResult)runCalculation();return;}
   if(e.target.matches('[data-stop]')||['origin','destination','pickup','delivery','notes','tailLift','palletJack'].includes(e.target.id)||e.target.dataset.cargo||e.target.dataset.v||e.target.name==='mode')resetOfferScope();
@@ -319,7 +336,7 @@ setupEnquiryImport({api,parseLocal:parseEnquiry,offerContext:()=>{
   if(dirty&&!confirm('Rozpocząć nowe zapytanie z odczytanych danych? Niezapisana wycena, ceny i oferty przewoźników zostaną zastąpione.'))return false;
   invalidateRoute();routeInputs.setStops([]);
   for(const id of ['origin','destination','client','reference','pickup','delivery','notes'])$(id).value=data[id]||'';
-  $('sellPrice').value='';clearMoneyAnchor($('sellPrice'));$('offerRows').replaceChildren();
+  $('salesVat').value='23';$('sellPrice').value='';clearMoneyAnchor($('sellPrice'));$('offerRows').replaceChildren();
   $('cargoRows').replaceChildren();(data.cargo.length?data.cargo:[{}]).forEach(cargoRow);
   for(const id of ['tailLift','palletJack'])$(id).checked=data[id]===true;
   // Preserve selected vehicle, currency and base rates, but not previous job's charges.

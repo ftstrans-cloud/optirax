@@ -78,6 +78,16 @@ try{
  await page.locator('[data-use-offer="0"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/250,00/);
  assert.match(await page.locator('.price-range').textContent(),/200,00 zł.*Transport Alfa/);
+ assert.match(await page.locator('#result > .price-gross').textContent(),/307,50 zł brutto/);
+ assert.match(await page.locator('[data-use-offer="0"] .price-gross').textContent(),/246,00 zł brutto/);
+ await page.locator('[data-offer=vat]').first().selectOption('0');
+ assert.match(await page.locator('.price-range .price-gross').textContent(),/200,00 zł brutto.*VAT 0%/);
+ assert.match(await page.locator('#result > .price-gross').textContent(),/307,50 zł brutto/);
+ await page.locator('#salesVat').selectOption('NP');
+ assert.match(await page.locator('#result > .price-gross').textContent(),/250,00 zł brutto.*VAT NP/);
+ assert.match(await page.locator('.decision-stats').textContent(),/50,00 zł.*20,0%/);
+ await page.locator('#salesVat').selectOption('23');
+ assert.equal(routeCalls.length,1);
  assert.equal(await page.locator('[data-use-offer="0"]').getAttribute('aria-pressed'),'true');
  await page.locator('[data-use-offer="1"]').click();
  assert.match(await page.locator('#result .price-value').textContent(),/300,00/);
@@ -91,6 +101,8 @@ try{
  // Native PLN can be saved before any exchange-rate request.
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
  assert.equal(saved[0].input.currency,'PLN');assert.equal(saved[0].input.eurPln,null);assert.equal(saved[0].input.sellPrice,400);
+ assert.equal(saved[0].input.salesVat,'23');assert.equal(saved[0].input.offers[0].vat,'0');
+ assert.match(await page.locator('#history').textContent(),/492,00 zł brutto/);
  assert.equal(await page.locator('.currency-equivalent').count(),0);
  await page.locator('#showEur').check();
  await page.locator('#fetchFx').click();await page.waitForFunction(()=>document.getElementById('eurPln').value==='4.25');
@@ -98,6 +110,7 @@ try{
  assert.match(await page.locator('.currency-equivalent').textContent(),/94,12 EUR/);
  assert.match(await page.locator('[data-use-offer="0"]').textContent(),/200,00 zł/);
  await page.locator('#eurPln').fill('4');assert.match(await page.locator('.currency-equivalent').textContent(),/100,00 EUR/);
+ assert.match(await page.locator('.currency-equivalent .price-gross').textContent(),/123,00 EUR brutto/);
  assert.match(await page.locator('#result .price-value').textContent(),/400,00/);
  await page.locator('#showEur').uncheck();assert.equal(await page.locator('.currency-equivalent').count(),0);
  await page.locator('#showEur').check();
@@ -110,6 +123,8 @@ try{
  assert.equal(saved[0].input.offers[1].status,'accepted');assert.equal(saved[0].input.currency,'PLN');
  await page.locator('[data-use-offer=""]').click();await page.locator('[data-load="0"]').click();
  assert.equal(await page.locator('[data-use-offer="1"]').getAttribute('aria-pressed'),'true');
+ assert.equal(await page.locator('#salesVat').inputValue(),'23');
+ assert.equal(await page.locator('[data-offer=vat]').first().inputValue(),'0');
  assert.match(await page.locator('.price-range').textContent(),/240,00 zł/);
  assert.equal(routeCalls.length,1);assert.equal(await page.locator('#distanceKm').inputValue(),'300');if(process.env.LEAFLET_QA_DIR)assert.equal(await page.locator('#routeMap path.leaflet-interactive').count(),4);
  // Rejected and incomplete offers cannot become the purchase.

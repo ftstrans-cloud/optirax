@@ -2,6 +2,34 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {calculate,normalizeInput,parseEnquiry,customerOffer,ForwardingError,PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,convertMoney,modelDefaults,quoteToPln} from '../public/forwarding-engine.js';
 import {createExchangeRateService} from '../lib/exchange-rate.js';
+import {grossAmount,normalizeVat,vatLabel} from '../public/forwarding-engine.js';
+
+test('VAT: rounded gross, distinct zero/NP/ZW and unknown historical VAT',()=>{
+  assert.equal(grossAmount(1000,'23'),1230);
+  assert.equal(grossAmount(19.99,'23'),24.59);
+  assert.equal(grossAmount(100,'8'),108);
+  assert.equal(grossAmount(100,'5'),105);
+  for(const vat of ['0','NP','ZW'])assert.equal(grossAmount(1000,vat),1000);
+  assert.notEqual(vatLabel('0'),vatLabel('NP'));
+  assert.equal(grossAmount(1000,undefined),null);
+  for(const bad of [-1,24,true,{},'23%'])assert.throws(()=>normalizeVat(bad),ForwardingError);
+  const legacy=normalizeInput({...sample(),offers:[{carrier:'Legacy',price:200,status:'accepted'}]});
+  assert.equal(legacy.salesVat,null);assert.equal(legacy.offers[0].vat,null);
+  assert.match(customerOffer(calculate(legacy)),/VAT do ustalenia/);
+});
+test('VAT: sale and carrier rates survive persistence without affecting net profit',()=>{
+  const input={...sample(),currency:'PLN',salesVat:'23',sellPrice:1250,offers:[{carrier:'INTERNAL',price:1000,status:'accepted',vat:'0'}]};
+  const result=calculate(input),restored=calculate(JSON.parse(JSON.stringify(result.input)));
+  assert.deepEqual(restored,result);assert.equal(result.profit,250);assert.equal(result.margin,20);
+  assert.equal(grossAmount(result.buy,result.input.offers[0].vat),1000);
+  assert.equal(grossAmount(result.sell,result.input.salesVat),1537.5);
+  assert.match(customerOffer(result),/1250.00 PLN netto \(1537.50 PLN brutto; VAT 23%\)/);
+  assert.doesNotMatch(customerOffer(result),/INTERNAL|1000.00|VAT 0%/);
+  const different=calculate({...input,salesVat:'NP'});assert.equal(different.profit,result.profit);
+  assert.match(customerOffer(different),/1250.00 PLN brutto; VAT NP/);
+  assert.match(customerOffer(calculate({...input,showEur:true,eurPln:4})),/312.50 EUR netto \(384.38 EUR brutto/);
+  assert.equal(quoteToPln({...input,currency:'EUR',eurPln:4}).salesVat,'23');
+});
 
 export function sample(){return {profile:'bus',mode:'dedicated',vehicle:{...PROFILES.bus},assumptions:{...DEFAULT_ASSUMPTIONS},route:{origin:'PL Poznań',destination:'DE Berlin',distanceKm:300,durationHours:5,source:'TomTom'},cargo:[{qty:2,length:120,width:80,height:150,weight:200,stackable:false}],client:'Test',pickup:'2026-10-10',delivery:'2026-10-11',reviewed:true,offers:[]};}
 test('PLN: EUR preview is optional and cannot change purchase, sale or margin',()=>{

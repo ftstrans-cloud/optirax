@@ -1,6 +1,6 @@
 // Shared by browser and server. New UI quotes use PLN; legacy untagged inputs remain EUR.
 // PROFILES/DEFAULT_ASSUMPTIONS keep legacy EUR values. modelDefaults supplies native PLN defaults.
-export const ENGINE_VERSION = 'forwarding-1.6';
+export const ENGINE_VERSION = 'forwarding-1.7';
 export const MONEY_ASSUMPTIONS = ['kmRate','hourRate','fixed','tolls','crossing','extra','waitingRate','minimumBuy','reeferSurcharge'];
 export const PROFILES = {
   bus: { name:'Bus plandeka 3,5 t', length:420, width:210, height:220, payload:900, grossWeightKg:3500, axleWeightKg:2000, lengthCm:690, widthCm:220, heightCm:320, axleCount:2, kmRate:0.38, hourRate:14 },
@@ -40,6 +40,25 @@ function num(value, label, min=0, max=1e6, integer=false) {
   const n=Number(typeof value==='string'?value.replace(',','.'):value);
   if (!Number.isFinite(n) || n<min || n>max || (integer && !Number.isInteger(n))) fail(`Sprawdź pole: ${label} (${min}–${max}).`);
   return n;
+}
+// Missing VAT in older records/imports stays unknown; it is never inferred from the route.
+export function normalizeVat(value) {
+  if(value==null||value==='')return null;
+  if(typeof value!=='string'&&typeof value!=='number')fail('Wybierz poprawną stawkę VAT.');
+  const vat=String(value);
+  if(!['23','8','5','0','NP','ZW'].includes(vat))fail('Wybierz poprawną stawkę VAT.');
+  return vat;
+}
+export function grossAmount(net,vat) {
+  const rate=normalizeVat(vat);
+  if(rate===null)return null;
+  if(!Number.isFinite(net)||net<0)fail('Nieprawidłowa kwota netto.');
+  const base=round(net);
+  return round(base+round(base*(rate==='NP'||rate==='ZW'?0:Number(rate))/100));
+}
+export function vatLabel(vat) {
+  const rate=normalizeVat(vat);
+  return rate===null?'VAT do ustalenia':rate==='NP'?'VAT NP':rate==='ZW'?'VAT zw.':`VAT ${rate}%`;
 }
 export function normalizeCurrency(value='EUR') {
   if (!['EUR','PLN'].includes(value)) fail('Wybierz walutę EUR albo PLN.');
@@ -123,13 +142,13 @@ export function normalizeInput(raw) {
   if (pickup&&delivery&&delivery<pickup) fail('Dostawa nie może być przed załadunkiem.');
   if (raw.offers!=null && (!Array.isArray(raw.offers)||raw.offers.length>50)) fail('Limit wynosi 50 ofert przewoźników.');
   if ((raw.offers||[]).some(o=>!o||typeof o!=='object'||Array.isArray(o))) fail('Nieprawidłowa oferta przewoźnika.');
-  const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true,terms:str(o.terms,'warunki oferty',1500),importSource:str(o.importSource,'źródło oferty',3000)}));
+  const offers=(raw.offers||[]).map(o=>({carrier:str(o.carrier,'przewoźnik',120,true),vat:normalizeVat(o.vat),price:num(o.price,`cena przewoźnika (${currency})`,0.01,1e6*moneyScale),status:['received','accepted','rejected'].includes(o.status)?o.status:fail('Nieprawidłowy status oferty.'),needsConfirmation:o.needsConfirmation===true,terms:str(o.terms,'warunki oferty',1500),importSource:str(o.importSource,'źródło oferty',3000)}));
   if (offers.some(o=>o.status==='accepted'&&o.needsConfirmation)) fail('Po zmianie przesyłki ponownie potwierdź ofertę przewoźnika.');
   if (offers.filter(o=>o.status==='accepted').length>1) fail('Możesz przyjąć tylko jedną ofertę przewoźnika.');
   if(!useCostModel&&!offers.some(o=>o.status==='accepted'))fail('Model kosztowy jest wyłączony. Wybierz ofertę przewoźnika do wyceny albo włącz model.');
   const reeferTemperature=str(raw.reeferTemperature,'temperatura chłodni',30);
   if (raw.profile==='reefer136' && !reeferTemperature) fail('Podaj temperaturę dla chłodni, np. +2°C lub -18°C.');
-  return {module:'forwarding',version:ENGINE_VERSION,useCostModel,currency,showEur:raw.showEur===true,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
+  return {module:'forwarding',version:ENGINE_VERSION,useCostModel,currency,salesVat:normalizeVat(raw.salesVat),showEur:raw.showEur===true,eurPln,fxSource,fxDate,fxTable,profile:raw.profile,mode:raw.mode,vehicle,reeferTemperature,assumptions,cargo,route,pickup,delivery,
     client:str(raw.client,'klient',200),reference:str(raw.reference,'referencja',120),notes:str(raw.notes,'warunki przewozu',3000),
     tailLift:raw.tailLift===true,palletJack:raw.palletJack===true,reviewed:raw.reviewed===true,
     sellPrice:raw.sellPrice===''||raw.sellPrice==null?null:num(raw.sellPrice,`cena dla klienta (${currency})`,0.01,1e6*moneyScale),offers,
@@ -200,7 +219,8 @@ export function parseEnquiry(text) {
 
 export function customerOffer(result) {
   if (!result.ready) fail('Przed przygotowaniem oferty sprawdź założenia, daty i ładowność.');
-  const i=result.input;
+  const i=result.input,gross=grossAmount(result.sell,i.salesVat);
+  const total=(net,currency,brutto)=>`${net.toFixed(2)} ${currency} netto${brutto===null?' (VAT do ustalenia)':` (${brutto.toFixed(2)} ${currency} brutto; ${vatLabel(i.salesVat)})`}`;
   return [
     'WSTĘPNA OFERTA TRANSPORTU',i.reference?`Referencja: ${i.reference}`:'',i.client?`Klient: ${i.client}`:'',
     `Trasa: ${[i.route.origin,...i.route.stops,i.route.destination].join(' → ')}`,
@@ -209,8 +229,8 @@ export function customerOffer(result) {
     ...i.cargo.map(c=>`${c.qty} szt. × ${c.length} × ${c.width} × ${c.height} cm; ${c.weight} kg/szt.; ${c.stackable?'piętrowalne po uzgodnieniu':'bez piętrowania'}`),
     `Łącznie: ${round(result.summary.weight)} kg | ${round(result.summary.volume)} m³`,
     i.tailLift?'Wymagana winda.':'',i.palletJack?'Wymagany paleciak.':'',
-    `Cena: ${result.sell.toFixed(2)} ${i.currency||'EUR'} netto. VAT zgodnie z właściwymi zasadami rozliczenia.`,
-    i.currency==='PLN'&&i.showEur&&i.eurPln?`Orientacyjnie: ${convertMoney(result.sell,'PLN','EUR',i.eurPln).toFixed(2)} EUR netto (1 EUR = ${i.eurPln} PLN${i.fxSource==='NBP'?`, NBP ${i.fxDate}`:''}). Cena rozliczeniowa pozostaje w PLN.`:'',
+    `Cena: ${total(result.sell,i.currency||'EUR',gross)}.`,
+    i.currency==='PLN'&&i.showEur&&i.eurPln?`Orientacyjnie: ${total(convertMoney(result.sell,'PLN','EUR',i.eurPln),'EUR',gross===null?null:convertMoney(gross,'PLN','EUR',i.eurPln))} (1 EUR = ${i.eurPln} PLN${i.fxSource==='NBP'?`, NBP ${i.fxDate}`:''}). Cena rozliczeniowa pozostaje w PLN.`:'',
     i.notes?`Uzgodnione warunki / zakres ceny: ${i.notes}`:'',
     'Oferta wstępna, wymaga potwierdzenia dostępności pojazdu, terminów i warunków załadunku. Zmiana danych przesyłki wymaga ponownej wyceny.',
   ].filter(Boolean).join('\n');
