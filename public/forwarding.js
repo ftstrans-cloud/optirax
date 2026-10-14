@@ -1,6 +1,7 @@
 import {setupRouteInputs} from './forwarding-route.js?v=1.8.0';
 import {PROFILES,DEFAULT_ASSUMPTIONS,MONEY_ASSUMPTIONS,calculate,parseEnquiry,customerOffer,normalizeExchangeRate,convertMoney,modelDefaults,quoteToPln,grossAmount,vatLabel,ROUTING_VEHICLE_FIELDS,routingVehicleChanged} from './forwarding-engine.js?v=1.11.0';
 import {setupEnquiryImport} from './enquiry-import.js?v=1.11.0';
+import {setupCarrierVerification} from './carrier-verification.js?v=1.12.0';
 
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -134,6 +135,7 @@ function collect(){return {useCostModel:$('useCostModel').checked,currency:curre
   ...Object.fromEntries(['client','reference','pickup','delivery','notes','sellPrice'].map(id=>[id,$(id).value])),
   ...Object.fromEntries(['tailLift','palletJack','reviewed'].map(id=>[id,$(id).checked])),
 };}
+setupCarrierVerification({getQuote:collect});
 function message(text,error=false){$('message').textContent=text;$('message').className=error?'error':'';$('message').hidden=false;}
 function invalidate(){
   result=null;dirty=true;revision++;$('result').hidden=true;$('emptyResult').hidden=false;$('resultTag').textContent='Przelicz';

@@ -19,6 +19,7 @@ globalThis.fetch=async (input,options={})=>{
     if(options.headers.Authorization!=='Bearer test-parser-key')throw Error('Missing test parser key');
     const body=JSON.parse(options.body);
     if(body.store!==false||!body.text?.format?.strict||body.tools)throw Error('Invalid parser request');
+    if(body.text.format.name==='carrier_documents')return json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({documents:[],checks:Object.fromEntries(['identity','territory','operation','cargo','owu','endorsements','vehicle'].map(key=>[key,{state:'unknown',detail:'Nieczytelny dokument testowy',evidence:[]}])),limits:[],deductibles:[],warnings:[]})}]}]});
     return json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(body.text.format.name==='carrier_offers'?carrierOffers:extracted)}]}]});
   }
   if(url.hostname==='test.supabase.invalid') {
@@ -45,3 +46,4 @@ globalThis.fetch=async (input,options={})=>{
   if(url.hostname==='api.nbp.pl') return json({table:'A',currency:'euro',code:'EUR',rates:[{no:'199/A/NBP/2026',effectiveDate:'2026-10-02',mid:4.2711}]});
   throw Error('External network disabled in tests: unexpected host');
 };
+

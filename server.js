@@ -9,6 +9,7 @@ import net from "node:net";
 import { Resend } from "resend";
 import { createRouteService, RoutingError } from "./lib/routing.js";
 import { registerForwarding, CARRIER_QUOTE_FILTER } from "./lib/forwarding.js";
+import { registerCarrierVerification } from "./lib/carrier-verification.js";
 
 dotenv.config();
 
@@ -228,7 +229,9 @@ if (process.env.OPENAI_API_KEY) {
 // ============================================================
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+const defaultJson = express.json({ limit: "1mb" });
+// File endpoints authenticate and apply their own bounded parsers before reading uploads.
+app.use((req,res,next)=>['/api/forwarding/parse','/api/forwarding/verify-carrier'].includes(req.path.replace(/\/$/,'')) ? next() : defaultJson(req,res,next));
 
 // ============================================================
 // AUTH MIDDLEWARE – weryfikacja JWT Supabase
@@ -1290,6 +1293,7 @@ function buildQuoteRow(item, userId, { isDraft = false } = {}) {
 }
 
 registerForwarding(app, {requireAuth, requireActiveSubscription, sbFetch, buildQuoteRow});
+registerCarrierVerification(app, {requireAuth, requireActiveSubscription});
 
 // Helper: znajdź draft dla danej trasy (origin + destination, te same stops)
 // Zwraca id draftu albo null. Stops porównujemy luźno (po stringified arr).
@@ -2037,3 +2041,4 @@ app.listen(PORT, () => {
   console.log(`🗺  Routing: ${TOMTOM_API_KEY ? "TomTom Routing API v1 – truck profile ✅" : "Brak routingu ciężarowego (dodaj TOMTOM_API_KEY do Railway)"}`);
 });
 // TEMP: pełny dump toll sections dla debugowania
+

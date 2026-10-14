@@ -1,0 +1,17 @@
+#carrierVerificationDialog{width:min(1280px,96vw);max-width:96vw;max-height:94dvh;padding:24px;overflow:auto;color:var(--text,#e7edf8);background:var(--surface,#16233f);border:1px solid var(--line,#39465e);border-radius:18px}
+#carrierVerificationDialog::backdrop{background:rgba(5,12,25,.72)}
+#carrierVerificationDialog h3{font-size:16px;margin:18px 0 12px}
+#carrierVerificationDialog #cvCargo{min-height:80px;height:90px}
+.cv-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:24px;align-items:start}
+.cv-input,.cv-output{min-width:0;max-height:calc(94dvh - 155px);overflow:auto;padding:4px 8px 16px 0;overscroll-behavior:contain}
+.cv-drop{margin:16px 0;padding:16px;border:1px dashed #6483aa;border-radius:12px}
+.cv-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #64748b44;overflow-wrap:anywhere}.cv-file small{opacity:.7;white-space:nowrap}
+.cv-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.cv-actions button{flex:1;min-width:115px}
+.cv-empty{padding:36px 24px;text-align:center;border:1px dashed #64748b;border-radius:12px;line-height:1.7}
+.cv-verdict{padding:18px;border-radius:12px;border-left:5px solid #7392b9;background:#7392b91a}.cv-verdict>strong{font-size:20px;display:block}.cv-verdict p{margin:8px 0}
+.cv-check{border:1px solid #64748b44;border-left:4px solid #7392b9;border-radius:10px;padding:12px 14px;margin:12px 0;overflow-wrap:anywhere}.cv-check>strong{display:block}.cv-check>strong span{display:block;font-size:12px;font-weight:500;margin-top:4px;opacity:.85}.cv-check p{font-size:14px;line-height:1.6;margin:8px 0}
+.cv-red{border-left-color:#ef7777;background:#d9474712}.cv-ok{border-left-color:#47bd91;background:#37ad7810}.cv-warning{border-left-color:#e5b356;background:#e5b35612}.cv-unknown{border-left-color:#8da4c0;background:#8da4c012}
+.cv-external,.cv-stale{padding:12px 14px;border:1px solid #bd923b;border-radius:10px;line-height:1.5;font-size:13px;background:#c1932912}.cv-stale{position:sticky;top:0;background:#fff3cb;color:#473600;z-index:2;font-weight:700}
+.cv-sources summary{font-size:13px;cursor:pointer}.cv-sources p{font-size:12px}.cv-sources q{white-space:pre-wrap}.cv-output>details{margin:18px 0}.cv-output>details>summary{cursor:pointer}
+html[data-theme=light] #carrierVerificationDialog{background:#fff;color:#17243e}
+@media(max-width:800px){#carrierVerificationDialog{padding:16px;max-height:96dvh}.cv-layout{grid-template-columns:1fr;gap:16px}.cv-input,.cv-output{max-height:none;overflow:visible}.cv-verdict>strong{font-size:18px}}

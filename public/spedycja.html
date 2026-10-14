@@ -5,10 +5,11 @@
   <meta name="theme-color" content="#16233f"><title>Spedycja — Optirax</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem('optirax_theme')==='light'?'light':'dark';}catch{}</script>
   <link rel="stylesheet" href="/forwarding.css?v=1.11.0">
+  <link rel="stylesheet" href="/carrier-verification.css?v=1.12.0">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="/auth.js"></script>
   <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="/forwarding.js?v=1.11.0"></script>
+  <script type="module" src="/forwarding.js?v=1.12.0"></script>
 </head>
 <body>
   <a class="skip" href="#workspace">Przejdź do wyceny</a>
@@ -54,6 +55,7 @@
         <section class="card offer-editor" id="offerEditor" aria-labelledby="carrierOffersTitle">
           <div class="section-top"><h2 id="carrierOffersTitle">Oferty przewoźników</h2><span class="tag" id="offersCount">0</span></div>
           <div class="offer-tools"><button type="button" id="addOffer" class="text-button">+ Dodaj ofertę</button><button type="button" id="offersImportOpen" class="text-button">Wklej tekst / screeny ↗</button></div>
+          <button type="button" id="verifyCarrierOpen" class="secondary">Sprawdź przewoźnika · OCP / licencja</button>
           <div id="selectedOfferBox" class="purchase-options" role="group" aria-label="Wybierz ofertę przewoźnika"></div>
           <p id="purchaseStatus" class="hint" role="status" aria-live="polite">Wybierz ofertę, aby zobaczyć cenę klienta i marżę.</p>
           <details id="offerManagement"><summary>Edytuj ceny i warunki ofert</summary><div id="offerRows"></div></details>
@@ -92,7 +94,7 @@
       </aside>
     </form>
     <section class="history-section" id="quoteHistory"><div class="section-top"><div><p class="eyebrow">TWÓJ WARSZTAT</p><h2>Ostatnie wersje wycen</h2></div><button type="button" id="refreshHistory" class="secondary">Odśwież</button></div><p class="hint">Do 200 ostatnich zapisów. Każdy zapis tworzy nową wersję z ofertami przewoźników i użytymi założeniami.</p><div id="history" aria-live="polite">Wczytywanie historii…</div></section>
-    <footer>OPTIRAX / Spedycja · 1.11.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
+    <footer>OPTIRAX / Spedycja · 1.12.0 <span>Twoje dane. Twoje założenia. Świadoma cena.</span></footer>
   </main>
   <dialog id="pasteDialog" aria-labelledby="importTitle">
     <div class="section-top"><div><p class="eyebrow">OPTIRAX / SZYBKI IMPORT</p><h2 id="importTitle">Zapytanie → wycena</h2></div><button type="button" class="quiet" data-close="pasteDialog" aria-label="Zamknij">✕</button></div>

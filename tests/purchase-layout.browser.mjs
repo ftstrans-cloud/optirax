@@ -11,12 +11,19 @@ const {chromium}=require('playwright');
 const root=new URL('../public/',import.meta.url).pathname,out=process.env.QA_ARTIFACT_DIR||'/tmp/optirax-purchase-layout-qa';
 await fs.mkdir(out,{recursive:true});
 let saved=[],routeCalls=[],holdNextRoute=false,heldRoute=null,failNextRoute=false;
+let verificationCalls=[],failVerification=false,holdVerification=false,releaseVerification=null;
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(url.pathname.startsWith('/api/')){
     res.setHeader('Content-Type','application/json');
     if(url.pathname==='/api/geocode')return res.end(JSON.stringify([{display_name:'Poznań, Długa 1, 61-001, Polska'}]));
     if(url.pathname==='/api/expand-url')return res.end(JSON.stringify({url:'https://www.google.com/maps/dir/Poznań/Gorzów/Berlin'}));
+    if(url.pathname==='/api/forwarding/verify-carrier'){
+      let body='';for await(const chunk of req)body+=chunk;const input=JSON.parse(body);verificationCalls.push(input);
+      if(holdVerification){holdVerification=false;await new Promise(resolve=>releaseVerification=resolve);releaseVerification=null;}
+      if(failVerification){failVerification=false;res.statusCode=503;return res.end(JSON.stringify({error:'Analiza niedostępna — test'}));}
+      return res.end(JSON.stringify({version:'fixture',status:'unknown',checkedAt:'2026-10-14T20:00:00Z',context:input.context,externalVerification:{status:'not_checked',detail:'Nie sprawdzono rejestru ani ubezpieczyciela.'},checks:[{id:'owu',label:'Kompletność OWU',status:'unknown',detail:'Brak pełnych OWU <img src=x onerror=alert(1)>',evidence:[{filename:input.files[0].name,file:1,page:1,quote:'Dowód <script>alert(1)</script>'}]}],limits:[{label:'Kraj',amount:100000,currency:'EUR',basis:'both',applicable:'yes',evidence:[]}],deductibles:[{description:'200 EUR — informacyjnie',evidence:[]}],documents:[]}));
+    }
     if(url.pathname==='/api/route'||url.pathname==='/api/route/multi'){
       let body='';for await(const chunk of req)body+=chunk;routeCalls.push({path:url.pathname,...JSON.parse(body)});
       if(holdNextRoute){holdNextRoute=false;await new Promise(resolve=>heldRoute=resolve);heldRoute=null;}
@@ -123,6 +130,7 @@ try{
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
  assert.equal(saved[0].input.currency,'PLN');assert.equal(saved[0].input.eurPln,null);assert.equal(saved[0].input.sellPrice,400);
  assert.equal(saved[0].input.salesVat,'23');assert.equal(saved[0].input.offers[0].vat,'0');
+ await page.waitForFunction(()=>document.querySelector('#history tbody'));
  assert.match(await page.locator('#history').textContent(),/492,00 zł brutto/);
  assert.equal(await page.locator('.currency-equivalent').count(),0);
  await reveal('#showEur');await page.locator('#showEur').check();
@@ -240,6 +248,39 @@ try{
  await page.locator('#saveQuote').click();await page.waitForFunction(()=>document.getElementById('saveState').textContent.includes('Zapisano'));
  assert.equal(saved[0].input.route.routingVehicle.grossWeightKg,12000);
  assert.equal(saved[0].input.route.durationHours,6);
+ // Verification is isolated from the route, purchase and quotation. Never executes document markup.
+ const routeBeforeVerification=routeCalls.length,priceBeforeVerification=await page.locator('#result').textContent();
+ await page.setViewportSize({width:1440,height:1000});
+ await page.locator('#verifyCarrierOpen').click();
+ assert.equal(await page.locator('#carrierVerificationDialog').isVisible(),true);
+ assert.ok((await page.locator('#cvCarrier').inputValue()).length>0);
+ await page.locator('#cvCountries').fill('Polska, Niemcy');await page.locator('#cvOperation').selectOption('international');await page.locator('#cvCargo').fill('Meble drewniane');
+ await page.locator('#cvFiles').setInputFiles([{name:'polisa.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 fixture')},{name:'licencja.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 fixture license')}]);
+ await page.locator('.cv-verdict').waitFor();
+ assert.equal(verificationCalls.length,1);assert.equal(verificationCalls[0].files.length,2);
+ assert.equal(await page.locator('#cvReport img,#cvReport script').count(),0);
+ assert.equal(await page.locator('#distanceKm').inputValue(),'300');assert.equal(routeCalls.length,routeBeforeVerification);
+ assert.equal(await page.locator('#result').textContent(),priceBeforeVerification);
+ for(const theme of ['dark','light'])for(const width of [1440,800,390,320]){
+   await page.setViewportSize({width,height:1000});await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);
+   assert.equal(await page.locator('#carrierVerificationDialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true,`verification overflow ${theme}/${width}`);
+   await page.screenshot({path:`${out}/verification-${theme}-${width}.png`});
+ }
+ await page.setViewportSize({width:1440,height:1000});
+ await page.locator('#cvValue').fill('20000');assert.equal(await page.locator('#cvStale').isVisible(),true);assert.equal(await page.locator('#cvDownload').isVisible(),false);
+ failVerification=true;await page.locator('#cvRun').click();await page.waitForFunction(()=>document.getElementById('cvStatus').textContent.includes('niedostępna'));
+ assert.equal(await page.locator('#cvStale').isVisible(),true);
+ holdVerification=true;await page.locator('#cvRun').click();
+ await new Promise(resolve=>{const check=()=>releaseVerification?resolve():setTimeout(check,10);check();});
+ await page.locator('#cvCargo').fill('Inny towar');releaseVerification();
+ assert.equal(await page.locator('#cvStale').isVisible(),true);
+ await page.locator('#cvRun').click();await page.waitForFunction(()=>document.getElementById('cvStatus').textContent.includes('zakończona'));
+ assert.equal(await page.locator('#cvStale').isVisible(),false);
+ const downloadPromise=page.waitForEvent('download');await page.locator('#cvDownload').click();assert.match((await downloadPromise).suggestedFilename(),/optirax-weryfikacja/);
+ await page.locator('#cvClose').click();assert.equal(await page.locator('#carrierVerificationDialog').isVisible(),false);
+ await page.locator('#verifyCarrierOpen').click();assert.equal(await page.locator('#cvFileList .cv-file').count(),2);
+ await page.locator('#cvClear').click();assert.equal(await page.locator('#cvFileList .cv-file').count(),0);assert.equal(await page.locator('#cvDownload').isVisible(),false);
+ await page.locator('#cvClose').click();assert.equal(routeCalls.length,routeBeforeVerification);
  // Desktop panes scroll independently; the document and the other panes stay still.
  await page.setViewportSize({width:1440,height:900});
  await page.evaluate(()=>{window.scrollTo(0,0);document.querySelectorAll('#workspace>[tabindex]').forEach(e=>e.scrollTop=0);});
