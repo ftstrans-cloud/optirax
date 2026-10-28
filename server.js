@@ -57,7 +57,7 @@ function fmtDate(d = new Date()) {
 
 // Klucze API – wczytane raz na starcie
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
+// Prefer the current opaque server key (sb_secret_...). Legacy names remain as\n// fallbacks so local installations can migrate without a hard cut-over.\nconst SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
 
 console.log("Supabase URL:", SUPABASE_URL ? "ustawiony" : "BRAK");
 console.log("Supabase KEY:", SUPABASE_KEY ? "ustawiony" : "BRAK");
@@ -1229,7 +1229,6 @@ async function sbFetch(table, method = "GET", body = null, params = "") {
     method,
     headers: {
       "apikey":        SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
       "Content-Type":  "application/json",
       "Accept":        "application/json",
     },
@@ -1469,7 +1468,6 @@ function fleetRoutes(entity) {
         method: "POST",
         headers: {
           "apikey":        SUPABASE_KEY,
-          "Authorization": `Bearer ${SUPABASE_KEY}`,
           "Content-Type":  "application/json",
           "Prefer":        "resolution=merge-duplicates,return=representation",
         },
@@ -1550,7 +1548,6 @@ app.post("/api/fleet/vehicles/import", requireAuth, requireActiveSubscription, r
           method: "POST",
           headers: {
             "apikey":        SUPABASE_KEY,
-            "Authorization": `Bearer ${SUPABASE_KEY}`,
             "Content-Type":  "application/json",
             "Prefer":        "resolution=merge-duplicates,return=representation",
           },
